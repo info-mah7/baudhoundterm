@@ -207,17 +207,39 @@
         </Setter.Value>
       </Setter>
     </Style>
+    <!-- The stock tab paints a light selected header from the Windows theme, which left the
+         active tab white on white. Template it so selection reads as a lit tab on dark chrome. -->
     <Style TargetType="TabItem">
-      <Setter Property="Background" Value="#171C27"/>
-      <Setter Property="Foreground" Value="#DFE4EE"/>
-      <Setter Property="BorderBrush" Value="#3A4459"/>
-      <Setter Property="Padding" Value="10,4"/>
-      <Style.Triggers>
-        <Trigger Property="IsSelected" Value="True">
-          <Setter Property="Background" Value="#0F131A"/>
-          <Setter Property="Foreground" Value="#FFFFFF"/>
-        </Trigger>
-      </Style.Triggers>
+      <Setter Property="Foreground" Value="#8B94A7"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TabItem">
+            <Border x:Name="Box" Background="#141922" BorderBrush="#232A38"
+                    BorderThickness="1,1,1,0" CornerRadius="3,3,0,0"
+                    Margin="0,2,2,0" Padding="11,5">
+              <ContentPresenter ContentSource="Header" VerticalAlignment="Center"
+                                HorizontalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="Box" Property="Background" Value="#0F131A"/>
+                <Setter TargetName="Box" Property="BorderBrush" Value="#3A4459"/>
+                <Setter TargetName="Box" Property="Margin" Value="0,0,2,0"/>
+                <Setter Property="Foreground" Value="#FFFFFF"/>
+                <Setter Property="Panel.ZIndex" Value="1"/>
+              </Trigger>
+              <MultiTrigger>
+                <MultiTrigger.Conditions>
+                  <Condition Property="IsSelected" Value="False"/>
+                  <Condition Property="IsMouseOver" Value="True"/>
+                </MultiTrigger.Conditions>
+                <Setter TargetName="Box" Property="Background" Value="#1C2230"/>
+                <Setter Property="Foreground" Value="#DFE4EE"/>
+              </MultiTrigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
     <Style TargetType="TextBlock">
       <Setter Property="Foreground" Value="#DFE4EE"/>

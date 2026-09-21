@@ -8,6 +8,7 @@
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>Quarterdeck</AssemblyName>
+    <Version>0.4.5</Version>
     <RootNamespace>Quarterdeck.App</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>

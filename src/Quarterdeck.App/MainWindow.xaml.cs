@@ -20,6 +20,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
+        Title = $"Quarterdeck {Version}";
+
         _sessions = _store.Load();
         _folders = _store.LoadFolders();
         RebuildTree();
@@ -414,7 +416,17 @@ public partial class MainWindow : Window
             }
         }
 
-        panel.Children.Add(new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center });
+        var text = new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center };
+
+        // The app-wide TextBlock style would otherwise pin one colour here and the tab would
+        // not brighten when selected or dim when it is not.
+        text.SetBinding(TextBlock.ForegroundProperty, new System.Windows.Data.Binding("Foreground")
+        {
+            RelativeSource = new System.Windows.Data.RelativeSource(
+                System.Windows.Data.RelativeSourceMode.FindAncestor, typeof(TabItem), 1)
+        });
+
+        panel.Children.Add(text);
         tab.Header = panel;
     }
 
@@ -632,9 +644,19 @@ public partial class MainWindow : Window
     private void OnOpenLogs(object sender, RoutedEventArgs e) =>
         Process.Start(new ProcessStartInfo(AppPaths.DefaultLogDirectory) { UseShellExecute = true });
 
+    /// <summary>Assembly version, so a build can be identified from the title bar.</summary>
+    private static string Version
+    {
+        get
+        {
+            var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            return v is null ? "" : $"{v.Major}.{v.Minor}.{v.Build}";
+        }
+    }
+
     private void OnAbout(object sender, RoutedEventArgs e) =>
         MessageBox.Show(this,
-            "Quarterdeck\nA session manager and terminal for Windows.\n\n" +
+            $"Quarterdeck {Version}\nA session manager and terminal for Windows.\n\n" +
             "Apache-2.0. Terminal rendering by xterm.js (MIT), SSH by SSH.NET (MIT).",
             "About Quarterdeck");
 
