@@ -48,8 +48,22 @@ public partial class SessionEditorWindow : Window
         AuthBox.SelectedIndex = (int)d.AuthMethod;
         KeyBox.Text = d.KeyPath;
 
+        foreach (var port in System.IO.Ports.SerialPort.GetPortNames().OrderBy(p => p.Length))
+        {
+            SerialPortBox.Items.Add(port);
+        }
+
+        foreach (var rate in new[] { "9600", "14400", "19200", "28800", "38400", "57600",
+                                     "74880", "115200", "230400", "460800", "921600" })
+        {
+            BaudBox.Items.Add(rate);
+        }
+
         SerialPortBox.Text = d.SerialPort;
         BaudBox.Text = d.BaudRate.ToString(CultureInfo.InvariantCulture);
+        DataBitsBox.Text = d.DataBits.ToString(CultureInfo.InvariantCulture);
+        ParityBox.Text = d.Parity;
+        StopBitsBox.Text = d.StopBits;
         ShellBox.Text = d.ShellCommand;
         TelnetHostBox.Text = d.Host;
         TelnetPortBox.Text = d.Port.ToString(CultureInfo.InvariantCulture);
@@ -91,6 +105,25 @@ public partial class SessionEditorWindow : Window
         SerialPanel.Visibility = protocol == SessionProtocol.Serial ? Visibility.Visible : Visibility.Collapsed;
         ShellPanel.Visibility = protocol == SessionProtocol.LocalShell ? Visibility.Visible : Visibility.Collapsed;
         TelnetPanel.Visibility = protocol == SessionProtocol.Telnet ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>Rebuild the port list on open: USB adapters appear and vanish.</summary>
+    private void OnSerialPortsDropDown(object sender, EventArgs e)
+    {
+        if (sender is not ComboBox box)
+        {
+            return;
+        }
+
+        var typed = box.Text;
+        box.Items.Clear();
+
+        foreach (var port in System.IO.Ports.SerialPort.GetPortNames().OrderBy(p => p.Length))
+        {
+            box.Items.Add(port);
+        }
+
+        box.Text = typed;
     }
 
     private void OnBrowseKey(object sender, RoutedEventArgs e)
@@ -190,6 +223,9 @@ public partial class SessionEditorWindow : Window
 
         d.SerialPort = SerialPortBox.Text.Trim();
         d.BaudRate = ParseInt(BaudBox.Text, 115200);
+        d.DataBits = ParseInt(DataBitsBox.Text, 8);
+        d.Parity = string.IsNullOrWhiteSpace(ParityBox.Text) ? "None" : ParityBox.Text;
+        d.StopBits = string.IsNullOrWhiteSpace(StopBitsBox.Text) ? "One" : StopBitsBox.Text;
         d.ShellCommand = ShellBox.Text.Trim();
 
         // Telnet keeps its host and port in the same fields as SSH, so only copy them

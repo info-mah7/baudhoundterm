@@ -86,7 +86,8 @@
         <TextBlock DockPanel.Dock="Left" Text="Quick connect" Foreground="#8B94A7"
                    VerticalAlignment="Center" Margin="4,0,8,0"/>
         <ComboBox x:Name="QuickProtocol" DockPanel.Dock="Left" Width="110" SelectedIndex="0"
-                  VerticalAlignment="Center" ToolTip="Protocol">
+                  VerticalAlignment="Center" ToolTip="Protocol"
+                  SelectionChanged="OnQuickProtocolChanged">
           <ComboBoxItem Content="SSH"/>
           <ComboBoxItem Content="Serial"/>
           <ComboBoxItem Content="Local shell"/>
@@ -94,6 +95,26 @@
         </ComboBox>
         <Button DockPanel.Dock="Right" Content="Connect" Width="90" Margin="8,0,2,0"
                 Click="OnQuickConnect" IsDefault="True"/>
+
+        <!-- Serial asks for a port and a speed rather than a syntax to memorise. -->
+        <StackPanel x:Name="QuickSerialPanel" DockPanel.Dock="Left" Orientation="Horizontal"
+                    Visibility="Collapsed" VerticalAlignment="Center" Margin="8,0,0,0">
+          <TextBlock Text="Port" Foreground="#8B94A7" VerticalAlignment="Center" Margin="0,0,6,0"/>
+          <ComboBox x:Name="QuickSerialPort" Width="110" IsEditable="True"
+                    DropDownOpened="OnSerialPortsDropDown"
+                    ToolTip="COM port. The list refreshes each time it is opened."/>
+          <TextBlock Text="Baud" Foreground="#8B94A7" VerticalAlignment="Center" Margin="12,0,6,0"/>
+          <ComboBox x:Name="QuickBaud" Width="90" IsEditable="True" Text="115200"/>
+          <TextBlock Text="Framing" Foreground="#8B94A7" VerticalAlignment="Center" Margin="12,0,6,0"/>
+          <ComboBox x:Name="QuickFraming" Width="80" SelectedIndex="0"
+                    ToolTip="Data bits, parity, stop bits">
+            <ComboBoxItem Content="8-N-1"/>
+            <ComboBoxItem Content="7-E-1"/>
+            <ComboBoxItem Content="7-O-1"/>
+            <ComboBoxItem Content="8-N-2"/>
+          </ComboBox>
+        </StackPanel>
+
         <TextBox x:Name="QuickAddress" Margin="8,0,0,0" Padding="4,3" VerticalAlignment="Center"
                  KeyDown="OnQuickAddressKey"
                  ToolTip="SSH or Telnet: host, or host:port. Serial: COM3@115200. Local shell: a command line. The SSH username is asked when you connect."/>
