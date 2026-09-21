@@ -65,12 +65,16 @@
       <Border x:Name="Box" Background="Transparent" Padding="0">
         <Grid>
           <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="22"/>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
-          <ContentPresenter Grid.Column="0" ContentSource="Header" RecognizesAccessKey="True"
-                            Margin="16,5,12,5" VerticalAlignment="Center"/>
-          <TextBlock Grid.Column="1" Text="{TemplateBinding InputGestureText}" Foreground="#7C8AA0"
+          <!-- The Icon slot carries the colour swatches on the tab menu. -->
+          <ContentPresenter Grid.Column="0" ContentSource="Icon" Margin="6,0,0,0"
+                            VerticalAlignment="Center" HorizontalAlignment="Center"/>
+          <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True"
+                            Margin="4,5,12,5" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}" Foreground="#7C8AA0"
                      Margin="0,5,16,5" VerticalAlignment="Center" FontSize="11"/>
         </Grid>
       </Border>

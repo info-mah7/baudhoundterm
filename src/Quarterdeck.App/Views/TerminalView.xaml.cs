@@ -67,6 +67,17 @@ public partial class TerminalView : UserControl
         core.Settings.IsZoomControlEnabled = false;
         core.Settings.AreBrowserAcceleratorKeysEnabled = false;
 
+        // Our own page asking to read our own clipboard is not a decision worth interrupting
+        // anyone for, and the prompt appears in the middle of a paste.
+        core.PermissionRequested += (_, args) =>
+        {
+            if (args.PermissionKind is CoreWebView2PermissionKind.ClipboardRead)
+            {
+                args.State = CoreWebView2PermissionState.Allow;
+                args.Handled = true;
+            }
+        };
+
         core.WebMessageReceived += OnWebMessage;
         core.NavigationCompleted += OnNavigated;
 
@@ -200,7 +211,7 @@ public partial class TerminalView : UserControl
     {
         if (!Clipboard.ContainsImage())
         {
-            Write("\r\n[quarterdeck] no image on the clipboard.\r\n");
+            SetStatus("No image on the clipboard.");
             return;
         }
 
@@ -209,7 +220,7 @@ public partial class TerminalView : UserControl
             var source = Clipboard.GetImage();
             if (source is null)
             {
-                Write("\r\n[quarterdeck] the clipboard image could not be read.\r\n");
+                SetStatus("The clipboard image could not be read.");
                 return;
             }
 
@@ -231,11 +242,11 @@ public partial class TerminalView : UserControl
             {
                 // Local shell: the far end is this machine, so the file is already in reach.
                 SendInput(Quote(localPath));
-                Write($"\r\n[quarterdeck] image saved to {localPath} ({size:N0} bytes).\r\n");
+                SetStatus($"Image pasted: {localPath} ({size:N0} bytes)");
                 return;
             }
 
-            Write($"\r\n[quarterdeck] uploading {size:N0} bytes...\r\n");
+            SetStatus($"Uploading image, {size:N0} bytes...");
 
             var remotePath = $"/tmp/{name}";
             using (var transfer = new FileTransferService(Definition, _vault))
@@ -244,13 +255,20 @@ public partial class TerminalView : UserControl
             }
 
             SendInput(Quote(remotePath));
-            Write($"\r\n[quarterdeck] image at {remotePath} on the remote host.\r\n");
+            SetStatus($"Image uploaded to {remotePath} ({size:N0} bytes)");
         }
         catch (Exception ex)
         {
-            Write($"\r\n[quarterdeck] image paste failed: {ex.Message}\r\n");
+            SetStatus($"Image paste failed: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Status line under the terminal. Notices go here rather than into the terminal itself,
+    /// which belongs to the far end: writing into it lands in the middle of whatever is being
+    /// typed.
+    /// </summary>
+    private void SetStatus(string text) => Dispatcher.BeginInvoke(() => StatusText.Text = text);
 
     /// <summary>Quote a path only when it needs it, so the common case stays clean.</summary>
     private static string Quote(string path) => path.Contains(' ') ? $"\"{path}\"" : path;
