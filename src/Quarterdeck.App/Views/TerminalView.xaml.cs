@@ -47,9 +47,29 @@ public partial class TerminalView : UserControl
         var userData = Path.Combine(AppPaths.DataDirectory, "webview");
         Directory.CreateDirectory(userData);
 
+        // WebView2 is Chromium and will talk to Microsoft on its own account unless told not
+        // to: component updates, field-trial "variations", domain reliability, SmartScreen
+        // lookups. None of that belongs in a terminal, so it is switched off at the source
+        // rather than blocked at the firewall.
+        var options = new CoreWebView2EnvironmentOptions
+        {
+            AdditionalBrowserArguments = string.Join(' ',
+                "--disable-background-networking",
+                "--disable-component-update",
+                "--disable-domain-reliability",
+                "--disable-sync",
+                "--disable-breakpad",
+                "--no-pings",
+                "--no-first-run",
+                "--disable-features=OptimizationHints,Translate,msSmartScreenProtection," +
+                "EdgeCollections,MsEdgeShoppingAssistant,CalculateNativeWinOcclusion"),
+            EnableTrackingPrevention = true
+        };
+
         var env = await CoreWebView2Environment.CreateAsync(
             browserExecutableFolder: null,
-            userDataFolder: userData);
+            userDataFolder: userData,
+            options: options);
 
         await Web.EnsureCoreWebView2Async(env);
 
@@ -66,6 +86,8 @@ public partial class TerminalView : UserControl
         core.Settings.IsStatusBarEnabled = false;
         core.Settings.IsZoomControlEnabled = false;
         core.Settings.AreBrowserAcceleratorKeysEnabled = false;
+        core.Settings.IsPasswordAutosaveEnabled = false;
+        core.Settings.IsGeneralAutofillEnabled = false;
 
         // Our own page asking to read our own clipboard is not a decision worth interrupting
         // anyone for, and the prompt appears in the middle of a paste.
