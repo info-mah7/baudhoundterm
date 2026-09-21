@@ -76,6 +76,25 @@
       </WrapPanel>
     </Border>
 
+    <!-- Quick connect: no saved session, just somewhere to go. -->
+    <Border DockPanel.Dock="Top" Background="#141922" BorderBrush="#0F131A" BorderThickness="0,0,0,1" Padding="5,4">
+      <DockPanel LastChildFill="True">
+        <TextBlock DockPanel.Dock="Left" Text="Quick connect" Foreground="#8B94A7"
+                   VerticalAlignment="Center" Margin="4,0,8,0"/>
+        <ComboBox x:Name="QuickProtocol" DockPanel.Dock="Left" Width="110" SelectedIndex="0"
+                  VerticalAlignment="Center" ToolTip="Protocol">
+          <ComboBoxItem Content="SSH"/>
+          <ComboBoxItem Content="Serial"/>
+          <ComboBoxItem Content="Local shell"/>
+        </ComboBox>
+        <Button DockPanel.Dock="Right" Content="Connect" Width="90" Margin="8,0,2,0"
+                Click="OnQuickConnect" IsDefault="True"/>
+        <TextBox x:Name="QuickAddress" Margin="8,0,0,0" Padding="4,3" VerticalAlignment="Center"
+                 KeyDown="OnQuickAddressKey"
+                 ToolTip="user@host:port for SSH, COM3@115200 for serial, or a command for a local shell"/>
+      </DockPanel>
+    </Border>
+
     <Grid>
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="260" MinWidth="180"/>
@@ -92,12 +111,36 @@
         </DockPanel>
 
         <TreeView x:Name="SessionTree" Background="#141922" Foreground="#DFE4EE"
-                  BorderThickness="0" MouseDoubleClick="OnTreeActivated">
+                  BorderThickness="0" MouseDoubleClick="OnTreeActivated"
+                  PreviewMouseRightButtonDown="OnTreeRightClick">
           <TreeView.ItemContainerStyle>
             <Style TargetType="TreeViewItem">
               <Setter Property="IsExpanded" Value="True"/>
+              <!-- Without an explicit Foreground the item falls back to the system colour,
+                   which is black: invisible on this background. The Style.Resources override
+                   the selection brushes for the same reason - the default selected text is
+                   black on pale blue. -->
+              <Setter Property="Foreground" Value="#DFE4EE"/>
+              <Setter Property="Background" Value="Transparent"/>
+              <Setter Property="Padding" Value="2,1"/>
+              <Style.Resources>
+                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#2F3B52"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FFFFFF"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#232A38"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#DFE4EE"/>
+              </Style.Resources>
             </Style>
           </TreeView.ItemContainerStyle>
+
+          <TreeView.ContextMenu>
+            <ContextMenu Background="#1C2230" Foreground="#DFE4EE">
+              <MenuItem Header="_Connect" Click="OnConnect"/>
+              <Separator/>
+              <MenuItem Header="_Properties..." Click="OnEdit"/>
+              <MenuItem Header="C_lone" Click="OnClone"/>
+              <MenuItem Header="_Delete" Click="OnDelete"/>
+            </ContextMenu>
+          </TreeView.ContextMenu>
         </TreeView>
       </DockPanel>
 

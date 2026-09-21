@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using Quarterdeck.App.Views;
 using Quarterdeck.Core.Model;
 using Quarterdeck.Core.Security;
@@ -216,6 +217,97 @@ public partial class MainWindow : Window
         }
 
         Tabs.Items.Remove(tab);
+    }
+
+    // ---------- quick connect ----------
+
+    /// <summary>
+    /// Right-clicking selects what it points at first, so the context menu acts on the item
+    /// under the cursor rather than whatever happened to be selected before.
+    /// </summary>
+    private void OnTreeRightClick(object sender, MouseButtonEventArgs e)
+    {
+        var source = e.OriginalSource as DependencyObject;
+
+        while (source is not null and not TreeViewItem)
+        {
+            source = VisualTreeHelper.GetParent(source);
+        }
+
+        if (source is TreeViewItem item)
+        {
+            item.IsSelected = true;
+        }
+    }
+
+    private void OnQuickAddressKey(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            OnQuickConnect(sender, e);
+        }
+    }
+
+    /// <summary>
+    /// Connects to whatever was typed without creating a saved session. Accepts
+    /// "user@host:port" for SSH, "COM3@115200" for serial, or a command line for a local shell.
+    /// </summary>
+    private void OnQuickConnect(object sender, RoutedEventArgs e)
+    {
+        var address = QuickAddress.Text.Trim();
+        if (string.IsNullOrEmpty(address))
+        {
+            QuickAddress.Focus();
+            return;
+        }
+
+        var protocol = (SessionProtocol)Math.Max(0, QuickProtocol.SelectedIndex);
+        var definition = new SessionDefinition { Protocol = protocol, Name = address };
+
+        switch (protocol)
+        {
+            case SessionProtocol.Ssh:
+                var rest = address;
+
+                if (rest.Contains('@'))
+                {
+                    var at = rest.LastIndexOf('@');
+                    definition.Username = rest[..at];
+                    rest = rest[(at + 1)..];
+                }
+                else
+                {
+                    definition.Username = Environment.UserName;
+                }
+
+                // A bare IPv6 literal has colons of its own; only split a trailing :port.
+                var colon = rest.LastIndexOf(':');
+                if (colon > 0 && int.TryParse(rest[(colon + 1)..], out var port))
+                {
+                    definition.Port = port;
+                    rest = rest[..colon];
+                }
+
+                definition.Host = rest;
+                definition.Name = $"{definition.Username}@{definition.Host}";
+                break;
+
+            case SessionProtocol.Serial:
+                var parts = address.Split('@', 2);
+                definition.SerialPort = parts[0];
+                if (parts.Length == 2 && int.TryParse(parts[1], out var baud))
+                {
+                    definition.BaudRate = baud;
+                }
+
+                break;
+
+            default:
+                definition.ShellCommand = address;
+                break;
+        }
+
+        Connect(definition);
     }
 
     // ---------- quick shells ----------
