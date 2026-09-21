@@ -59,7 +59,7 @@ public partial class TerminalView : UserControl
         // Serve the terminal from a virtual host so xterm.js runs on a real origin and
         // navigator.clipboard is available. DenyCors keeps the page from reaching the network.
         core.SetVirtualHostNameToFolderMapping(
-            "quarterdeck.assets", assets, CoreWebView2HostResourceAccessKind.DenyCors);
+            "baudhound.assets", assets, CoreWebView2HostResourceAccessKind.DenyCors);
 
         core.Settings.AreDefaultContextMenusEnabled = false;
         core.Settings.AreDevToolsEnabled = false;
@@ -81,7 +81,7 @@ public partial class TerminalView : UserControl
         core.WebMessageReceived += OnWebMessage;
         core.NavigationCompleted += OnNavigated;
 
-        core.Navigate("https://quarterdeck.assets/terminal.html");
+        core.Navigate("https://baudhound.assets/terminal.html");
     }
 
     private void OnNavigated(object? sender, CoreWebView2NavigationCompletedEventArgs e)
@@ -319,7 +319,7 @@ public partial class TerminalView : UserControl
             // alive and silently eats typing. Say so instead of hanging.
             if (await Task.WhenAny(write, Task.Delay(3000)) != write)
             {
-                Write("\r\n[quarterdeck] the transport did not accept input within 3s.\r\n");
+                Write("\r\n[baudhoundterm] the transport did not accept input within 3s.\r\n");
                 return;
             }
 
@@ -327,7 +327,7 @@ public partial class TerminalView : UserControl
         }
         catch (Exception ex)
         {
-            Write($"\r\n[quarterdeck] input not delivered: {ex.GetType().Name}: {ex.Message}\r\n");
+            Write($"\r\n[baudhoundterm] input not delivered: {ex.GetType().Name}: {ex.Message}\r\n");
         }
     }
 

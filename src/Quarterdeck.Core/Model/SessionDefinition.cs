@@ -6,7 +6,10 @@ public enum SessionProtocol
 {
     Ssh,
     Serial,
-    LocalShell
+    LocalShell,
+
+    /// <summary>Telnet or a raw TCP console: BaudHound, console servers, network gear.</summary>
+    Telnet
 }
 
 public enum SshAuthMethod

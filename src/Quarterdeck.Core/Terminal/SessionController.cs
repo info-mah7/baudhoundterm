@@ -78,6 +78,7 @@ public sealed class SessionController : IAsyncDisposable
                 SessionProtocol.Ssh => new SshTerminalSession(Definition, _vault, _promptForSecret),
                 SessionProtocol.Serial => new SerialTerminalSession(Definition),
                 SessionProtocol.LocalShell => new ConPtyTerminalSession(Definition),
+                SessionProtocol.Telnet => new TelnetTerminalSession(Definition),
                 _ => throw new NotSupportedException($"Unknown protocol {Definition.Protocol}")
             };
 
@@ -99,7 +100,7 @@ public sealed class SessionController : IAsyncDisposable
                 var stalled = await _expect.RunAsync(Definition.AutoLogin, token).ConfigureAwait(false);
                 if (stalled is not null)
                 {
-                    Emit($"\r\n[quarterdeck] login script stopped: never saw \"{stalled.Expect}\".\r\n");
+                    Emit($"\r\n[baudhoundterm] login script stopped: never saw \"{stalled.Expect}\".\r\n");
                 }
 
                 _expect.Detach();
@@ -111,13 +112,13 @@ public sealed class SessionController : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            Emit($"\r\n[quarterdeck] {ex.Message}\r\n");
+            Emit($"\r\n[baudhoundterm] {ex.Message}\r\n");
 
             // Retrying a rejected password just spends the account's lockout budget. Only
             // transient failures earn a reconnect.
             if (IsPermanent(ex))
             {
-                Emit("[quarterdeck] not retrying: this failure will not fix itself.\r\n");
+                Emit("[baudhoundterm] not retrying: this failure will not fix itself.\r\n");
                 SetState(SessionState.Failed, ex.Message);
                 return;
             }
@@ -154,7 +155,7 @@ public sealed class SessionController : IAsyncDisposable
             return;
         }
 
-        Emit($"\r\n[quarterdeck] {e.Reason}\r\n");
+        Emit($"\r\n[baudhoundterm] {e.Reason}\r\n");
         _ = ScheduleReconnectAsync(e.Reason, _life?.Token ?? CancellationToken.None);
     }
 
@@ -233,6 +234,7 @@ public sealed class SessionController : IAsyncDisposable
     {
         SessionProtocol.Ssh => $"{Definition.Username}@{Definition.Host}:{Definition.Port}",
         SessionProtocol.Serial => $"{Definition.SerialPort} @ {Definition.BaudRate}",
+        SessionProtocol.Telnet => $"{Definition.Host}:{Definition.Port}",
         _ => Definition.ShellCommand
     };
 

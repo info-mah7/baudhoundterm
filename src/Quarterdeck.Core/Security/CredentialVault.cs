@@ -11,6 +11,7 @@ namespace Quarterdeck.Core.Security;
 /// </summary>
 public sealed class CredentialVault
 {
+    // Do not change: this string is entropy for every stored secret.
     private const string Purpose = "Quarterdeck.v1";
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes(Purpose);
 
