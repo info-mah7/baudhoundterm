@@ -359,6 +359,7 @@ public partial class MainWindow : Window
         var tab = new TabItem { Content = view };
 
         SetTabHeader(tab, definition, definition.Name);
+        tab.ContextMenu = BuildTabMenu(tab, definition);
         view.TitleChanged += (_, title) =>
             SetTabHeader(tab, definition, string.IsNullOrWhiteSpace(title) ? definition.Name : title);
 
@@ -382,6 +383,107 @@ public partial class MainWindow : Window
 
         await view.ConnectAsync();
         Save();
+    }
+
+    /// <summary>The palette offered when right-clicking a tab.</summary>
+    private static readonly (string Name, string Hex)[] TabPalette =
+    {
+        ("No colour", ""),
+        ("Red", "#e06c75"),
+        ("Amber", "#e5c07b"),
+        ("Green", "#98c379"),
+        ("Cyan", "#56b6c2"),
+        ("Blue", "#61afef"),
+        ("Purple", "#c678dd"),
+        ("Grey", "#8b94a7")
+    };
+
+    /// <summary>
+    /// Right-click menu on a tab: pick a colour, or open the session's properties. The colour
+    /// sticks to the session, so a saved one keeps it next time it is opened.
+    /// </summary>
+    private ContextMenu BuildTabMenu(TabItem tab, SessionDefinition definition)
+    {
+        var menu = new ContextMenu();
+
+        foreach (var (name, hex) in TabPalette)
+        {
+            var item = new MenuItem { Header = name, IsCheckable = false };
+
+            if (hex.Length > 0)
+            {
+                try
+                {
+                    item.Icon = new System.Windows.Shapes.Rectangle
+                    {
+                        Width = 12,
+                        Height = 12,
+                        RadiusX = 2,
+                        RadiusY = 2,
+                        Fill = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter()
+                            .ConvertFromString(hex)!
+                    };
+                }
+                catch (FormatException)
+                {
+                }
+            }
+
+            var colour = hex;
+            item.Click += (_, _) => ApplyTabColour(tab, definition, colour);
+            menu.Items.Add(item);
+        }
+
+        menu.Items.Add(new Separator());
+
+        var custom = new MenuItem { Header = "Custom colour..." };
+        custom.Click += (_, _) =>
+        {
+            var dialog = new InputPromptWindow("Tab colour", definition.TabColor,
+                "Hex like #ff8800, or a name like Tomato. Blank clears it.") { Owner = this };
+
+            if (dialog.ShowDialog() == true)
+            {
+                ApplyTabColour(tab, definition, dialog.Value);
+            }
+        };
+        menu.Items.Add(custom);
+
+        var properties = new MenuItem { Header = "Properties..." };
+        properties.Click += (_, _) =>
+        {
+            var editor = new SessionEditorWindow(definition, _vault) { Owner = this };
+            if (editor.ShowDialog() == true)
+            {
+                SetTabHeader(tab, definition, definition.Name);
+                PersistIfSaved(definition);
+            }
+        };
+        menu.Items.Add(properties);
+
+        return menu;
+    }
+
+    private void ApplyTabColour(TabItem tab, SessionDefinition definition, string colour)
+    {
+        definition.TabColor = colour.Trim();
+
+        // Keep whatever title the far end last gave us rather than snapping back to the name.
+        var title = tab.Header is StackPanel panel && panel.Children.Count > 0
+            ? panel.Children.OfType<TextBlock>().FirstOrDefault()?.Text ?? definition.Name
+            : definition.Name;
+
+        SetTabHeader(tab, definition, title);
+        PersistIfSaved(definition);
+    }
+
+    /// <summary>A quick-connect session has nothing to write to; a saved one does.</summary>
+    private void PersistIfSaved(SessionDefinition definition)
+    {
+        if (_sessions.Any(s => s.Id == definition.Id))
+        {
+            Save();
+        }
     }
 
     /// <summary>

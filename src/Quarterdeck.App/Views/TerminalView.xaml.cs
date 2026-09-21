@@ -6,6 +6,7 @@ using Microsoft.Web.WebView2.Core;
 using Quarterdeck.Core.Model;
 using Quarterdeck.Core.Security;
 using Quarterdeck.Core.Terminal;
+using Quarterdeck.Core.Transfer;
 
 namespace Quarterdeck.App.Views;
 
@@ -141,6 +142,10 @@ public partial class TerminalView : UserControl
             case "editcmd":
                 EditCommandsRequested?.Invoke(this, EventArgs.Empty);
                 break;
+
+            case "pasteimg":
+                _ = PasteImageAsync();
+                break;
         }
     }
 
@@ -182,6 +187,73 @@ public partial class TerminalView : UserControl
 
     /// <summary>Raised when the user picks "Edit commands..." so the shell can open properties.</summary>
     public event EventHandler? EditCommandsRequested;
+
+    /// <summary>
+    /// Puts the clipboard image where the far end can read it and types its path.
+    ///
+    /// A program running over SSH reads the clipboard of the machine it runs on, not this one,
+    /// so an image copied in Windows is invisible to it. Writing the image to a file on the far
+    /// end and typing the path is what makes "paste a screenshot into Claude Code" work at all
+    /// on a remote host. The path goes in without a newline so it can be typed around.
+    /// </summary>
+    private async Task PasteImageAsync()
+    {
+        if (!Clipboard.ContainsImage())
+        {
+            Write("\r\n[quarterdeck] no image on the clipboard.\r\n");
+            return;
+        }
+
+        try
+        {
+            var source = Clipboard.GetImage();
+            if (source is null)
+            {
+                Write("\r\n[quarterdeck] the clipboard image could not be read.\r\n");
+                return;
+            }
+
+            var name = $"paste-{DateTime.Now:yyyyMMdd-HHmmss}.png";
+            var localDir = Path.Combine(Path.GetTempPath(), "quarterdeck");
+            Directory.CreateDirectory(localDir);
+            var localPath = Path.Combine(localDir, name);
+
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(source));
+            await using (var file = File.Create(localPath))
+            {
+                encoder.Save(file);
+            }
+
+            var size = new FileInfo(localPath).Length;
+
+            if (Definition.Protocol != SessionProtocol.Ssh)
+            {
+                // Local shell: the far end is this machine, so the file is already in reach.
+                SendInput(Quote(localPath));
+                Write($"\r\n[quarterdeck] image saved to {localPath} ({size:N0} bytes).\r\n");
+                return;
+            }
+
+            Write($"\r\n[quarterdeck] uploading {size:N0} bytes...\r\n");
+
+            var remotePath = $"/tmp/{name}";
+            using (var transfer = new FileTransferService(Definition, _vault))
+            {
+                await transfer.UploadAsync(localPath, remotePath);
+            }
+
+            SendInput(Quote(remotePath));
+            Write($"\r\n[quarterdeck] image at {remotePath} on the remote host.\r\n");
+        }
+        catch (Exception ex)
+        {
+            Write($"\r\n[quarterdeck] image paste failed: {ex.Message}\r\n");
+        }
+    }
+
+    /// <summary>Quote a path only when it needs it, so the common case stays clean.</summary>
+    private static string Quote(string path) => path.Contains(' ') ? $"\"{path}\"" : path;
 
     private void RunShortcut(CommandShortcut shortcut)
     {

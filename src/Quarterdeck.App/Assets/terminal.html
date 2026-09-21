@@ -117,7 +117,9 @@
         if (sel) { navigator.clipboard.writeText(sel); return false; }
       }
       if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyV') {
-        navigator.clipboard.readText().then(t => t && send({ t: 'in', d: t }));
+        navigator.clipboard.readText()
+          .then(t => t ? send({ t: 'in', d: t }) : send({ t: 'pasteimg' }))
+          .catch(() => send({ t: 'pasteimg' }));
         return false;
       }
       if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyF') { openFind(); return false; }
@@ -179,7 +181,10 @@
       { label: 'Copy', hint: 'Ctrl+Shift+C', disabled: !sel, run: () => {
           navigator.clipboard.writeText(sel); term.clearSelection(); } },
       { label: 'Paste', hint: 'Ctrl+Shift+V', run: () => {
-          navigator.clipboard.readText().then(t => t && send({ t: 'in', d: t })); } },
+          navigator.clipboard.readText()
+            .then(t => t ? send({ t: 'in', d: t }) : send({ t: 'pasteimg' }))
+            .catch(() => send({ t: 'pasteimg' })); } },
+      { label: 'Paste image as file', run: () => send({ t: 'pasteimg' }) },
       { label: 'Clear screen', run: () => term.clear() }
     ];
 
