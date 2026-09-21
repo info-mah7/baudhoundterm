@@ -1,8 +1,13 @@
-# Quarterdeck
+# BaudHoundTerm
 
-A session manager and terminal for Windows 11, in the shape of SecureCRT: saved sessions in
+Terminal and session manager for Windows 11, in the shape of SecureCRT: saved sessions in
 folders, an encrypted credential store, session logging, scripted logins, auto-reconnect, and
-SFTP/SCP transfer. One self-contained executable, no runtime to install.
+SFTP/SCP transfer. SSH, telnet, serial and local shells. One self-contained executable, no
+runtime to install.
+
+It is also the desktop console for [BaudHound](https://github.com/magicsmokepress/BaudHound),
+the pocket ESP32-S3 wireless serial tap: BaudHound puts a UART on the network over telnet, and
+BaudHoundTerm gives that connection saved sessions, logging, highlight rules and reconnect.
 
 Apache-2.0.
 
@@ -40,7 +45,7 @@ Requires the .NET 10 SDK. Builds on Windows or, with `EnableWindowsTargeting`, o
 dotnet publish src/Quarterdeck.App/Quarterdeck.App.csproj -c Release
 ```
 
-The result is `Quarterdeck.exe` (about 64 MB, self-contained) plus an `Assets` folder that must
+The result is `BaudHoundTerm.exe` (about 64 MB, self-contained) plus an `Assets` folder that must
 travel with it.
 
 ## Runtime requirement
@@ -50,7 +55,7 @@ Evergreen runtime from Microsoft.
 
 ## Where things are stored
 
-`%APPDATA%\Quarterdeck\`
+`%APPDATA%\BaudHoundTerm\`
 
 | File | Contents |
 |---|---|

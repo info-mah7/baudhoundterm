@@ -37,6 +37,7 @@
               <ComboBoxItem Content="SSH"/>
               <ComboBoxItem Content="Serial"/>
               <ComboBoxItem Content="Local shell"/>
+              <ComboBoxItem Content="Telnet"/>
             </ComboBox>
 
             <StackPanel x:Name="SshPanel">
@@ -67,6 +68,15 @@
               <TextBox x:Name="SerialPortBox"/>
               <TextBlock Text="Baud rate"/>
               <TextBox x:Name="BaudBox"/>
+            </StackPanel>
+
+            <StackPanel x:Name="TelnetPanel" Visibility="Collapsed">
+              <TextBlock Text="Host"/>
+              <TextBox x:Name="TelnetHostBox"/>
+              <TextBlock Text="Port"/>
+              <TextBox x:Name="TelnetPortBox"/>
+              <TextBlock Text="A BaudHound serves its UART on port 23. So do most console servers."
+                         Foreground="#5C6370" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel>
 
             <StackPanel x:Name="ShellPanel" Visibility="Collapsed">

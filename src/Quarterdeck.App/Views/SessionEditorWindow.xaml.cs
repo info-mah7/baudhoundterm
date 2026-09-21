@@ -51,6 +51,8 @@ public partial class SessionEditorWindow : Window
         SerialPortBox.Text = d.SerialPort;
         BaudBox.Text = d.BaudRate.ToString(CultureInfo.InvariantCulture);
         ShellBox.Text = d.ShellCommand;
+        TelnetHostBox.Text = d.Host;
+        TelnetPortBox.Text = d.Port.ToString(CultureInfo.InvariantCulture);
 
         ThemeBox.Text = d.Theme;
         FontBox.Text = d.FontFamily;
@@ -88,6 +90,7 @@ public partial class SessionEditorWindow : Window
         SshPanel.Visibility = protocol == SessionProtocol.Ssh ? Visibility.Visible : Visibility.Collapsed;
         SerialPanel.Visibility = protocol == SessionProtocol.Serial ? Visibility.Visible : Visibility.Collapsed;
         ShellPanel.Visibility = protocol == SessionProtocol.LocalShell ? Visibility.Visible : Visibility.Collapsed;
+        TelnetPanel.Visibility = protocol == SessionProtocol.Telnet ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnBrowseKey(object sender, RoutedEventArgs e)
@@ -188,6 +191,14 @@ public partial class SessionEditorWindow : Window
         d.SerialPort = SerialPortBox.Text.Trim();
         d.BaudRate = ParseInt(BaudBox.Text, 115200);
         d.ShellCommand = ShellBox.Text.Trim();
+
+        // Telnet keeps its host and port in the same fields as SSH, so only copy them
+        // across when telnet is the protocol actually selected.
+        if (d.Protocol == SessionProtocol.Telnet)
+        {
+            d.Host = TelnetHostBox.Text.Trim();
+            d.Port = ParseInt(TelnetPortBox.Text, 23);
+        }
 
         d.Theme = ThemeBox.Text;
         d.FontFamily = FontBox.Text.Trim();

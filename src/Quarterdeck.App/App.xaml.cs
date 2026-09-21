@@ -32,7 +32,7 @@ public partial class App : Application
 
         MessageBox.Show(
             $"{e.Exception.Message}\n\nDetails were written to {path}.",
-            "Quarterdeck", MessageBoxButton.OK, MessageBoxImage.Error);
+            "BaudHoundTerm", MessageBoxButton.OK, MessageBoxImage.Error);
 
         e.Handled = true;
     }

@@ -20,7 +20,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        Title = $"Quarterdeck {Version}";
+        Title = $"BaudHoundTerm {Version}";
 
         _sessions = _store.Load();
         _folders = _store.LoadFolders();
@@ -147,7 +147,7 @@ public partial class MainWindow : Window
     {
         if (SelectedFolder is not { } folder)
         {
-            MessageBox.Show(this, "Select a folder first.", "Quarterdeck");
+            MessageBox.Show(this, "Select a folder first.", "BaudHoundTerm");
             return;
         }
 
@@ -180,7 +180,7 @@ public partial class MainWindow : Window
     {
         if (SelectedFolder is not { } folder)
         {
-            MessageBox.Show(this, "Select a folder first.", "Quarterdeck");
+            MessageBox.Show(this, "Select a folder first.", "BaudHoundTerm");
             return;
         }
 
@@ -192,7 +192,7 @@ public partial class MainWindow : Window
                 ? $"Delete the empty folder \"{folder.Path}\"?"
                 : $"\"{folder.Path}\" holds {contents} session(s).\n\n" +
                   "Delete the folder and move them to the top level? The sessions are kept.",
-            "Quarterdeck", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            "BaudHoundTerm", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
         if (answer != MessageBoxResult.Yes)
         {
@@ -213,7 +213,7 @@ public partial class MainWindow : Window
     {
         if (Selected is not { } session)
         {
-            MessageBox.Show(this, "Select a session first.", "Quarterdeck");
+            MessageBox.Show(this, "Select a session first.", "BaudHoundTerm");
             return;
         }
 
@@ -332,7 +332,7 @@ public partial class MainWindow : Window
         }
 
         var answer = MessageBox.Show(
-            this, $"Delete session \"{Selected.Name}\"?", "Quarterdeck",
+            this, $"Delete session \"{Selected.Name}\"?", "BaudHoundTerm",
             MessageBoxButton.YesNo, MessageBoxImage.Question);
 
         if (answer != MessageBoxResult.Yes)
@@ -653,12 +653,70 @@ public partial class MainWindow : Window
 
                 break;
 
+            case SessionProtocol.Telnet:
+                var target = address;
+                var mark = target.LastIndexOf(':');
+
+                if (mark > 0 && int.TryParse(target[(mark + 1)..], out var telnetPort))
+                {
+                    definition.Port = telnetPort;
+                    target = target[..mark];
+                }
+                else
+                {
+                    definition.Port = 23;
+                }
+
+                definition.Host = target;
+                definition.Name = $"{definition.Host}:{definition.Port}";
+                break;
+
             default:
                 definition.ShellCommand = address;
                 break;
         }
 
         Connect(definition);
+    }
+
+    /// <summary>
+    /// Connect to a BaudHound wireless serial console. It serves the UART it is clipped to on
+    /// telnet port 23, at 192.168.4.1 on its own access point or at its LAN address once joined
+    /// to a network, so the address is asked rather than assumed.
+    /// </summary>
+    private void OnBaudHound(object sender, RoutedEventArgs e)
+    {
+        var dialog = new InputPromptWindow(
+            "BaudHound address",
+            "192.168.4.1",
+            "192.168.4.1 on the device's own AP, or its LAN IP from the Settings page. Port 23 unless given.")
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true || dialog.Value.Length == 0)
+        {
+            return;
+        }
+
+        var address = dialog.Value.Trim();
+        var port = 23;
+        var mark = address.LastIndexOf(':');
+
+        if (mark > 0 && int.TryParse(address[(mark + 1)..], out var given))
+        {
+            port = given;
+            address = address[..mark];
+        }
+
+        Connect(new SessionDefinition
+        {
+            Name = $"BaudHound {address}",
+            Protocol = SessionProtocol.Telnet,
+            Host = address,
+            Port = port,
+            TabColor = "#e5c07b"
+        });
     }
 
     // ---------- quick shells ----------
@@ -695,7 +753,7 @@ public partial class MainWindow : Window
             "An elevated shell cannot run inside this window because Quarterdeck is not elevated.\n\n" +
             "Relaunch Quarterdeck as administrator and open the shell there?\n" +
             "Open sessions in this window stay open.",
-            "Quarterdeck", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            "BaudHoundTerm", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
         if (answer != MessageBoxResult.Yes)
         {
@@ -736,7 +794,7 @@ public partial class MainWindow : Window
 
         if (definition is null || definition.Protocol != SessionProtocol.Ssh)
         {
-            MessageBox.Show(this, "File transfer needs an SSH session.", "Quarterdeck");
+            MessageBox.Show(this, "File transfer needs an SSH session.", "BaudHoundTerm");
             return;
         }
 
@@ -758,9 +816,11 @@ public partial class MainWindow : Window
 
     private void OnAbout(object sender, RoutedEventArgs e) =>
         MessageBox.Show(this,
-            $"Quarterdeck {Version}\nA session manager and terminal for Windows.\n\n" +
+            $"BaudHoundTerm {Version}\n" +
+            "Terminal and session manager for Windows: SSH, telnet, serial and local shells.\n" +
+            "The desktop console for BaudHound (github.com/magicsmokepress/BaudHound).\n\n" +
             "Apache-2.0. Terminal rendering by xterm.js (MIT), SSH by SSH.NET (MIT).",
-            "About Quarterdeck");
+            "About BaudHoundTerm");
 
     private void OnExit(object sender, RoutedEventArgs e) => Close();
 }
