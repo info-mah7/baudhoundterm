@@ -65,9 +65,30 @@
 
             <StackPanel x:Name="SerialPanel" Visibility="Collapsed">
               <TextBlock Text="Port"/>
-              <TextBox x:Name="SerialPortBox"/>
+              <ComboBox x:Name="SerialPortBox" IsEditable="True" DropDownOpened="OnSerialPortsDropDown"/>
               <TextBlock Text="Baud rate"/>
-              <TextBox x:Name="BaudBox"/>
+              <ComboBox x:Name="BaudBox" IsEditable="True"/>
+              <TextBlock Text="Data bits"/>
+              <ComboBox x:Name="DataBitsBox">
+                <ComboBoxItem Content="8"/>
+                <ComboBoxItem Content="7"/>
+                <ComboBoxItem Content="6"/>
+                <ComboBoxItem Content="5"/>
+              </ComboBox>
+              <TextBlock Text="Parity"/>
+              <ComboBox x:Name="ParityBox">
+                <ComboBoxItem Content="None"/>
+                <ComboBoxItem Content="Even"/>
+                <ComboBoxItem Content="Odd"/>
+                <ComboBoxItem Content="Mark"/>
+                <ComboBoxItem Content="Space"/>
+              </ComboBox>
+              <TextBlock Text="Stop bits"/>
+              <ComboBox x:Name="StopBitsBox">
+                <ComboBoxItem Content="One"/>
+                <ComboBoxItem Content="OnePointFive"/>
+                <ComboBoxItem Content="Two"/>
+              </ComboBox>
             </StackPanel>
 
             <StackPanel x:Name="TelnetPanel" Visibility="Collapsed">

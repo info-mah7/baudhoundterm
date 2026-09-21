@@ -570,6 +570,87 @@ public partial class MainWindow : Window
 
     // ---------- quick connect ----------
 
+    /// <summary>Speeds worth offering, including the odd ones BaudHound scans for.</summary>
+    private static readonly string[] BaudRates =
+    {
+        "9600", "14400", "19200", "28800", "38400", "57600", "74880",
+        "115200", "230400", "460800", "921600"
+    };
+
+    /// <summary>Serial needs a port and a speed, not a string to memorise.</summary>
+    private void OnQuickProtocolChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (QuickSerialPanel is null)
+        {
+            return;
+        }
+
+        var serial = (SessionProtocol)Math.Max(0, QuickProtocol.SelectedIndex) == SessionProtocol.Serial;
+        QuickSerialPanel.Visibility = serial ? Visibility.Visible : Visibility.Collapsed;
+        QuickAddress.Visibility = serial ? Visibility.Collapsed : Visibility.Visible;
+
+        if (serial)
+        {
+            FillBaudRates(QuickBaud, "115200");
+            FillSerialPorts(QuickSerialPort);
+        }
+    }
+
+    /// <summary>
+    /// Ports come and go with USB adapters, so the list is rebuilt whenever it is opened
+    /// rather than once at startup.
+    /// </summary>
+    private void OnSerialPortsDropDown(object sender, EventArgs e)
+    {
+        if (sender is ComboBox box)
+        {
+            FillSerialPorts(box);
+        }
+    }
+
+    private static void FillSerialPorts(ComboBox box)
+    {
+        var typed = box.Text;
+        box.Items.Clear();
+
+        foreach (var port in System.IO.Ports.SerialPort.GetPortNames()
+                     .OrderBy(p => p.Length).ThenBy(p => p, StringComparer.OrdinalIgnoreCase))
+        {
+            box.Items.Add(port);
+        }
+
+        // Keep whatever was typed, even when the adapter is unplugged at the moment.
+        if (!string.IsNullOrWhiteSpace(typed))
+        {
+            box.SelectedItem = box.Items.Cast<string>().FirstOrDefault(p => p == typed);
+            box.Text = typed;
+        }
+        else if (box.Items.Count > 0)
+        {
+            box.SelectedIndex = 0;
+        }
+    }
+
+    private static void FillBaudRates(ComboBox box, string fallback)
+    {
+        if (box.Items.Count > 0)
+        {
+            return;
+        }
+
+        var wanted = string.IsNullOrWhiteSpace(box.Text) ? fallback : box.Text;
+
+        foreach (var rate in BaudRates)
+        {
+            box.Items.Add(rate);
+        }
+
+        // Text on an editable ComboBox is dropped while the control is still collapsed and its
+        // template unrealised. SelectedItem is a logical property and survives, and it sets the
+        // text for us once the box is shown.
+        box.SelectedItem = box.Items.Cast<string>().FirstOrDefault(r => r == wanted) ?? BaudRates[7];
+    }
+
     /// <summary>
     /// Right-clicking selects what it points at first, so the context menu acts on the item
     /// under the cursor rather than whatever happened to be selected before.
@@ -603,14 +684,20 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnQuickConnect(object sender, RoutedEventArgs e)
     {
+        var protocol = (SessionProtocol)Math.Max(0, QuickProtocol.SelectedIndex);
+
+        if (protocol == SessionProtocol.Serial)
+        {
+            ConnectSerialFromQuickBar();
+            return;
+        }
+
         var address = QuickAddress.Text.Trim();
         if (string.IsNullOrEmpty(address))
         {
             QuickAddress.Focus();
             return;
         }
-
-        var protocol = (SessionProtocol)Math.Max(0, QuickProtocol.SelectedIndex);
         var definition = new SessionDefinition { Protocol = protocol, Name = address };
 
         switch (protocol)
@@ -643,16 +730,6 @@ public partial class MainWindow : Window
                 _vault.Set(definition.Id, credentials.Password);
                 break;
 
-            case SessionProtocol.Serial:
-                var parts = address.Split('@', 2);
-                definition.SerialPort = parts[0];
-                if (parts.Length == 2 && int.TryParse(parts[1], out var baud))
-                {
-                    definition.BaudRate = baud;
-                }
-
-                break;
-
             case SessionProtocol.Telnet:
                 var target = address;
                 var mark = target.LastIndexOf(':');
@@ -676,6 +753,36 @@ public partial class MainWindow : Window
                 break;
         }
 
+        Connect(definition);
+    }
+
+    private void ConnectSerialFromQuickBar()
+    {
+        var port = QuickSerialPort.Text.Trim();
+        if (port.Length == 0)
+        {
+            QuickSerialPort.Focus();
+            return;
+        }
+
+        var definition = new SessionDefinition
+        {
+            Protocol = SessionProtocol.Serial,
+            SerialPort = port,
+            BaudRate = int.TryParse(QuickBaud.Text.Trim(), out var rate) ? rate : 115200
+        };
+
+        // "8-N-1" and friends: data bits, parity, stop bits.
+        var framing = (QuickFraming.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "8-N-1";
+        var fields = framing.Split('-');
+        if (fields.Length == 3)
+        {
+            definition.DataBits = int.TryParse(fields[0], out var bits) ? bits : 8;
+            definition.Parity = fields[1] switch { "E" => "Even", "O" => "Odd", _ => "None" };
+            definition.StopBits = fields[2] == "2" ? "Two" : "One";
+        }
+
+        definition.Name = $"{port} @ {definition.BaudRate}";
         Connect(definition);
     }
 

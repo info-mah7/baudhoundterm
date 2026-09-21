@@ -176,9 +176,16 @@
                 </ToggleButton.Template>
               </ToggleButton>
 
-              <ContentPresenter Content="{TemplateBinding SelectionBoxItem}"
+              <ContentPresenter x:Name="Selected" Content="{TemplateBinding SelectionBoxItem}"
                                 ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                 Margin="8,0,24,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+
+              <!-- An editable ComboBox needs a part with this exact name or it renders empty
+                   and swallows typing. The margin leaves the arrow clickable underneath. -->
+              <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed"
+                       Margin="4,1,22,1" Padding="3,0" VerticalContentAlignment="Center"
+                       Background="Transparent" Foreground="#DFE4EE" BorderThickness="0"
+                       CaretBrush="#DFE4EE" SelectionBrush="#2F3B52"/>
 
               <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom"
                      AllowsTransparency="True" Focusable="False" PopupAnimation="None">
@@ -188,6 +195,13 @@
                 </Border>
               </Popup>
             </Grid>
+
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsEditable" Value="True">
+                <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible"/>
+                <Setter TargetName="Selected" Property="Visibility" Value="Collapsed"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
