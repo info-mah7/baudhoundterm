@@ -18,8 +18,11 @@ public sealed class SshTerminalSession : ITerminalSession
 
     private SshClient? _client;
     private ShellStream? _stream;
-    private CancellationTokenSource? _pump;
     private volatile bool _closing;
+
+    // Decoding state is per session: a UTF-8 sequence can straddle two DataReceived events.
+    private readonly Decoder _decoder = Encoding.UTF8.GetDecoder();
+    private readonly char[] _chars = new char[64 * 1024];
 
     public SshTerminalSession(
         SessionDefinition definition,
@@ -58,9 +61,24 @@ public sealed class SshTerminalSession : ITerminalSession
             height: 0,
             bufferSize: 64 * 1024);
 
-        _pump = new CancellationTokenSource();
-        _ = Task.Run(() => PumpAsync(_pump.Token), _pump.Token);
+        // Read through the event, never a blocking Read loop. ShellStream does not override
+        // ReadAsync, so Stream's fallback runs the blocking Read on a pool thread and holds the
+        // stream's internal lock while it waits for data, which starves Write/Flush: typing
+        // reached the app, was accepted without error, and never left the machine.
+        _stream.DataReceived += OnStreamData;
+        _stream.ErrorOccurred += OnStreamError;
     }
+
+    private void OnStreamData(object? sender, ShellDataEventArgs e)
+    {
+        var count = _decoder.GetChars(e.Data, 0, e.Data.Length, _chars, 0);
+        if (count > 0)
+        {
+            DataReceived?.Invoke(this, new TerminalDataEventArgs(new string(_chars, 0, count)));
+        }
+    }
+
+    private void OnStreamError(object? sender, ExceptionEventArgs e) => RaiseClosed(e.Exception.Message);
 
     private ConnectionInfo BuildConnectionInfo()
     {
@@ -114,56 +132,24 @@ public sealed class SshTerminalSession : ITerminalSession
         return _vault.Get(_definition.Id, key) ?? _promptForSecret?.Invoke(name);
     }
 
-    private async Task PumpAsync(CancellationToken token)
-    {
-        var buffer = new byte[16 * 1024];
-        var decoder = Encoding.UTF8.GetDecoder();
-        var chars = new char[buffer.Length * 2];
-
-        try
-        {
-            while (!token.IsCancellationRequested && _stream is not null)
-            {
-                var read = await _stream.ReadAsync(buffer.AsMemory(), token).ConfigureAwait(false);
-                if (read == 0)
-                {
-                    break;
-                }
-
-                // Decode incrementally: a UTF-8 sequence can straddle two reads.
-                var count = decoder.GetChars(buffer, 0, read, chars, 0);
-                if (count > 0)
-                {
-                    DataReceived?.Invoke(this, new TerminalDataEventArgs(new string(chars, 0, count)));
-                }
-            }
-
-            RaiseClosed(_closing ? "Disconnected." : "Connection closed by remote host.");
-        }
-        catch (OperationCanceledException)
-        {
-            RaiseClosed("Disconnected.");
-        }
-        catch (Exception ex)
-        {
-            RaiseClosed(ex.Message);
-        }
-    }
-
     private void OnClientError(object? sender, ExceptionEventArgs e) => RaiseClosed(e.Exception.Message);
 
     private void RaiseClosed(string reason) =>
         Closed?.Invoke(this, new TerminalClosedEventArgs(reason, _closing));
 
-    public Task WriteAsync(string text, CancellationToken cancellationToken = default)
+    public async Task WriteAsync(string text, CancellationToken cancellationToken = default)
     {
         if (_stream is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         var bytes = Encoding.UTF8.GetBytes(text);
-        return _stream.WriteAsync(bytes.AsMemory(), cancellationToken).AsTask();
+        await _stream.WriteAsync(bytes.AsMemory(), cancellationToken).ConfigureAwait(false);
+
+        // ShellStream buffers: without this the bytes never reach the channel and the far end
+        // sees nothing. Every keystroke is its own write, so flushing per call is what we want.
+        await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public Task ResizeAsync(int columns, int rows)
@@ -183,12 +169,14 @@ public sealed class SshTerminalSession : ITerminalSession
     public async Task DisconnectAsync()
     {
         _closing = true;
-        _pump?.Cancel();
 
         if (_stream is not null)
         {
+            _stream.DataReceived -= OnStreamData;
+            _stream.ErrorOccurred -= OnStreamError;
             await _stream.DisposeAsync().ConfigureAwait(false);
             _stream = null;
+            RaiseClosed("Disconnected.");
         }
 
         if (_client is not null)

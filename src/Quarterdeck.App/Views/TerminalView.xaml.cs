@@ -53,7 +53,7 @@ public partial class TerminalView : UserControl
         await Web.EnsureCoreWebView2Async(env);
 
         var core = Web.CoreWebView2;
-        var assets = Path.Combine(AppContext.BaseDirectory, "Assets");
+        var assets = ResolveAssetsDirectory();
 
         // Serve the terminal from a virtual host so xterm.js runs on a real origin and
         // navigator.clipboard is available. DenyCors keeps the page from reaching the network.
@@ -113,7 +113,7 @@ public partial class TerminalView : UserControl
                 break;
 
             case "in":
-                _ = _controller?.WriteAsync(root.GetProperty("d").GetString() ?? "");
+                SendInput(root.GetProperty("d").GetString() ?? "");
                 break;
 
             case "size":
@@ -123,6 +123,61 @@ public partial class TerminalView : UserControl
             case "title":
                 TitleChanged?.Invoke(this, root.GetProperty("d").GetString() ?? Definition.Name);
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Where terminal.html and xterm.js live. For a single-file app AppContext.BaseDirectory can
+    /// resolve to the bundle's extraction directory under %TEMP%, which holds no Assets folder and
+    /// fails the host mapping with 0x80070003. Environment.ProcessPath is the executable itself.
+    /// </summary>
+    private static string ResolveAssetsDirectory()
+    {
+        var candidates = new[]
+        {
+            Path.GetDirectoryName(Environment.ProcessPath),
+            AppContext.BaseDirectory,
+            Directory.GetCurrentDirectory()
+        };
+
+        foreach (var root in candidates)
+        {
+            if (string.IsNullOrEmpty(root))
+            {
+                continue;
+            }
+
+            var path = Path.Combine(root, "Assets");
+            if (File.Exists(Path.Combine(path, "terminal.html")))
+            {
+                return path;
+            }
+        }
+
+        throw new DirectoryNotFoundException(
+            "The Assets folder was not found next to Quarterdeck.exe. It must travel with the " +
+            "executable: extract the whole archive, not just the .exe.");
+    }
+
+    /// <summary>
+    /// Keystrokes on their way to the far end. Fire-and-forget would drop any exception on
+    /// the floor and leave a terminal that silently ignores typing, which is exactly the bug
+    /// this replaced: report the failure on the screen the user is looking at.
+    /// </summary>
+    private async void SendInput(string text)
+    {
+        if (_controller is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _controller.WriteAsync(text);
+        }
+        catch (Exception ex)
+        {
+            Write($"\r\n[quarterdeck] input not delivered: {ex.GetType().Name}: {ex.Message}\r\n");
         }
     }
 
