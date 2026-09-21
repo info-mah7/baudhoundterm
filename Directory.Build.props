@@ -1,0 +1,11 @@
+<Project>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <!-- Keep the published folder to the executable and its Assets: no PDBs, and no
+         XML doc files dragged in from package references. -->
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
+  </PropertyGroup>
+
+</Project>

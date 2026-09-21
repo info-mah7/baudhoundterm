@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Quarterdeck.App/Quarterdeck.App.csproj" />
+    <Project Path="src/Quarterdeck.Core/Quarterdeck.Core.csproj" />
+  </Folder>
+</Solution>

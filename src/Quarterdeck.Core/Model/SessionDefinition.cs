@@ -1,0 +1,153 @@
+using System.Text.Json.Serialization;
+
+namespace Quarterdeck.Core.Model;
+
+public enum SessionProtocol
+{
+    Ssh,
+    Serial,
+    LocalShell
+}
+
+public enum SshAuthMethod
+{
+    Password,
+    PublicKey,
+    Agent,
+    KeyboardInteractive
+}
+
+/// <summary>
+/// One saved connection. Secrets never live here; the vault holds them keyed by <see cref="Id"/>.
+/// </summary>
+public sealed class SessionDefinition
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "New Session";
+
+    /// <summary>Folder path in the session tree, "/" separated. Empty means top level.</summary>
+    public string Folder { get; set; } = "";
+
+    public SessionProtocol Protocol { get; set; } = SessionProtocol.Ssh;
+
+    // SSH
+    public string Host { get; set; } = "";
+    public int Port { get; set; } = 22;
+    public string Username { get; set; } = "";
+    public SshAuthMethod AuthMethod { get; set; } = SshAuthMethod.Password;
+    public string KeyPath { get; set; } = "";
+
+    /// <summary>Optional jump host, "user@host:port". Empty means direct.</summary>
+    public string JumpHost { get; set; } = "";
+
+    // Serial
+    public string SerialPort { get; set; } = "COM1";
+    public int BaudRate { get; set; } = 115200;
+    public int DataBits { get; set; } = 8;
+    public string Parity { get; set; } = "None";
+    public string StopBits { get; set; } = "One";
+
+    // Local shell
+    public string ShellCommand { get; set; } = "powershell.exe";
+
+    public string Theme { get; set; } = "Quarterdeck Dark";
+    public string FontFamily { get; set; } = "Cascadia Mono";
+    public int FontSize { get; set; } = 13;
+    public int ScrollbackLines { get; set; } = 10000;
+
+    public LoggingSettings Logging { get; set; } = new();
+    public ReconnectSettings Reconnect { get; set; } = new();
+    public List<AutoLoginStep> AutoLogin { get; set; } = new();
+    public List<HighlightRule> Highlights { get; set; } = new();
+    public List<string> Tags { get; set; } = new();
+
+    public DateTimeOffset? LastConnected { get; set; }
+
+    [JsonIgnore]
+    public string DisplayPath => string.IsNullOrEmpty(Folder) ? Name : $"{Folder}/{Name}";
+
+    public SessionDefinition Clone(string? newName = null)
+    {
+        var copy = (SessionDefinition)MemberwiseClone();
+        copy.Id = Guid.NewGuid();
+        copy.Name = newName ?? $"{Name} (copy)";
+        copy.LastConnected = null;
+        copy.Logging = Logging.Copy();
+        copy.Reconnect = Reconnect.Copy();
+        copy.AutoLogin = AutoLogin.Select(s => s.Copy()).ToList();
+        copy.Highlights = Highlights.Select(h => h.Copy()).ToList();
+        copy.Tags = new List<string>(Tags);
+        return copy;
+    }
+}
+
+public sealed class LoggingSettings
+{
+    public bool Enabled { get; set; }
+
+    /// <summary>Directory for transcripts. Empty means %APPDATA%\Quarterdeck\logs.</summary>
+    public string Directory { get; set; } = "";
+
+    /// <summary>Supports %NAME%, %HOST%, %Y%, %M%, %D%, %H%, %m%, %S%.</summary>
+    public string FileNamePattern { get; set; } = "%NAME%_%Y%-%M%-%D%_%H%%m%%S%.log";
+
+    public bool PrefixTimestamps { get; set; }
+    public bool StripAnsi { get; set; } = true;
+
+    /// <summary>Roll to a new file past this size. Zero disables rolling.</summary>
+    public long MaxBytes { get; set; } = 64L * 1024 * 1024;
+
+    public LoggingSettings Copy() => (LoggingSettings)MemberwiseClone();
+}
+
+public sealed class ReconnectSettings
+{
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Zero means retry until the user cancels.</summary>
+    public int MaxAttempts { get; set; } = 10;
+
+    public int InitialDelayMs { get; set; } = 1000;
+    public int MaxDelayMs { get; set; } = 30000;
+
+    /// <summary>Exponential backoff multiplier applied to the delay after each failure.</summary>
+    public double BackoffFactor { get; set; } = 1.8;
+
+    public ReconnectSettings Copy() => (ReconnectSettings)MemberwiseClone();
+}
+
+/// <summary>One step of an expect-style login script: wait for <see cref="Expect"/>, then send <see cref="Send"/>.</summary>
+public sealed class AutoLoginStep
+{
+    public string Expect { get; set; } = "";
+    public string Send { get; set; } = "";
+
+    /// <summary>When true, <see cref="Send"/> is ignored and the secret named by <see cref="SecretKey"/> is sent.</summary>
+    public bool IsSecret { get; set; }
+
+    /// <summary>Vault key for the secret, used when <see cref="IsSecret"/> is set. "password" is the session password.</summary>
+    public string SecretKey { get; set; } = "password";
+
+    public bool AppendNewline { get; set; } = true;
+    public int TimeoutMs { get; set; } = 15000;
+
+    /// <summary>Treat <see cref="Expect"/> as a regular expression rather than a literal substring.</summary>
+    public bool IsRegex { get; set; }
+
+    public AutoLoginStep Copy() => (AutoLoginStep)MemberwiseClone();
+}
+
+public sealed class HighlightRule
+{
+    public string Pattern { get; set; } = "";
+    public bool IsRegex { get; set; } = true;
+    public bool CaseSensitive { get; set; }
+
+    /// <summary>CSS colour applied to matching text in the terminal view.</summary>
+    public string Color { get; set; } = "#ff6b6b";
+
+    public bool Bold { get; set; }
+    public bool Enabled { get; set; } = true;
+
+    public HighlightRule Copy() => (HighlightRule)MemberwiseClone();
+}

@@ -1,0 +1,184 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="xterm.css">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #10141c; overflow: hidden; }
+  #term { height: 100%; width: 100%; }
+  #find {
+    position: absolute; top: 8px; right: 18px; display: none; z-index: 10;
+    background: #1c2230; border: 1px solid #3a4459; border-radius: 4px; padding: 4px;
+    font: 12px "Segoe UI", sans-serif; color: #dfe4ee;
+  }
+  #find input { background: #10141c; border: 1px solid #3a4459; color: #dfe4ee; padding: 3px 6px; width: 200px; }
+  #find button { background: #2a3245; border: 1px solid #3a4459; color: #dfe4ee; cursor: pointer; padding: 3px 7px; }
+</style>
+</head>
+<body>
+<div id="term"></div>
+<div id="find">
+  <input id="findInput" placeholder="Find in scrollback" autocomplete="off">
+  <button id="findPrev">&#9650;</button>
+  <button id="findNext">&#9660;</button>
+  <button id="findClose">&#10005;</button>
+</div>
+
+<script src="xterm.js"></script>
+<script src="addon-fit.js"></script>
+<script src="addon-search.js"></script>
+<script src="addon-web-links.js"></script>
+<script src="addon-serialize.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  const host = window.chrome && window.chrome.webview;
+  const send = (msg) => host && host.postMessage(JSON.stringify(msg));
+
+  const themes = {
+    "Quarterdeck Dark": {
+      background: "#10141c", foreground: "#dfe4ee", cursor: "#7fd6c1", selectionBackground: "#2f3b52",
+      black: "#10141c", red: "#e06c75", green: "#98c379", yellow: "#e5c07b",
+      blue: "#61afef", magenta: "#c678dd", cyan: "#56b6c2", white: "#dfe4ee",
+      brightBlack: "#5c6370", brightRed: "#ff7b86", brightGreen: "#b5e08f", brightYellow: "#ffd68a",
+      brightBlue: "#82c7ff", brightMagenta: "#dc9ff0", brightCyan: "#6fd3df", brightWhite: "#ffffff"
+    },
+    "Solarized Light": {
+      background: "#fdf6e3", foreground: "#657b83", cursor: "#586e75", selectionBackground: "#eee8d5",
+      black: "#073642", red: "#dc322f", green: "#859900", yellow: "#b58900",
+      blue: "#268bd2", magenta: "#d33682", cyan: "#2aa198", white: "#eee8d5",
+      brightBlack: "#002b36", brightRed: "#cb4b16", brightGreen: "#586e75", brightYellow: "#657b83",
+      brightBlue: "#839496", brightMagenta: "#6c71c4", brightCyan: "#93a1a1", brightWhite: "#fdf6e3"
+    },
+    "Campbell": {
+      background: "#0c0c0c", foreground: "#cccccc", cursor: "#ffffff", selectionBackground: "#3a3d41",
+      black: "#0c0c0c", red: "#c50f1f", green: "#13a10e", yellow: "#c19c00",
+      blue: "#0037da", magenta: "#881798", cyan: "#3a96dd", white: "#cccccc",
+      brightBlack: "#767676", brightRed: "#e74856", brightGreen: "#16c60c", brightYellow: "#f9f1a5",
+      brightBlue: "#3b78ff", brightMagenta: "#b4009e", brightCyan: "#61d6d6", brightWhite: "#f2f2f2"
+    }
+  };
+
+  let term = null;
+  let fit = null;
+  let search = null;
+  let serialize = null;
+  let highlights = [];
+
+  function init(cfg) {
+    term = new Terminal({
+      fontFamily: cfg.fontFamily + ', Consolas, monospace',
+      fontSize: cfg.fontSize,
+      scrollback: cfg.scrollback,
+      cursorBlink: true,
+      allowProposedApi: true,
+      theme: themes[cfg.theme] || themes["Quarterdeck Dark"]
+    });
+
+    fit = new FitAddon.FitAddon();
+    search = new SearchAddon.SearchAddon();
+    serialize = new SerializeAddon.SerializeAddon();
+    term.loadAddon(fit);
+    term.loadAddon(search);
+    term.loadAddon(serialize);
+    term.loadAddon(new WebLinksAddon.WebLinksAddon());
+
+    term.open(document.getElementById('term'));
+    fit.fit();
+    term.focus();
+
+    term.onData(d => send({ t: 'in', d: d }));
+    term.onResize(({ cols, rows }) => send({ t: 'size', c: cols, r: rows }));
+    term.onTitleChange(title => send({ t: 'title', d: title }));
+
+    // Copy on Ctrl+Shift+C, paste on Ctrl+Shift+V and on right-click, like SecureCRT's defaults.
+    term.attachCustomKeyEventHandler(ev => {
+      if (ev.type !== 'keydown') return true;
+
+      if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyC') {
+        const sel = term.getSelection();
+        if (sel) { navigator.clipboard.writeText(sel); return false; }
+      }
+      if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyV') {
+        navigator.clipboard.readText().then(t => t && send({ t: 'in', d: t }));
+        return false;
+      }
+      if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyF') { openFind(); return false; }
+      return true;
+    });
+
+    document.addEventListener('contextmenu', ev => {
+      ev.preventDefault();
+      const sel = term.getSelection();
+      if (sel) { navigator.clipboard.writeText(sel); term.clearSelection(); }
+      else { navigator.clipboard.readText().then(t => t && send({ t: 'in', d: t })); }
+    });
+
+    window.addEventListener('resize', () => { try { fit.fit(); } catch (e) {} });
+    send({ t: 'ready', c: term.cols, r: term.rows });
+  }
+
+  // Highlight rules are applied to the incoming text, not to the rendered grid: xterm.js has no
+  // public API for recolouring cells after the fact. A match split across two reads is missed.
+  function applyHighlights(text) {
+    if (!highlights.length) return text;
+    let out = text;
+    for (const h of highlights) {
+      if (!h.enabled || !h.pattern) continue;
+      try {
+        const flags = h.caseSensitive ? 'g' : 'gi';
+        const re = h.isRegex ? new RegExp(h.pattern, flags)
+                             : new RegExp(h.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
+        const sgr = (h.bold ? '\u001b[1m' : '') + '\u001b[38;2;' + hexToRgb(h.color) + 'm';
+        out = out.replace(re, m => sgr + m + '\u001b[0m');
+      } catch (e) { /* a bad user regex must not stop output */ }
+    }
+    return out;
+  }
+
+  function hexToRgb(hex) {
+    const v = hex.replace('#', '');
+    return [parseInt(v.substr(0,2),16), parseInt(v.substr(2,2),16), parseInt(v.substr(4,2),16)].join(';');
+  }
+
+  function openFind() {
+    const box = document.getElementById('find');
+    box.style.display = 'block';
+    document.getElementById('findInput').focus();
+  }
+
+  document.getElementById('findNext').onclick = () =>
+    search.findNext(document.getElementById('findInput').value);
+  document.getElementById('findPrev').onclick = () =>
+    search.findPrevious(document.getElementById('findInput').value);
+  document.getElementById('findClose').onclick = () => {
+    document.getElementById('find').style.display = 'none';
+    term.focus();
+  };
+  document.getElementById('findInput').addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') search.findNext(ev.target.value, { incremental: false });
+    if (ev.key === 'Escape') document.getElementById('findClose').click();
+  });
+
+  // Messages from the host.
+  host && host.addEventListener('message', ev => {
+    const m = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
+    switch (m.t) {
+      case 'init':       init(m); break;
+      case 'out':        term && term.write(applyHighlights(m.d)); break;
+      case 'highlights': highlights = m.rules || []; break;
+      case 'theme':      if (term) term.options.theme = themes[m.d] || themes["Quarterdeck Dark"]; break;
+      case 'font':       if (term) { term.options.fontSize = m.size; fit.fit(); } break;
+      case 'find':       openFind(); break;
+      case 'clear':      term && term.clear(); break;
+      case 'fit':        try { fit.fit(); } catch (e) {} break;
+      case 'selectAll':  term && term.selectAll(); break;
+      case 'paste':      term && send({ t: 'in', d: m.d }); break;
+      case 'dump':       send({ t: 'dump', d: serialize.serialize() }); break;
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+Quarterdeck
+Copyright 2026 the Quarterdeck contributors
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+This product bundles the following third-party components:
+
+  xterm.js 6.0.0 and its fit, search, web-links and serialize addons
+  Copyright (c) 2017-2026, The xterm.js authors
+  MIT License. https://github.com/xtermjs/xterm.js
+
+Third-party components resolved at build time rather than vendored:
+
+  SSH.NET 2026.0.0 - MIT License - https://github.com/sshnet/SSH.NET
+  Microsoft.Web.WebView2 - BSD-style Microsoft license
+  System.IO.Ports, System.Security.Cryptography.ProtectedData - MIT License, Microsoft
+
+This is AI-assisted work.
