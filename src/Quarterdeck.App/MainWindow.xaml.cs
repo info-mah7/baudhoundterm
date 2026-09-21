@@ -21,6 +21,12 @@ public partial class MainWindow : Window
         _sessions = _store.Load();
         RebuildTree();
 
+        // Relaunched through UAC by the Admin button: open the shell the user asked for.
+        if (Environment.GetCommandLineArgs().Contains(AdminShellSwitch, StringComparer.OrdinalIgnoreCase))
+        {
+            Loaded += (_, _) => OnAdminShell(this, new RoutedEventArgs());
+        }
+
         Closing += async (_, _) =>
         {
             foreach (var view in Tabs.Items.OfType<TabItem>().Select(t => t.Content).OfType<TerminalView>())
@@ -210,6 +216,75 @@ public partial class MainWindow : Window
         }
 
         Tabs.Items.Remove(tab);
+    }
+
+    // ---------- quick shells ----------
+
+    /// <summary>A throwaway local shell tab. Nothing is written to the session store.</summary>
+    private void OnQuickLocalShell(object sender, RoutedEventArgs e) =>
+        Connect(new SessionDefinition
+        {
+            Name = "Local shell",
+            Protocol = SessionProtocol.LocalShell,
+            ShellCommand = "powershell.exe"
+        });
+
+    /// <summary>
+    /// An elevated shell. A medium-integrity process cannot attach a pseudoconsole to a
+    /// high-integrity child, so when we are not already elevated the only honest option is to
+    /// relaunch Quarterdeck itself through UAC and open the shell on the other side.
+    /// </summary>
+    private void OnAdminShell(object sender, RoutedEventArgs e)
+    {
+        if (IsElevated)
+        {
+            Connect(new SessionDefinition
+            {
+                Name = "Administrator: shell",
+                Protocol = SessionProtocol.LocalShell,
+                ShellCommand = "powershell.exe"
+            });
+            return;
+        }
+
+        var answer = MessageBox.Show(
+            this,
+            "An elevated shell cannot run inside this window because Quarterdeck is not elevated.\n\n" +
+            "Relaunch Quarterdeck as administrator and open the shell there?\n" +
+            "Open sessions in this window stay open.",
+            "Quarterdeck", MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (answer != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = Environment.ProcessPath ?? "Quarterdeck.exe",
+                Arguments = AdminShellSwitch,
+                UseShellExecute = true,
+                Verb = "runas"           // triggers the UAC prompt
+            });
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // The user dismissed the UAC prompt. That is an answer, not a failure to report.
+        }
+    }
+
+    internal const string AdminShellSwitch = "--admin-shell";
+
+    private static bool IsElevated
+    {
+        get
+        {
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            return new System.Security.Principal.WindowsPrincipal(identity)
+                .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+        }
     }
 
     private void OnTransfer(object sender, RoutedEventArgs e)
