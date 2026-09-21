@@ -13,6 +13,21 @@
   }
   #find input { background: #10141c; border: 1px solid #3a4459; color: #dfe4ee; padding: 3px 6px; width: 200px; }
   #find button { background: #2a3245; border: 1px solid #3a4459; color: #dfe4ee; cursor: pointer; padding: 3px 7px; }
+
+  /* Drawn in the page, not as a WPF menu over it: a native menu above the WebView never
+     takes keyboard focus and renders in the system theme instead of this one. */
+  #menu {
+    position: absolute; display: none; z-index: 20; min-width: 210px; padding: 4px 0;
+    background: #1c2230; border: 1px solid #3a4459; border-radius: 5px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.45);
+    font: 13px "Segoe UI", sans-serif; color: #dfe4ee; user-select: none;
+  }
+  #menu .item { padding: 5px 14px; cursor: pointer; white-space: nowrap; }
+  #menu .item:hover { background: #2f3b52; }
+  #menu .item.disabled { color: #5c6370; cursor: default; }
+  #menu .item.disabled:hover { background: transparent; }
+  #menu .sep { height: 1px; margin: 4px 0; background: #3a4459; }
+  #menu .hint { float: right; margin-left: 18px; color: #7c8aa0; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -23,6 +38,7 @@
   <button id="findNext">&#9660;</button>
   <button id="findClose">&#10005;</button>
 </div>
+<div id="menu"></div>
 
 <script src="xterm.js"></script>
 <script src="addon-fit.js"></script>
@@ -120,7 +136,7 @@
         return;
       }
 
-      send({ t: 'menu', sel: term.getSelection() || '' });
+      openMenu(ev.clientX, ev.clientY);
     });
 
     window.addEventListener('resize', () => { try { fit.fit(); } catch (e) {} });
@@ -150,6 +166,58 @@
     return [parseInt(v.substr(0,2),16), parseInt(v.substr(2,2),16), parseInt(v.substr(4,2),16)].join(';');
   }
 
+  // ---- right-click menu ----
+
+  let commands = [];          // [{label, confirm}] - the text itself stays host-side
+  const menuEl = document.getElementById('menu');
+
+  function closeMenu() { menuEl.style.display = 'none'; }
+
+  function openMenu(x, y) {
+    const sel = term.getSelection() || '';
+    const rows = [
+      { label: 'Copy', hint: 'Ctrl+Shift+C', disabled: !sel, run: () => {
+          navigator.clipboard.writeText(sel); term.clearSelection(); } },
+      { label: 'Paste', hint: 'Ctrl+Shift+V', run: () => {
+          navigator.clipboard.readText().then(t => t && send({ t: 'in', d: t })); } },
+      { label: 'Clear screen', run: () => term.clear() }
+    ];
+
+    if (commands.length) {
+      rows.push({ sep: true });
+      commands.forEach((c, i) => rows.push({ label: c.label, run: () => send({ t: 'cmd', i: i }) }));
+    }
+
+    rows.push({ sep: true });
+    rows.push({ label: 'Edit commands...', run: () => send({ t: 'editcmd' }) });
+
+    menuEl.innerHTML = '';
+    for (const row of rows) {
+      if (row.sep) { const d = document.createElement('div'); d.className = 'sep'; menuEl.appendChild(d); continue; }
+      const d = document.createElement('div');
+      d.className = 'item' + (row.disabled ? ' disabled' : '');
+      d.textContent = row.label;
+      if (row.hint) { const h = document.createElement('span'); h.className = 'hint'; h.textContent = row.hint; d.appendChild(h); }
+      if (!row.disabled) {
+        d.addEventListener('mousedown', ev => { ev.preventDefault(); ev.stopPropagation(); closeMenu(); row.run(); });
+      }
+      menuEl.appendChild(d);
+    }
+
+    // Place it, then pull it back inside the window if it would hang off an edge.
+    menuEl.style.display = 'block';
+    menuEl.style.left = x + 'px';
+    menuEl.style.top = y + 'px';
+    const box = menuEl.getBoundingClientRect();
+    if (box.right > window.innerWidth) menuEl.style.left = Math.max(0, window.innerWidth - box.width - 4) + 'px';
+    if (box.bottom > window.innerHeight) menuEl.style.top = Math.max(0, window.innerHeight - box.height - 4) + 'px';
+  }
+
+  document.addEventListener('mousedown', ev => {
+    if (!menuEl.contains(ev.target)) closeMenu();
+  });
+  document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeMenu(); }, true);
+
   function openFind() {
     const box = document.getElementById('find');
     box.style.display = 'block';
@@ -176,6 +244,7 @@
       case 'init':       init(m); break;
       case 'out':        term && term.write(applyHighlights(m.d)); break;
       case 'highlights': highlights = m.rules || []; break;
+      case 'commands':   commands = m.list || []; closeMenu(); break;
       case 'theme':      if (term) term.options.theme = themes[m.d] || themes["Quarterdeck Dark"]; break;
       case 'font':       if (term) { term.options.fontSize = m.size; fit.fit(); } break;
       case 'find':       openFind(); break;

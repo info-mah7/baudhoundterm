@@ -83,6 +83,11 @@ public partial class TerminalView : UserControl
             scrollback = Definition.ScrollbackLines
         });
 
+        Post(new { t = "commands", list = Definition.Commands.Select(c => new
+        {
+            label = string.IsNullOrWhiteSpace(c.Label) ? c.Text : c.Label
+        }) });
+
         Post(new { t = "highlights", rules = Definition.Highlights.Select(h => new
         {
             pattern = h.Pattern,
@@ -124,20 +129,29 @@ public partial class TerminalView : UserControl
                 TitleChanged?.Invoke(this, root.GetProperty("d").GetString() ?? Definition.Name);
                 break;
 
-            case "menu":
-                ShowTerminalMenu(root.TryGetProperty("sel", out var sel) ? sel.GetString() ?? "" : "");
+            case "cmd":
+                var index = root.GetProperty("i").GetInt32();
+                if (index >= 0 && index < Definition.Commands.Count)
+                {
+                    RunShortcut(Definition.Commands[index]);
+                }
+
+                break;
+
+            case "editcmd":
+                EditCommandsRequested?.Invoke(this, EventArgs.Empty);
                 break;
         }
     }
+
+    private static readonly bool DebugInput =
+        Environment.GetCommandLineArgs().Contains("--debug-input", StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Where terminal.html and xterm.js live. For a single-file app AppContext.BaseDirectory can
     /// resolve to the bundle's extraction directory under %TEMP%, which holds no Assets folder and
     /// fails the host mapping with 0x80070003. Environment.ProcessPath is the executable itself.
     /// </summary>
-    private static readonly bool DebugInput =
-        Environment.GetCommandLineArgs().Contains("--debug-input", StringComparer.OrdinalIgnoreCase);
-
     private static string ResolveAssetsDirectory()
     {
         var candidates = new[]
@@ -168,63 +182,6 @@ public partial class TerminalView : UserControl
 
     /// <summary>Raised when the user picks "Edit commands..." so the shell can open properties.</summary>
     public event EventHandler? EditCommandsRequested;
-
-    /// <summary>
-    /// The terminal's right-click menu: clipboard, then this session's command shortcuts.
-    /// Built fresh each time so edits in properties show up without reconnecting.
-    /// </summary>
-    private void ShowTerminalMenu(string selection)
-    {
-        var menu = new ContextMenu
-        {
-            Background = System.Windows.Media.Brushes.Transparent,
-            PlacementTarget = Web,
-            Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint
-        };
-
-        var copy = new MenuItem { Header = "Copy", IsEnabled = selection.Length > 0 };
-        copy.Click += (_, _) => Clipboard.SetText(selection);
-        menu.Items.Add(copy);
-
-        var paste = new MenuItem { Header = "Paste" };
-        paste.Click += (_, _) =>
-        {
-            if (Clipboard.ContainsText())
-            {
-                SendInput(Clipboard.GetText());
-            }
-        };
-        menu.Items.Add(paste);
-
-        var clear = new MenuItem { Header = "Clear screen" };
-        clear.Click += (_, _) => ClearScreen();
-        menu.Items.Add(clear);
-
-        if (Definition.Commands.Count > 0)
-        {
-            menu.Items.Add(new Separator());
-
-            foreach (var command in Definition.Commands)
-            {
-                var shortcut = command;
-                var item = new MenuItem
-                {
-                    Header = string.IsNullOrWhiteSpace(shortcut.Label) ? shortcut.Text : shortcut.Label,
-                    ToolTip = shortcut.Text
-                };
-
-                item.Click += (_, _) => RunShortcut(shortcut);
-                menu.Items.Add(item);
-            }
-        }
-
-        menu.Items.Add(new Separator());
-        var edit = new MenuItem { Header = "Edit commands..." };
-        edit.Click += (_, _) => EditCommandsRequested?.Invoke(this, EventArgs.Empty);
-        menu.Items.Add(edit);
-
-        menu.IsOpen = true;
-    }
 
     private void RunShortcut(CommandShortcut shortcut)
     {
