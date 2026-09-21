@@ -748,6 +748,25 @@ public partial class MainWindow : Window
                 definition.Name = $"{definition.Host}:{definition.Port}";
                 break;
 
+            case SessionProtocol.Vnc:
+                var screen = address;
+                var colon2 = screen.LastIndexOf(':');
+
+                if (colon2 > 0 && int.TryParse(screen[(colon2 + 1)..], out var vncPort))
+                {
+                    // ":1" is the display number, not a port, the way every VNC tool writes it.
+                    definition.Port = vncPort < 100 ? 5900 + vncPort : vncPort;
+                    screen = screen[..colon2];
+                }
+                else
+                {
+                    definition.Port = 5900;
+                }
+
+                definition.Host = screen;
+                definition.Name = $"{definition.Host}:{definition.Port}";
+                break;
+
             default:
                 definition.ShellCommand = address;
                 break;

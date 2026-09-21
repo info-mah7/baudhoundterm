@@ -67,6 +67,9 @@ public partial class SessionEditorWindow : Window
         ShellBox.Text = d.ShellCommand;
         TelnetHostBox.Text = d.Host;
         TelnetPortBox.Text = d.Port.ToString(CultureInfo.InvariantCulture);
+        VncHostBox.Text = d.Host;
+        VncPortBox.Text = d.Port.ToString(CultureInfo.InvariantCulture);
+        VncViewOnlyBox.IsChecked = d.ViewOnly;
 
         ThemeBox.Text = d.Theme;
         FontBox.Text = d.FontFamily;
@@ -105,6 +108,7 @@ public partial class SessionEditorWindow : Window
         SerialPanel.Visibility = protocol == SessionProtocol.Serial ? Visibility.Visible : Visibility.Collapsed;
         ShellPanel.Visibility = protocol == SessionProtocol.LocalShell ? Visibility.Visible : Visibility.Collapsed;
         TelnetPanel.Visibility = protocol == SessionProtocol.Telnet ? Visibility.Visible : Visibility.Collapsed;
+        VncPanel.Visibility = protocol == SessionProtocol.Vnc ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>Rebuild the port list on open: USB adapters appear and vanish.</summary>
@@ -234,6 +238,18 @@ public partial class SessionEditorWindow : Window
         {
             d.Host = TelnetHostBox.Text.Trim();
             d.Port = ParseInt(TelnetPortBox.Text, 23);
+        }
+
+        if (d.Protocol == SessionProtocol.Vnc)
+        {
+            d.Host = VncHostBox.Text.Trim();
+            d.Port = ParseInt(VncPortBox.Text, 5900);
+            d.ViewOnly = VncViewOnlyBox.IsChecked == true;
+
+            if (!string.IsNullOrEmpty(VncSecretBox.Password))
+            {
+                _vault.Set(d.Id, VncSecretBox.Password);
+            }
         }
 
         d.Theme = ThemeBox.Text;

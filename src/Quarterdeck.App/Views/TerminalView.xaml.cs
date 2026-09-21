@@ -61,8 +61,15 @@ public partial class TerminalView : UserControl
                 "--disable-breakpad",
                 "--no-pings",
                 "--no-first-run",
+                // Chromium resolves through its own DNS-over-HTTPS by default, which on a
+                // stock machine means Cloudflare. A net-log capture showed exactly that and
+                // nothing else. The only name this page ever resolves is a local virtual
+                // host, so secure DNS buys nothing and costs an outbound connection that
+                // bypasses the network's own resolver.
                 "--disable-features=OptimizationHints,Translate,msSmartScreenProtection," +
-                "EdgeCollections,MsEdgeShoppingAssistant,CalculateNativeWinOcclusion"),
+                "EdgeCollections,MsEdgeShoppingAssistant,CalculateNativeWinOcclusion," +
+                "DnsOverHttps,DnsOverHttpsUpgrade",
+                "--disable-async-dns"),
             EnableTrackingPrevention = true
         };
 
@@ -103,11 +110,21 @@ public partial class TerminalView : UserControl
         core.WebMessageReceived += OnWebMessage;
         core.NavigationCompleted += OnNavigated;
 
-        core.Navigate("https://baudhound.assets/terminal.html");
+        core.Navigate(Definition.Protocol == SessionProtocol.Vnc
+            ? "https://baudhound.assets/vnc.html"
+            : "https://baudhound.assets/terminal.html");
     }
+
+    private LocalSocketBridge? _bridge;
 
     private void OnNavigated(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
+        if (Definition.Protocol == SessionProtocol.Vnc)
+        {
+            StartVnc();
+            return;
+        }
+
         Post(new
         {
             t = "init",
@@ -179,6 +196,17 @@ public partial class TerminalView : UserControl
             case "pasteimg":
                 _ = PasteImageAsync();
                 break;
+
+            case "vnc":
+                var state = root.GetProperty("s").GetString();
+                SetStatus(state switch
+                {
+                    "connected" => $"Connected to {Definition.Host}:{Definition.Port}.",
+                    "credentials" => "That server wants a password. Set one in Properties.",
+                    "failed" => $"Rejected: {(root.TryGetProperty("reason", out var r) ? r.GetString() : "")}",
+                    _ => "Disconnected."
+                });
+                break;
         }
     }
 
@@ -216,6 +244,34 @@ public partial class TerminalView : UserControl
         throw new DirectoryNotFoundException(
             "The Assets folder was not found next to Quarterdeck.exe. It must travel with the " +
             "executable: extract the whole archive, not just the .exe.");
+    }
+
+    /// <summary>
+    /// Bring up the loopback bridge and hand noVNC its URL. The password goes to the page
+    /// because RFB authentication happens client-side; it never leaves this machine, and the
+    /// bridge it talks to only listens on 127.0.0.1.
+    /// </summary>
+    private void StartVnc()
+    {
+        try
+        {
+            _bridge = new LocalSocketBridge(Definition.Host, Definition.Port);
+            _bridge.Closed += (_, reason) => SetStatus(reason);
+
+            Post(new
+            {
+                t = "vncinit",
+                url = _bridge.Url,
+                password = _vault.Get(Definition.Id) ?? "",
+                viewOnly = Definition.ViewOnly
+            });
+
+            SetStatus($"Connecting to {Definition.Host}:{Definition.Port}...");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"VNC bridge failed: {ex.Message}");
+        }
     }
 
     /// <summary>Raised when the user picks "Edit commands..." so the shell can open properties.</summary>
@@ -355,6 +411,13 @@ public partial class TerminalView : UserControl
 
     public async Task ConnectAsync()
     {
+        // A VNC session is driven entirely by the page: the bridge starts once the document
+        // is loaded, so there is no controller and no pty to build here.
+        if (Definition.Protocol == SessionProtocol.Vnc)
+        {
+            return;
+        }
+
         _controller = new SessionController(Definition, _vault, PromptForSecret);
         _controller.DataReceived += (_, e) => Dispatcher.BeginInvoke(() => Write(e.Text));
         _controller.StateChanged += (_, e) => Dispatcher.BeginInvoke(() =>
@@ -408,6 +471,13 @@ public partial class TerminalView : UserControl
 
     public async Task DisconnectAsync()
     {
+        if (_bridge is not null)
+        {
+            Post(new { t = "disconnect" });
+            await _bridge.DisposeAsync();
+            _bridge = null;
+        }
+
         if (_controller is not null)
         {
             await _controller.DisposeAsync();

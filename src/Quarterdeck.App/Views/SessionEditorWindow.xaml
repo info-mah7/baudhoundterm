@@ -38,6 +38,7 @@
               <ComboBoxItem Content="Serial"/>
               <ComboBoxItem Content="Local shell"/>
               <ComboBoxItem Content="Telnet"/>
+              <ComboBoxItem Content="VNC"/>
             </ComboBox>
 
             <StackPanel x:Name="SshPanel">
@@ -97,6 +98,18 @@
               <TextBlock Text="Port"/>
               <TextBox x:Name="TelnetPortBox"/>
               <TextBlock Text="A BaudHound serves its UART on port 23. So do most console servers."
+                         Foreground="#5C6370" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <StackPanel x:Name="VncPanel" Visibility="Collapsed">
+              <TextBlock Text="Host"/>
+              <TextBox x:Name="VncHostBox"/>
+              <TextBlock Text="Port"/>
+              <TextBox x:Name="VncPortBox"/>
+              <TextBlock Text="Password (stored with DPAPI, blank keeps the existing one)"/>
+              <PasswordBox x:Name="VncSecretBox" Padding="3"/>
+              <CheckBox x:Name="VncViewOnlyBox" Content="View only, send no input"/>
+              <TextBlock Text="Classic VNC auth is weak by design. Fine on a trusted network, not across one."
                          Foreground="#5C6370" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel>
 
