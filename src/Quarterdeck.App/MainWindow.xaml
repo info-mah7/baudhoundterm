@@ -16,6 +16,8 @@
     <Menu DockPanel.Dock="Top" Background="#171C27" Foreground="#DFE4EE">
       <MenuItem Header="_Session">
         <MenuItem Header="_New..." Click="OnNewSession" InputGestureText="Ctrl+Shift+T"/>
+        <MenuItem Header="New _folder..." Click="OnNewFolder"/>
+        <MenuItem Header="_Move to folder..." Click="OnMoveToFolder"/>
         <MenuItem Header="_Connect" Click="OnConnect"/>
         <MenuItem Header="_Clone" Click="OnClone"/>
         <MenuItem Header="_Properties..." Click="OnEdit"/>
@@ -91,7 +93,7 @@
                 Click="OnQuickConnect" IsDefault="True"/>
         <TextBox x:Name="QuickAddress" Margin="8,0,0,0" Padding="4,3" VerticalAlignment="Center"
                  KeyDown="OnQuickAddressKey"
-                 ToolTip="user@host:port for SSH, COM3@115200 for serial, or a command for a local shell"/>
+                 ToolTip="Server address for SSH (host or host:port). COM3@115200 for serial, or a command for a local shell. The username is asked when you connect."/>
       </DockPanel>
     </Border>
 
@@ -138,7 +140,12 @@
               <Separator/>
               <MenuItem Header="_Properties..." Click="OnEdit"/>
               <MenuItem Header="C_lone" Click="OnClone"/>
+              <MenuItem Header="_Move to folder..." Click="OnMoveToFolder"/>
               <MenuItem Header="_Delete" Click="OnDelete"/>
+              <Separator/>
+              <MenuItem Header="New _folder..." Click="OnNewFolder"/>
+              <MenuItem Header="Rename folder..." Click="OnRenameFolder"/>
+              <MenuItem Header="Delete folder..." Click="OnDeleteFolder"/>
             </ContextMenu>
           </TreeView.ContextMenu>
         </TreeView>

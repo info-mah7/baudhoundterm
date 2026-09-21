@@ -15,12 +15,14 @@ public sealed class SessionStore
     };
 
     private readonly string _path;
+    private readonly string _foldersPath;
     private readonly object _gate = new();
 
     public SessionStore(string? path = null)
     {
         _path = path ?? Path.Combine(AppPaths.DataDirectory, "sessions.json");
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        _foldersPath = Path.Combine(Path.GetDirectoryName(_path)!, "folders.json");
     }
 
     public List<SessionDefinition> Load()
@@ -40,6 +42,46 @@ public sealed class SessionStore
 
             return JsonSerializer.Deserialize<List<SessionDefinition>>(json, JsonOptions)
                    ?? new List<SessionDefinition>();
+        }
+    }
+
+    /// <summary>
+    /// Folder paths that exist in their own right. A folder derived only from the sessions in
+    /// it would vanish the moment it was empty, so an empty one could never be made first.
+    /// </summary>
+    public List<string> LoadFolders()
+    {
+        lock (_gate)
+        {
+            if (!File.Exists(_foldersPath))
+            {
+                return new List<string>();
+            }
+
+            var json = File.ReadAllText(_foldersPath);
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return new List<string>();
+            }
+
+            return JsonSerializer.Deserialize<List<string>>(json, JsonOptions) ?? new List<string>();
+        }
+    }
+
+    public void SaveFolders(IEnumerable<string> folders)
+    {
+        lock (_gate)
+        {
+            var clean = folders
+                .Select(f => f.Trim().Trim('/'))
+                .Where(f => f.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var temp = _foldersPath + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(clean, JsonOptions));
+            File.Move(temp, _foldersPath, overwrite: true);
         }
     }
 

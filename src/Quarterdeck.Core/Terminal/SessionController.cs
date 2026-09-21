@@ -112,9 +112,33 @@ public sealed class SessionController : IAsyncDisposable
         catch (Exception ex)
         {
             Emit($"\r\n[quarterdeck] {ex.Message}\r\n");
+
+            // Retrying a rejected password just spends the account's lockout budget. Only
+            // transient failures earn a reconnect.
+            if (IsPermanent(ex))
+            {
+                Emit("[quarterdeck] not retrying: this failure will not fix itself.\r\n");
+                SetState(SessionState.Failed, ex.Message);
+                return;
+            }
+
             await ScheduleReconnectAsync(ex.Message, token).ConfigureAwait(false);
         }
     }
+
+    /// <summary>
+    /// Wrong credentials, a missing key file, a cancelled prompt: reconnecting cannot help,
+    /// and on a domain account it walks straight into a lockout.
+    /// </summary>
+    private static bool IsPermanent(Exception ex) => ex switch
+    {
+        Renci.SshNet.Common.SshAuthenticationException => true,
+        OperationCanceledException => true,
+        FileNotFoundException => true,
+        NotSupportedException => true,
+        InvalidOperationException => true,   // no credential available for this session
+        _ => false
+    };
 
     private void OnTransportData(object? sender, TerminalDataEventArgs e)
     {

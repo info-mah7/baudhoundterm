@@ -14,12 +14,14 @@ public partial class MainWindow : Window
     private readonly SessionStore _store = new();
     private readonly CredentialVault _vault = new();
     private List<SessionDefinition> _sessions;
+    private List<string> _folders;
 
     public MainWindow()
     {
         InitializeComponent();
 
         _sessions = _store.Load();
+        _folders = _store.LoadFolders();
         RebuildTree();
 
         // Relaunched through UAC by the Admin button: open the shell the user asked for.
@@ -51,28 +53,201 @@ public partial class MainWindow : Window
                 s.Host.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
                 s.Tags.Any(t => t.Contains(filter, StringComparison.OrdinalIgnoreCase))).ToList();
 
-        foreach (var group in visible.GroupBy(s => s.Folder).OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
-        {
-            ItemsControl parent = SessionTree;
+        // Every folder that must appear: the ones declared in their own right, plus any implied
+        // by a session's path, plus every ancestor of both.
+        var paths = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            if (!string.IsNullOrEmpty(group.Key))
+        foreach (var path in _folders.Concat(visible.Select(s => s.Folder)))
+        {
+            var trimmed = path.Trim().Trim('/');
+            if (trimmed.Length == 0)
             {
-                var folder = new TreeViewItem { Header = group.Key, Tag = null };
-                SessionTree.Items.Add(folder);
-                parent = folder;
+                continue;
             }
 
-            foreach (var session in group.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
+            var segments = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            for (var i = 1; i <= segments.Length; i++)
             {
-                parent.Items.Add(new TreeViewItem
-                {
-                    Header = session.Protocol == SessionProtocol.Ssh && !string.IsNullOrEmpty(session.Host)
-                        ? $"{session.Name}  ({session.Host})"
-                        : session.Name,
-                    Tag = session
-                });
+                paths.Add(string.Join('/', segments.Take(i)));
             }
         }
+
+        // path -> node, so a child can find its parent without walking the tree again.
+        var nodes = new Dictionary<string, TreeViewItem>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var path in paths)
+        {
+            var name = path[(path.LastIndexOf('/') + 1)..];
+            var node = new TreeViewItem { Header = $"📁  {name}", Tag = new FolderNode(path) };
+            nodes[path] = node;
+
+            var slash = path.LastIndexOf('/');
+            if (slash > 0 && nodes.TryGetValue(path[..slash], out var parent))
+            {
+                parent.Items.Add(node);
+            }
+            else
+            {
+                SessionTree.Items.Add(node);
+            }
+        }
+
+        foreach (var session in visible.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var header = session.Protocol == SessionProtocol.Ssh && !string.IsNullOrEmpty(session.Host)
+                ? $"{session.Name}  ({session.Host})"
+                : session.Name;
+
+            var item = new TreeViewItem { Header = header, Tag = session };
+            var folder = session.Folder.Trim().Trim('/');
+
+            if (folder.Length > 0 && nodes.TryGetValue(folder, out var parent))
+            {
+                parent.Items.Add(item);
+            }
+            else
+            {
+                SessionTree.Items.Add(item);
+            }
+        }
+    }
+
+    /// <summary>Marks a tree node as a folder and carries its full path.</summary>
+    private sealed record FolderNode(string Path);
+
+    private FolderNode? SelectedFolder => (SessionTree.SelectedItem as TreeViewItem)?.Tag as FolderNode;
+
+    // ---------- folders ----------
+
+    private void OnNewFolder(object sender, RoutedEventArgs e)
+    {
+        // A folder created while one is selected lands inside it.
+        var parent = SelectedFolder?.Path ?? Selected?.Folder ?? "";
+
+        var dialog = new InputPromptWindow(
+            "Name for the new folder",
+            parent.Length > 0 ? parent + "/" : "",
+            "Use / to nest, for example Customers/Acme/Edge")
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true || dialog.Value.Length == 0)
+        {
+            return;
+        }
+
+        _folders.Add(dialog.Value.Trim().Trim('/'));
+        SaveFolders();
+    }
+
+    private void OnRenameFolder(object sender, RoutedEventArgs e)
+    {
+        if (SelectedFolder is not { } folder)
+        {
+            MessageBox.Show(this, "Select a folder first.", "Quarterdeck");
+            return;
+        }
+
+        var dialog = new InputPromptWindow("Rename folder", folder.Path,
+            "Renaming moves every session and subfolder underneath it.") { Owner = this };
+
+        if (dialog.ShowDialog() != true || dialog.Value.Length == 0)
+        {
+            return;
+        }
+
+        var from = folder.Path;
+        var to = dialog.Value.Trim().Trim('/');
+
+        // Rewrite the prefix on the folder itself and on everything nested below it.
+        _folders = _folders
+            .Select(f => Rebase(f, from, to))
+            .ToList();
+
+        foreach (var session in _sessions.Where(s => IsUnder(s.Folder, from)))
+        {
+            session.Folder = Rebase(session.Folder, from, to);
+        }
+
+        SaveFolders();
+        Save();
+    }
+
+    private void OnDeleteFolder(object sender, RoutedEventArgs e)
+    {
+        if (SelectedFolder is not { } folder)
+        {
+            MessageBox.Show(this, "Select a folder first.", "Quarterdeck");
+            return;
+        }
+
+        var contents = _sessions.Count(s => IsUnder(s.Folder, folder.Path));
+
+        var answer = MessageBox.Show(
+            this,
+            contents == 0
+                ? $"Delete the empty folder \"{folder.Path}\"?"
+                : $"\"{folder.Path}\" holds {contents} session(s).\n\n" +
+                  "Delete the folder and move them to the top level? The sessions are kept.",
+            "Quarterdeck", MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (answer != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        foreach (var session in _sessions.Where(s => IsUnder(s.Folder, folder.Path)))
+        {
+            session.Folder = "";
+        }
+
+        _folders = _folders.Where(f => !IsUnder(f, folder.Path)).ToList();
+        SaveFolders();
+        Save();
+    }
+
+    private void OnMoveToFolder(object sender, RoutedEventArgs e)
+    {
+        if (Selected is not { } session)
+        {
+            MessageBox.Show(this, "Select a session first.", "Quarterdeck");
+            return;
+        }
+
+        var dialog = new InputPromptWindow(
+            $"Move \"{session.Name}\" to which folder?",
+            session.Folder,
+            "Blank moves it to the top level. Use / to nest.") { Owner = this };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        session.Folder = dialog.Value.Trim().Trim('/');
+
+        if (session.Folder.Length > 0)
+        {
+            _folders.Add(session.Folder);
+            SaveFolders();
+        }
+
+        Save();
+    }
+
+    private static bool IsUnder(string path, string root) =>
+        path.Equals(root, StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase);
+
+    private static string Rebase(string path, string from, string to) =>
+        IsUnder(path, from) ? to + path[from.Length..] : path;
+
+    private void SaveFolders()
+    {
+        _store.SaveFolders(_folders);
+        _folders = _store.LoadFolders();
+        RebuildTree();
     }
 
     private SessionDefinition? Selected => (SessionTree.SelectedItem as TreeViewItem)?.Tag as SessionDefinition;
@@ -214,6 +389,13 @@ public partial class MainWindow : Window
         if (tab.Content is TerminalView view)
         {
             await view.DisconnectAsync();
+
+            // A quick-connect session was never saved, so its stored password has nothing to
+            // belong to once the tab is gone.
+            if (!_sessions.Any(s => s.Id == view.Definition.Id))
+            {
+                _vault.Remove(view.Definition.Id);
+            }
         }
 
         Tabs.Items.Remove(tab);
@@ -269,17 +451,6 @@ public partial class MainWindow : Window
             case SessionProtocol.Ssh:
                 var rest = address;
 
-                if (rest.Contains('@'))
-                {
-                    var at = rest.LastIndexOf('@');
-                    definition.Username = rest[..at];
-                    rest = rest[(at + 1)..];
-                }
-                else
-                {
-                    definition.Username = Environment.UserName;
-                }
-
                 // A bare IPv6 literal has colons of its own; only split a trailing :port.
                 var colon = rest.LastIndexOf(':');
                 if (colon > 0 && int.TryParse(rest[(colon + 1)..], out var port))
@@ -289,7 +460,20 @@ public partial class MainWindow : Window
                 }
 
                 definition.Host = rest;
+
+                // The address box takes a server, nothing else. Who is connecting is asked here,
+                // once, before a tab exists: a cancelled prompt should not leave one behind.
+                var credentials = new CredentialPromptWindow(
+                    $"{definition.Host}:{definition.Port}", Environment.UserName) { Owner = this };
+
+                if (credentials.ShowDialog() != true)
+                {
+                    return;
+                }
+
+                definition.Username = credentials.Username;
                 definition.Name = $"{definition.Username}@{definition.Host}";
+                _vault.Set(definition.Id, credentials.Password);
                 break;
 
             case SessionProtocol.Serial:
