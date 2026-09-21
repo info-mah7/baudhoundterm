@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #10141c; overflow: hidden; }
+  #screen { width: 100%; height: 100%; }
+  #status {
+    position: absolute; top: 0; left: 0; right: 0; padding: 6px 10px;
+    font: 12px "Segoe UI", sans-serif; color: #dfe4ee; background: #1c2230;
+    border-bottom: 1px solid #3a4459;
+  }
+  #status.gone { display: none; }
+</style>
+</head>
+<body>
+<div id="status">Connecting...</div>
+<div id="screen"></div>
+
+<script type="module">
+import RFB from './novnc/core/rfb.js';
+
+const host = window.chrome && window.chrome.webview;
+const send = (msg) => host && host.postMessage(JSON.stringify(msg));
+const statusEl = document.getElementById('status');
+
+function say(text, sticky) {
+  statusEl.textContent = text;
+  statusEl.classList.toggle('gone', !text);
+  if (!sticky && text) setTimeout(() => statusEl.classList.add('gone'), 2500);
+}
+
+let rfb = null;
+
+function connect(cfg) {
+  rfb = new RFB(document.getElementById('screen'), cfg.url, {
+    credentials: { password: cfg.password || '' },
+    // The far end owns its own clipboard and resolution; these are the settings that make
+    // a desktop usable in a tab rather than a postage stamp.
+    shared: true,
+    wsProtocols: ['binary']
+  });
+
+  rfb.viewOnly = !!cfg.viewOnly;
+  rfb.scaleViewport = true;
+  rfb.resizeSession = false;
+  rfb.clipViewport = false;
+  rfb.background = '#10141c';
+
+  rfb.addEventListener('connect', () => { say('Connected.', false); send({ t: 'vnc', s: 'connected' }); });
+  rfb.addEventListener('disconnect', e => {
+    say(e.detail.clean ? 'Disconnected.' : 'Connection lost.', true);
+    send({ t: 'vnc', s: 'disconnected', clean: !!e.detail.clean });
+  });
+  rfb.addEventListener('credentialsrequired', () => {
+    say('This server wants a password.', true);
+    send({ t: 'vnc', s: 'credentials' });
+  });
+  rfb.addEventListener('securityfailure', e => {
+    say('Rejected: ' + (e.detail.reason || 'security failure'), true);
+    send({ t: 'vnc', s: 'failed', reason: e.detail.reason || '' });
+  });
+  rfb.addEventListener('desktopname', e => send({ t: 'title', d: e.detail.name }));
+}
+
+host && host.addEventListener('message', ev => {
+  const m = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
+  switch (m.t) {
+    case 'vncinit':  connect(m); break;
+    case 'viewonly': if (rfb) rfb.viewOnly = !!m.on; say(m.on ? 'View only.' : 'Input enabled.', false); break;
+    case 'cad':      if (rfb) rfb.sendCtrlAltDel(); break;
+    case 'disconnect': if (rfb) rfb.disconnect(); break;
+  }
+});
+
+send({ t: 'ready', c: 0, r: 0 });
+</script>
+</body>
+</html>

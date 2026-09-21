@@ -9,7 +9,10 @@ public enum SessionProtocol
     LocalShell,
 
     /// <summary>Telnet or a raw TCP console: BaudHound, console servers, network gear.</summary>
-    Telnet
+    Telnet,
+
+    /// <summary>A VNC desktop, drawn by noVNC through a loopback bridge.</summary>
+    Vnc
 }
 
 public enum SshAuthMethod
@@ -52,6 +55,9 @@ public sealed class SessionDefinition
 
     // Local shell
     public string ShellCommand { get; set; } = "powershell.exe";
+
+    /// <summary>VNC only: watch without sending input.</summary>
+    public bool ViewOnly { get; set; }
 
     /// <summary>Tab stripe colour as CSS hex, e.g. "#e06c75". Empty means no colour.</summary>
     public string TabColor { get; set; } = "";

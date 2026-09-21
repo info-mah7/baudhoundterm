@@ -92,6 +92,7 @@
           <ComboBoxItem Content="Serial"/>
           <ComboBoxItem Content="Local shell"/>
           <ComboBoxItem Content="Telnet"/>
+          <ComboBoxItem Content="VNC"/>
         </ComboBox>
         <Button DockPanel.Dock="Right" Content="Connect" Width="90" Margin="8,0,2,0"
                 Click="OnQuickConnect" IsDefault="True"/>
