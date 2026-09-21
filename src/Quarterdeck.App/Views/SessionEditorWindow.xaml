@@ -91,7 +91,36 @@
           <TextBox x:Name="FontSizeBox"/>
           <TextBlock Text="Scrollback lines"/>
           <TextBox x:Name="ScrollbackBox"/>
+          <TextBlock Text="Tab colour (hex or name, blank for none)"/>
+          <DockPanel>
+            <Rectangle x:Name="ColourSwatch" DockPanel.Dock="Right" Width="26" Height="18"
+                       RadiusX="3" RadiusY="3" Margin="6,0,0,0" Stroke="#3A4459"/>
+            <TextBox x:Name="TabColorBox" TextChanged="OnTabColorChanged"/>
+          </DockPanel>
+          <TextBlock Text="#e06c75 red  ·  #98c379 green  ·  #e5c07b amber  ·  #61afef blue"
+                     Foreground="#5C6370" FontSize="11" Margin="0,4,0,0"/>
         </StackPanel>
+      </TabItem>
+
+      <TabItem Header="Commands">
+        <DockPanel Margin="12">
+          <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
+                     Text="Shown on the terminal's right-click menu. Tick Confirm for anything that reboots or deletes; tick Enter to run it rather than just type it."/>
+          <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
+            <Button Content="Add" Width="90" Click="OnAddCommand"/>
+            <Button Content="Remove" Width="90" Margin="8,0,0,0" Click="OnRemoveCommand"/>
+            <Button Content="Restore defaults" Width="130" Margin="8,0,0,0" Click="OnDefaultCommands"/>
+          </StackPanel>
+          <DataGrid x:Name="CommandGrid" AutoGenerateColumns="False" CanUserAddRows="False"
+                    Background="#10141C" RowBackground="#10141C" Foreground="#DFE4EE" GridLinesVisibility="Horizontal">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Label" Binding="{Binding Label}" Width="200"/>
+              <DataGridTextColumn Header="Command" Binding="{Binding Text}" Width="*"/>
+              <DataGridCheckBoxColumn Header="Enter" Binding="{Binding AppendNewline}" Width="55"/>
+              <DataGridCheckBoxColumn Header="Confirm" Binding="{Binding Confirm}" Width="65"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </DockPanel>
       </TabItem>
 
       <TabItem Header="Logging">

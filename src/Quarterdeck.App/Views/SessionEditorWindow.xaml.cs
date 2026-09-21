@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Windows;
+using System.Windows.Controls;
 using Microsoft.Win32;
 using Quarterdeck.Core.Model;
 using Quarterdeck.Core.Security;
@@ -12,6 +13,7 @@ public partial class SessionEditorWindow : Window
     private readonly CredentialVault _vault;
     private readonly ObservableCollection<AutoLoginStep> _steps;
     private readonly ObservableCollection<HighlightRule> _highlights;
+    private readonly ObservableCollection<CommandShortcut> _commands;
 
     public SessionEditorWindow(SessionDefinition definition, CredentialVault vault)
     {
@@ -21,9 +23,11 @@ public partial class SessionEditorWindow : Window
         _vault = vault;
         _steps = new ObservableCollection<AutoLoginStep>(definition.AutoLogin);
         _highlights = new ObservableCollection<HighlightRule>(definition.Highlights);
+        _commands = new ObservableCollection<CommandShortcut>(definition.Commands);
 
         LoginGrid.ItemsSource = _steps;
         HighlightGrid.ItemsSource = _highlights;
+        CommandGrid.ItemsSource = _commands;
 
         Load();
     }
@@ -52,6 +56,7 @@ public partial class SessionEditorWindow : Window
         FontBox.Text = d.FontFamily;
         FontSizeBox.Text = d.FontSize.ToString(CultureInfo.InvariantCulture);
         ScrollbackBox.Text = d.ScrollbackLines.ToString(CultureInfo.InvariantCulture);
+        TabColorBox.Text = d.TabColor;
 
         LogEnabledBox.IsChecked = d.Logging.Enabled;
         LogDirBox.Text = d.Logging.Directory;
@@ -105,6 +110,50 @@ public partial class SessionEditorWindow : Window
         }
     }
 
+    private void OnAddCommand(object sender, RoutedEventArgs e) =>
+        _commands.Add(new CommandShortcut { Label = "New command", Text = "" });
+
+    private void OnRemoveCommand(object sender, RoutedEventArgs e)
+    {
+        if (CommandGrid.SelectedItem is CommandShortcut command)
+        {
+            _commands.Remove(command);
+        }
+    }
+
+    private void OnDefaultCommands(object sender, RoutedEventArgs e)
+    {
+        foreach (var command in CommandShortcut.Defaults())
+        {
+            // Keep whatever the user already has; only fill in the missing defaults.
+            if (!_commands.Any(c => string.Equals(c.Text, command.Text, StringComparison.OrdinalIgnoreCase)))
+            {
+                _commands.Add(command);
+            }
+        }
+    }
+
+    private void OnTabColorChanged(object sender, TextChangedEventArgs e)
+    {
+        if (ColourSwatch is null)
+        {
+            return;
+        }
+
+        try
+        {
+            ColourSwatch.Fill = string.IsNullOrWhiteSpace(TabColorBox.Text)
+                ? System.Windows.Media.Brushes.Transparent
+                : (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter()
+                    .ConvertFromString(TabColorBox.Text.Trim())!;
+        }
+        catch (FormatException)
+        {
+            // Half-typed colours are normal; show nothing rather than complain on each keystroke.
+            ColourSwatch.Fill = System.Windows.Media.Brushes.Transparent;
+        }
+    }
+
     private void OnAddHighlight(object sender, RoutedEventArgs e) =>
         _highlights.Add(new HighlightRule { Pattern = "ERROR|FAIL", Color = "#ff6b6b" });
 
@@ -144,6 +193,7 @@ public partial class SessionEditorWindow : Window
         d.FontFamily = FontBox.Text.Trim();
         d.FontSize = ParseInt(FontSizeBox.Text, 13);
         d.ScrollbackLines = ParseInt(ScrollbackBox.Text, 10000);
+        d.TabColor = TabColorBox.Text.Trim();
 
         d.Logging.Enabled = LogEnabledBox.IsChecked == true;
         d.Logging.Directory = LogDirBox.Text.Trim();
@@ -160,6 +210,7 @@ public partial class SessionEditorWindow : Window
 
         d.AutoLogin = _steps.ToList();
         d.Highlights = _highlights.ToList();
+        d.Commands = _commands.ToList();
 
         // A blank secret box means "leave the stored secret alone", so an edit never wipes it.
         if (!string.IsNullOrEmpty(SecretBox.Password))

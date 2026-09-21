@@ -354,15 +354,68 @@ public partial class MainWindow : Window
     private async void Connect(SessionDefinition definition)
     {
         var view = new TerminalView(definition, _vault);
-        var tab = new TabItem { Header = definition.Name, Content = view };
+        var tab = new TabItem { Content = view };
 
-        view.TitleChanged += (_, title) => tab.Header = string.IsNullOrWhiteSpace(title) ? definition.Name : title;
+        SetTabHeader(tab, definition, definition.Name);
+        view.TitleChanged += (_, title) =>
+            SetTabHeader(tab, definition, string.IsNullOrWhiteSpace(title) ? definition.Name : title);
+
+        view.EditCommandsRequested += (_, _) =>
+        {
+            var editor = new SessionEditorWindow(definition, _vault) { Owner = this };
+            if (editor.ShowDialog() == true)
+            {
+                SetTabHeader(tab, definition, tab.Header is StackPanel ? definition.Name : definition.Name);
+                view.ApplyHighlights();
+
+                if (_sessions.Any(s => s.Id == definition.Id))
+                {
+                    Save();
+                }
+            }
+        };
 
         Tabs.Items.Add(tab);
         Tabs.SelectedItem = tab;
 
         await view.ConnectAsync();
         Save();
+    }
+
+    /// <summary>
+    /// A coloured stripe beside the tab title. The stripe is part of the header content rather
+    /// than TabItem.Background, which the default template paints over when the tab is selected.
+    /// </summary>
+    private static void SetTabHeader(TabItem tab, SessionDefinition definition, string title)
+    {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+
+        if (!string.IsNullOrWhiteSpace(definition.TabColor))
+        {
+            try
+            {
+                var brush = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter()
+                    .ConvertFromString(definition.TabColor)!;
+
+                panel.Children.Add(new System.Windows.Shapes.Rectangle
+                {
+                    Width = 4,
+                    Height = 14,
+                    RadiusX = 2,
+                    RadiusY = 2,
+                    Fill = brush,
+                    Margin = new Thickness(0, 0, 6, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+            }
+            catch (FormatException)
+            {
+                // A colour the user mistyped should not cost them the tab.
+            }
+        }
+
+        panel.Children.Add(new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center });
+        tab.Header = panel;
     }
 
     // ---------- terminal commands ----------

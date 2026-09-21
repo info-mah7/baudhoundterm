@@ -108,11 +108,19 @@
       return true;
     });
 
+    // Right-click hands off to the host, which shows the real menu (copy, paste, and this
+    // session's command shortcuts). Shift+right-click keeps the old one-gesture paste.
     document.addEventListener('contextmenu', ev => {
       ev.preventDefault();
-      const sel = term.getSelection();
-      if (sel) { navigator.clipboard.writeText(sel); term.clearSelection(); }
-      else { navigator.clipboard.readText().then(t => t && send({ t: 'in', d: t })); }
+
+      if (ev.shiftKey) {
+        const sel = term.getSelection();
+        if (sel) { navigator.clipboard.writeText(sel); term.clearSelection(); }
+        else { navigator.clipboard.readText().then(t => t && send({ t: 'in', d: t })); }
+        return;
+      }
+
+      send({ t: 'menu', sel: term.getSelection() || '' });
     });
 
     window.addEventListener('resize', () => { try { fit.fit(); } catch (e) {} });

@@ -50,6 +50,12 @@ public sealed class SessionDefinition
     // Local shell
     public string ShellCommand { get; set; } = "powershell.exe";
 
+    /// <summary>Tab stripe colour as CSS hex, e.g. "#e06c75". Empty means no colour.</summary>
+    public string TabColor { get; set; } = "";
+
+    /// <summary>Commands offered on the terminal's right-click menu.</summary>
+    public List<CommandShortcut> Commands { get; set; } = CommandShortcut.Defaults();
+
     public string Theme { get; set; } = "Quarterdeck Dark";
     public string FontFamily { get; set; } = "Cascadia Mono";
     public int FontSize { get; set; } = 13;
@@ -76,6 +82,7 @@ public sealed class SessionDefinition
         copy.Reconnect = Reconnect.Copy();
         copy.AutoLogin = AutoLogin.Select(s => s.Copy()).ToList();
         copy.Highlights = Highlights.Select(h => h.Copy()).ToList();
+        copy.Commands = Commands.Select(c => c.Copy()).ToList();
         copy.Tags = new List<string>(Tags);
         return copy;
     }
@@ -135,6 +142,37 @@ public sealed class AutoLoginStep
     public bool IsRegex { get; set; }
 
     public AutoLoginStep Copy() => (AutoLoginStep)MemberwiseClone();
+}
+
+/// <summary>
+/// One entry on the terminal's right-click menu: a label and the text it sends.
+/// </summary>
+public sealed class CommandShortcut
+{
+    public string Label { get; set; } = "";
+    public string Text { get; set; } = "";
+
+    /// <summary>Press Enter after sending. Clear it to leave the line for the user to finish.</summary>
+    public bool AppendNewline { get; set; } = true;
+
+    /// <summary>Ask before sending. For anything that reboots or deletes.</summary>
+    public bool Confirm { get; set; }
+
+    public CommandShortcut Copy() => (CommandShortcut)MemberwiseClone();
+
+    /// <summary>
+    /// What a new session starts with. Destructive entries are marked Confirm so a stray
+    /// click on a menu cannot reboot a machine.
+    /// </summary>
+    public static List<CommandShortcut> Defaults() => new()
+    {
+        new CommandShortcut { Label = "btop", Text = "btop" },
+        new CommandShortcut { Label = "nvitop", Text = "nvitop" },
+        new CommandShortcut { Label = "Claude (bypass permissions)", Text = "claude --permission-mode bypassPermissions" },
+        new CommandShortcut { Label = "Disk usage", Text = "df -h" },
+        new CommandShortcut { Label = "Follow syslog", Text = "sudo journalctl -f" },
+        new CommandShortcut { Label = "Reboot", Text = "sudo reboot", Confirm = true }
+    };
 }
 
 public sealed class HighlightRule
