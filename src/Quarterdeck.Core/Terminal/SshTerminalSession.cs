@@ -137,19 +137,19 @@ public sealed class SshTerminalSession : ITerminalSession
     private void RaiseClosed(string reason) =>
         Closed?.Invoke(this, new TerminalClosedEventArgs(reason, _closing));
 
-    public async Task WriteAsync(string text, CancellationToken cancellationToken = default)
+    public Task WriteAsync(string text, CancellationToken cancellationToken = default)
     {
-        if (_stream is null)
+        var stream = _stream;
+        if (stream is null)
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        var bytes = Encoding.UTF8.GetBytes(text);
-        await _stream.WriteAsync(bytes.AsMemory(), cancellationToken).ConfigureAwait(false);
-
-        // ShellStream buffers: without this the bytes never reach the channel and the far end
-        // sees nothing. Every keystroke is its own write, so flushing per call is what we want.
-        await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        // ShellStream.Write(string) is SSH.NET's own path for shell input: it encodes and
+        // flushes in one call. The Stream overloads leave the bytes in ShellStream's outgoing
+        // buffer, and FlushAsync is not overridden, so the default posts the blocking Flush to
+        // the pool, where it contends with the channel. It blocks, so keep it off the UI thread.
+        return Task.Run(() => stream.Write(text), cancellationToken);
     }
 
     public Task ResizeAsync(int columns, int rows)

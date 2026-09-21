@@ -131,6 +131,9 @@ public partial class TerminalView : UserControl
     /// resolve to the bundle's extraction directory under %TEMP%, which holds no Assets folder and
     /// fails the host mapping with 0x80070003. Environment.ProcessPath is the executable itself.
     /// </summary>
+    private static readonly bool DebugInput =
+        Environment.GetCommandLineArgs().Contains("--debug-input", StringComparer.OrdinalIgnoreCase);
+
     private static string ResolveAssetsDirectory()
     {
         var candidates = new[]
@@ -171,9 +174,27 @@ public partial class TerminalView : UserControl
             return;
         }
 
+        // --debug-input echoes every keystroke the host actually received, locally. If the
+        // marker appears, the browser-to-host path is fine and the transport is at fault; if it
+        // does not, the keystroke never left the page.
+        if (DebugInput)
+        {
+            Write($"\u001b[35m<{text.Replace("\r", "CR").Replace("\n", "LF")}>\u001b[0m");
+        }
+
         try
         {
-            await _controller.WriteAsync(text);
+            var write = _controller.WriteAsync(text);
+
+            // A write that never completes is the worst failure mode here: the terminal looks
+            // alive and silently eats typing. Say so instead of hanging.
+            if (await Task.WhenAny(write, Task.Delay(3000)) != write)
+            {
+                Write("\r\n[quarterdeck] the transport did not accept input within 3s.\r\n");
+                return;
+            }
+
+            await write;
         }
         catch (Exception ex)
         {
