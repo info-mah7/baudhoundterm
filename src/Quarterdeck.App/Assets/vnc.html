@@ -11,18 +11,40 @@
     border-bottom: 1px solid #3a4459;
   }
   #status.gone { display: none; }
+  /* A stalled VNC session is a sequence of events, and the status bar only ever shows the
+     last one. This keeps the whole ordered story on screen until the desktop appears. */
+  #log {
+    position: absolute; top: 28px; left: 0; padding: 8px 10px;
+    font: 11px Consolas, monospace; color: #9fb3d0; white-space: pre; line-height: 1.5;
+  }
+  #log.gone { display: none; }
 </style>
 </head>
 <body>
 <div id="status">Connecting...</div>
+<div id="log"></div>
 <div id="screen"></div>
 
-<script type="module">
-import RFB from './novnc/core/rfb.js';
-
+<script>
 const host = window.chrome && window.chrome.webview;
 const send = (msg) => host && host.postMessage(JSON.stringify(msg));
 const statusEl = document.getElementById('status');
+const logEl = document.getElementById('log');
+const t0 = Date.now();
+const lines = [];
+
+function log(text) {
+  lines.push(((Date.now() - t0) / 1000).toFixed(2).padStart(6) + 's  ' + text);
+  logEl.textContent = lines.slice(-16).join('\n');
+}
+
+log('page loaded, origin ' + location.origin);
+
+// A script error here is otherwise invisible: navigation still completes, the page keeps its
+// static "Connecting..." text, and nothing reaches the status bar. Report it instead.
+const fail = (what) => { log('ERROR ' + what); say(what, true); send({ t: 'err', d: what }); };
+window.addEventListener('error', e => fail(e.message || String(e.error) || 'script error'));
+window.addEventListener('unhandledrejection', e => fail('' + (e.reason && e.reason.message || e.reason)));
 
 function say(text, sticky) {
   statusEl.textContent = text;
@@ -31,6 +53,44 @@ function say(text, sticky) {
 }
 
 let rfb = null;
+let RFB = null;
+
+// The page is served from https://baudhound.assets while the bridge is ws://127.0.0.1, so a
+// failure here can be the browser refusing the scheme rather than the bridge being absent.
+// RFB swallows that distinction: both look like a socket that never opens. Probe once with a
+// bare WebSocket first, report exactly how it ends, and only then hand the url to noVNC.
+function probe(cfg) {
+  log('probing ' + cfg.url);
+  let settled = false;
+  let ws;
+
+  // The probe holds a real bridge connection, and the far end may allow only one viewer at a
+  // time. So close it and let the target settle before noVNC opens its own, otherwise the
+  // diagnostic is what breaks the session it is meant to diagnose.
+  const done = (verdict) => {
+    if (settled) return;
+    settled = true;
+    log('probe: ' + verdict);
+    send({ t: 'probe', d: verdict });
+    try { ws && ws.close(); } catch (e) {}
+    setTimeout(() => { log('handing url to noVNC'); connect(cfg); }, 750);
+  };
+
+  try {
+    ws = new WebSocket(cfg.url, 'binary');
+  } catch (e) {
+    done('constructor threw: ' + (e && e.message || e));
+    return;
+  }
+
+  ws.onmessage = e => log('probe: first bytes from target, ' +
+    (e.data && e.data.size !== undefined ? e.data.size + ' bytes' : typeof e.data));
+  ws.onopen = () => log('probe: socket OPEN, subprotocol "' + ws.protocol + '"');
+  ws.onerror = () => done('socket ERROR (readyState ' + ws.readyState + ')');
+  ws.onclose = e => done('socket CLOSED code ' + e.code + ' "' + (e.reason || '') + '" clean=' + e.wasClean);
+  // Give it long enough to open and receive the RFB greeting, then judge it a success.
+  setTimeout(() => { if (ws.readyState === 1) done('open and healthy after 2s'); }, 2000);
+}
 
 function connect(cfg) {
   rfb = new RFB(document.getElementById('screen'), cfg.url, {
@@ -47,16 +107,24 @@ function connect(cfg) {
   rfb.clipViewport = false;
   rfb.background = '#10141c';
 
-  rfb.addEventListener('connect', () => { say('Connected.', false); send({ t: 'vnc', s: 'connected' }); });
+  rfb.addEventListener('connect', () => {
+    log('rfb CONNECT');
+    logEl.classList.add('gone');
+    say('Connected.', false);
+    send({ t: 'vnc', s: 'connected' });
+  });
   rfb.addEventListener('disconnect', e => {
+    log('rfb DISCONNECT clean=' + !!e.detail.clean);
     say(e.detail.clean ? 'Disconnected.' : 'Connection lost.', true);
     send({ t: 'vnc', s: 'disconnected', clean: !!e.detail.clean });
   });
   rfb.addEventListener('credentialsrequired', () => {
+    log('rfb CREDENTIALSREQUIRED types=' + JSON.stringify(rfb._rfbCredentials || null));
     say('This server wants a password.', true);
     send({ t: 'vnc', s: 'credentials' });
   });
   rfb.addEventListener('securityfailure', e => {
+    log('rfb SECURITYFAILURE status=' + e.detail.status + ' reason=' + (e.detail.reason || ''));
     say('Rejected: ' + (e.detail.reason || 'security failure'), true);
     send({ t: 'vnc', s: 'failed', reason: e.detail.reason || '' });
   });
@@ -66,14 +134,20 @@ function connect(cfg) {
 host && host.addEventListener('message', ev => {
   const m = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
   switch (m.t) {
-    case 'vncinit':  connect(m); break;
+    case 'vncinit':  log('host sent vncinit'); probe(m); break;
+    case 'note':     log('bridge: ' + m.d); break;
     case 'viewonly': if (rfb) rfb.viewOnly = !!m.on; say(m.on ? 'View only.' : 'Input enabled.', false); break;
     case 'cad':      if (rfb) rfb.sendCtrlAltDel(); break;
     case 'disconnect': if (rfb) rfb.disconnect(); break;
   }
 });
 
-send({ t: 'ready', c: 0, r: 0 });
+// noVNC ships as ES modules, so it loads dynamically rather than with a static import: that
+// puts the load inside a try/catch, and it lets the page announce itself only once RFB is in
+// hand. The host starts the bridge on "ready", so by the time a url arrives, this is loadable.
+import('./novnc/core/rfb.js')
+  .then(m => { RFB = m.default; log('noVNC module loaded'); send({ t: 'ready', c: 0, r: 0 }); })
+  .catch(e => fail('noVNC failed to load: ' + (e && e.message || e)));
 </script>
 </body>
 </html>

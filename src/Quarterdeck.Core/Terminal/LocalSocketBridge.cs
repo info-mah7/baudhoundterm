@@ -51,6 +51,12 @@ public sealed class LocalSocketBridge : IAsyncDisposable
     /// <summary>Raised when the far end drops or the pump fails, so the tab can say so.</summary>
     public event EventHandler<string>? Closed;
 
+    /// <summary>
+    /// Progress through the handshake. A VNC session that stalls gives no clue which half is at
+    /// fault; these say whether the page ever opened the socket and whether the target answered.
+    /// </summary>
+    public event EventHandler<string>? Note;
+
     private async Task AcceptAsync()
     {
         try
@@ -75,6 +81,7 @@ public sealed class LocalSocketBridge : IAsyncDisposable
                 var ws = await context.AcceptWebSocketAsync(
                     string.IsNullOrEmpty(chosen) ? null : chosen).ConfigureAwait(false);
 
+                Note?.Invoke(this, $"Viewer attached (subprotocol {chosen ?? "none"}).");
                 _ = Task.Run(() => PumpAsync(ws.WebSocket));
             }
         }
@@ -97,6 +104,8 @@ public sealed class LocalSocketBridge : IAsyncDisposable
             Closed?.Invoke(this, ex.Message);
             return;
         }
+
+        Note?.Invoke(this, $"Reached {_host}:{_port}.");
 
         var stream = tcp.GetStream();
 
@@ -133,16 +142,19 @@ public sealed class LocalSocketBridge : IAsyncDisposable
 
         try
         {
-            // Whichever direction ends first takes the session down with it.
-            await Task.WhenAny(toTcp, toWs).ConfigureAwait(false);
+            // Whichever direction ends first takes the session down with it. WhenAny hands back
+            // the finished task rather than throwing, so await it again to see why it finished:
+            // without that second await a failing pump looks exactly like a clean close.
+            await (await Task.WhenAny(toTcp, toWs).ConfigureAwait(false)).ConfigureAwait(false);
+            Closed?.Invoke(this, "Disconnected.");
+        }
+        catch (OperationCanceledException)
+        {
+            // The tab closed.
         }
         catch (Exception ex)
         {
             Closed?.Invoke(this, ex.Message);
-        }
-        finally
-        {
-            Closed?.Invoke(this, "Disconnected.");
         }
     }
 
