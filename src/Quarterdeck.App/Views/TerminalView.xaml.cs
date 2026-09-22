@@ -121,7 +121,8 @@ public partial class TerminalView : UserControl
     {
         if (Definition.Protocol == SessionProtocol.Vnc)
         {
-            StartVnc();
+            // The bridge starts on the page's "ready", not here: this fires whether or not the
+            // scripts ran, and a vncinit posted at a page with no listener yet is simply lost.
             return;
         }
 
@@ -165,7 +166,21 @@ public partial class TerminalView : UserControl
                     Write(_pending.Dequeue());
                 }
 
+                if (Definition.Protocol == SessionProtocol.Vnc)
+                {
+                    StartVnc();
+                    break;
+                }
+
                 _ = _controller?.ResizeAsync(root.GetProperty("c").GetInt32(), root.GetProperty("r").GetInt32());
+                break;
+
+            case "err":
+                SetStatus(root.GetProperty("d").GetString() ?? "Script error.");
+                break;
+
+            case "probe":
+                SetStatus("Bridge probe: " + (root.GetProperty("d").GetString() ?? "?"));
                 break;
 
             case "in":
@@ -256,7 +271,15 @@ public partial class TerminalView : UserControl
         try
         {
             _bridge = new LocalSocketBridge(Definition.Host, Definition.Port);
-            _bridge.Closed += (_, reason) => SetStatus(reason);
+            // Both halves of the handshake report into the page's log as well as the status
+            // bar: the status bar shows only the last line, and the order of these against the
+            // page's own events is the whole diagnosis when a session stalls.
+            // Both halves of the handshake report into the page's log as well as the status bar:
+            // the status bar shows only the last line, and the order of these against the page's
+            // own events is the whole diagnosis when a session stalls. These fire on the thread
+            // pool, and WebView2 may only be touched from the UI thread, hence the dispatch.
+            _bridge.Closed += (_, reason) => Note("closed: " + reason);
+            _bridge.Note += (_, note) => Note(note);
 
             Post(new
             {
@@ -347,6 +370,13 @@ public partial class TerminalView : UserControl
     /// typed.
     /// </summary>
     private void SetStatus(string text) => Dispatcher.BeginInvoke(() => StatusText.Text = text);
+
+    /// <summary>Report a bridge step to both the status bar and the page's own event log.</summary>
+    private void Note(string text) => Dispatcher.BeginInvoke(() =>
+    {
+        StatusText.Text = text;
+        Post(new { t = "note", d = text });
+    });
 
     /// <summary>Quote a path only when it needs it, so the common case stays clean.</summary>
     private static string Quote(string path) => path.Contains(' ') ? $"\"{path}\"" : path;

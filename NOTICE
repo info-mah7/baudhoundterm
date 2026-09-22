@@ -9,6 +9,13 @@ This product bundles the following third-party components:
   Copyright (c) 2017-2026, The xterm.js authors
   MIT License. https://github.com/xtermjs/xterm.js
 
+  noVNC 1.7.0
+  Copyright (C) 2026 The noVNC Authors
+  Mozilla Public License 2.0. https://github.com/novnc/noVNC
+  The full licence text ships beside the sources in
+  src/Quarterdeck.App/Assets/novnc/LICENSE.txt. The files are used unmodified;
+  MPL-2.0 obliges anyone distributing a modified copy to publish those changes.
+
 Third-party components resolved at build time rather than vendored:
 
   SSH.NET 2026.0.0 - MIT License - https://github.com/sshnet/SSH.NET
