@@ -28,10 +28,17 @@
     <DataGrid x:Name="Grid" AutoGenerateColumns="False" IsReadOnly="True"
               Background="#10141C" RowBackground="#10141C" Foreground="#DFE4EE"
               GridLinesVisibility="Horizontal" MouseDoubleClick="OnRowActivated">
+      <!-- The default selection is white text on a pale highlight: unreadable on this theme. -->
+      <DataGrid.Resources>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#2F3B52"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#232A38"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#DFE4EE"/>
+      </DataGrid.Resources>
       <DataGrid.Columns>
-        <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
-        <DataGridTextColumn Header="Size" Binding="{Binding Length}" Width="110"/>
-        <DataGridTextColumn Header="Modified" Binding="{Binding Modified}" Width="170"/>
+        <DataGridTextColumn Header="Name" Binding="{Binding DisplayName}" Width="*"/>
+        <DataGridTextColumn Header="Size" Binding="{Binding SizeText}" Width="120"/>
+        <DataGridTextColumn Header="Modified" Binding="{Binding ModifiedText}" Width="150"/>
       </DataGrid.Columns>
     </DataGrid>
   </DockPanel>
