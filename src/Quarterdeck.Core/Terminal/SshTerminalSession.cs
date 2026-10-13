@@ -20,6 +20,11 @@ public sealed class SshTerminalSession : ITerminalSession
     private ShellStream? _stream;
     private volatile bool _closing;
 
+    // Set once the shell is up. Before that, a failure surfaces as ConnectAsync's exception;
+    // SSH.NET ALSO raises ErrorOccurred for it (a refused host key, say), and treating that as
+    // a dropped connection started a reconnect, and a fresh password prompt, behind the error.
+    private volatile bool _established;
+
     // Decoding state is per session: a UTF-8 sequence can straddle two DataReceived events.
     private readonly Decoder _decoder = Encoding.UTF8.GetDecoder();
     private readonly char[] _chars = new char[64 * 1024];
@@ -45,13 +50,16 @@ public sealed class SshTerminalSession : ITerminalSession
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
         _closing = false;
+        _established = false;
         var info = BuildConnectionInfo();
 
         _client = new SshClient(info);
         _client.KeepAliveInterval = TimeSpan.FromSeconds(30);
         _client.ErrorOccurred += OnClientError;
 
-        await Task.Run(() => _client.Connect(), cancellationToken).ConfigureAwait(false);
+        var client = _client;
+        await Task.Run(() => KnownHosts.Connect(client, _definition.Host, _definition.Port), cancellationToken)
+            .ConfigureAwait(false);
 
         _stream = _client.CreateShellStream(
             terminalName: "xterm-256color",
@@ -67,6 +75,7 @@ public sealed class SshTerminalSession : ITerminalSession
         // reached the app, was accepted without error, and never left the machine.
         _stream.DataReceived += OnStreamData;
         _stream.ErrorOccurred += OnStreamError;
+        _established = true;
     }
 
     private void OnStreamData(object? sender, ShellDataEventArgs e)
@@ -134,8 +143,15 @@ public sealed class SshTerminalSession : ITerminalSession
 
     private void OnClientError(object? sender, ExceptionEventArgs e) => RaiseClosed(e.Exception.Message);
 
-    private void RaiseClosed(string reason) =>
+    private void RaiseClosed(string reason)
+    {
+        if (!_established)
+        {
+            return;
+        }
+
         Closed?.Invoke(this, new TerminalClosedEventArgs(reason, _closing));
+    }
 
     public Task WriteAsync(string text, CancellationToken cancellationToken = default)
     {
