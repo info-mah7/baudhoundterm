@@ -28,7 +28,50 @@ public sealed class AgentEndpoint
     /// </summary>
     public string ExtraJson { get; set; } = "";
 
+    /// <summary>When the agent must ask before typing a command.</summary>
+    public AgentApproval Approval { get; set; } = AgentApproval.Risky;
+
+    /// <summary>
+    /// Commands that need a yes under <see cref="AgentApproval.Risky"/>: one regular expression
+    /// per line, case-insensitive (a line that is not valid regex matches as plain text).
+    /// </summary>
+    public string RiskyPatterns { get; set; } = DefaultRiskyPatterns;
+
+    /// <summary>
+    /// Refuse to run on local shells. They run as the user, who can decrypt the credential
+    /// vault, so a model misled by remote output could read every stored secret.
+    /// </summary>
+    public bool NeverOnLocalShells { get; set; }
+
+    public const string DefaultRiskyPatterns = """
+        \brm\s+(-\w*[rf]|--recursive|--force)
+        \b(reboot|shutdown|poweroff|halt)\b
+        \bmkfs|\bfdisk\b|\bparted\b|\bwipefs\b
+        \bdd\s+.*\bof=
+        >\s*/dev/(sd|nvme|mmcblk|hd)
+        \bchmod\s+-R\b|\bchown\s+-R\b
+        \bsystemctl\s+(stop|disable|mask|isolate)\b
+        \bwrite\s+erase\b|\berase\s+(startup|nvram|flash)|\breload\b|\bformat\s+\w+:
+        \bdelete\s+(flash|nvram):
+        Remove-Item\b.*-Recurse|\b(del|erase|rd|rmdir)\b.*\s/[sq]
+        \b(Stop|Restart)-Computer\b|\bFormat-Volume\b|\bClear-Disk\b|\bdiskpart\b
+        \bgit\s+(push\s+.*--force|reset\s+--hard|clean\s+-\w*f)
+        :\(\)\s*\{
+        """;
+
     public override string ToString() => string.IsNullOrWhiteSpace(Model) ? Name : $"{Name} ({Model})";
+}
+
+public enum AgentApproval
+{
+    /// <summary>Everything runs without asking.</summary>
+    Free,
+
+    /// <summary>Commands matching <see cref="AgentEndpoint.RiskyPatterns"/> need a yes.</summary>
+    Risky,
+
+    /// <summary>Every command needs a yes.</summary>
+    Always
 }
 
 public sealed class AgentConfig
