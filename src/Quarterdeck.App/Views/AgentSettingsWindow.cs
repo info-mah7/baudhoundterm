@@ -93,7 +93,11 @@ internal sealed class AgentSettingsWindow : Window
         Field(form, "Risky commands: one regex per line, case-insensitive", _risky);
         form.Children.Add(_noLocal);
         form.Children.Add(_default);
-        form.Children.Add(Btn("Save", Save));
+        var actions = new StackPanel { Orientation = Orientation.Horizontal };
+        actions.Children.Add(Btn("Save", Save));
+        actions.Children.Add(Btn("Test connection", async () => await TestAsync(),
+            "Check the values as typed (saved or not): server reachable, key accepted, model answers, tool calling works"));
+        form.Children.Add(actions);
         form.Children.Add(_note);
         root.Children.Add(new ScrollViewer { Content = form, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
 
@@ -237,6 +241,25 @@ internal sealed class AgentSettingsWindow : Window
         _config.Save();
         _note.Text = $"Saved {ep.Name}.";
         Refresh(ep);
+    }
+
+    /// <summary>Runs the connection test on the form's current values and shows each step.</summary>
+    private async Task TestAsync()
+    {
+        var probe = new AgentEndpoint
+        {
+            BaseUrl = _url.Text.Trim(),
+            Model = _model.Text.Trim(),
+            ExtraJson = _extra.Text.Trim()
+        };
+        var key = _key.Password.Length > 0 ? _key.Password : _editing is null ? null : _vault.Get(_editing.Id, "apikey");
+
+        _note.Text = "Testing...";
+        var lines = await EndpointTest.RunAsync(probe, key);
+        _note.Text = string.Join(Environment.NewLine, lines.Select(l => (l.Ok ? (l.Warning ? "! " : "✔ ") : "✖ ") + l.Text));
+        _note.Foreground = new SolidColorBrush(lines.All(l => l.Ok)
+            ? Color.FromRgb(0x98, 0xC3, 0x79)
+            : Color.FromRgb(0xE0, 0x6C, 0x75));
     }
 
     private async Task FetchModelsAsync()
