@@ -642,6 +642,111 @@ public partial class TerminalView : UserControl, ITerminalTarget
         }
     }
 
+    // ---------- file sending ----------
+
+    private CancellationTokenSource? _sendCts;
+
+    public bool IsSending => _sendCts is not null;
+
+    private void OnStatusCancel(object sender, RoutedEventArgs e) => _sendCts?.Cancel();
+
+    /// <summary>
+    /// Types a text file into the session line by line, paced for the far end: a serial
+    /// console or a router's CLI drops characters when a whole file arrives at once. Works on
+    /// every terminal protocol, which makes it the one file transfer that needs nothing on the
+    /// other side (pair it with "cat > file" or a config mode).
+    /// </summary>
+    public async Task SendTextFileAsync(string path)
+    {
+        if (!IsConnected || _controller is null)
+        {
+            SetStatus("Connect the session before sending a file.");
+            return;
+        }
+
+        if (_sendCts is not null)
+        {
+            return;
+        }
+
+        string text;
+        try
+        {
+            text = await File.ReadAllTextAsync(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            SetStatus($"Could not read {path}: {ex.Message}");
+            return;
+        }
+
+        if (text.Contains('\0'))
+        {
+            SetStatus($"{Path.GetFileName(path)} looks binary; Send text file is for text. Use a binary transfer instead.");
+            return;
+        }
+
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        if (lines.Length > 0 && lines[^1].Length == 0)
+        {
+            lines = lines[..^1];   // a trailing newline is not an extra empty line
+        }
+
+        // Per line, and per 64-character chunk within a line: generous for serial, where a
+        // device's input buffer is often 64 bytes or less; nearly nothing on a network shell.
+        var (lineDelay, chunkDelay) = Definition.Protocol switch
+        {
+            SessionProtocol.Serial => (40, 10),
+            SessionProtocol.Telnet => (15, 2),
+            _ => (3, 0)
+        };
+
+        _sendCts = new CancellationTokenSource();
+        StatusCancel.Visibility = Visibility.Visible;
+        var name = Path.GetFileName(path);
+
+        try
+        {
+            for (var i = 0; i < lines.Length; i++)
+            {
+                _sendCts.Token.ThrowIfCancellationRequested();
+                var line = lines[i] + "\r";
+
+                for (var at = 0; at < line.Length; at += 64)
+                {
+                    await _controller.WriteAsync(line.Substring(at, Math.Min(64, line.Length - at)));
+                    if (chunkDelay > 0 && at + 64 < line.Length)
+                    {
+                        await Task.Delay(chunkDelay, _sendCts.Token);
+                    }
+                }
+
+                if (i % 10 == 0 || i == lines.Length - 1)
+                {
+                    StatusText.Text = $"Sending {name}: line {i + 1} of {lines.Length}";
+                }
+
+                await Task.Delay(lineDelay, _sendCts.Token);
+            }
+
+            StatusText.Text = $"Sent {name}: {lines.Length} lines.";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText.Text = $"Stopped sending {name}.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Sending {name} failed: {ex.Message}";
+        }
+        finally
+        {
+            _sendCts.Dispose();
+            _sendCts = null;
+            StatusCancel.Visibility = Visibility.Collapsed;
+        }
+    }
+
     // ---------- agent ----------
 
     /// <summary>Plain text of everything this tab has printed, for an attached agent.</summary>
