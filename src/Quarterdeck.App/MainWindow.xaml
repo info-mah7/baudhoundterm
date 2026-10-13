@@ -6,10 +6,13 @@
   <Window.InputBindings>
     <KeyBinding Key="T" Modifiers="Ctrl+Shift" Command="{x:Static ApplicationCommands.New}"/>
     <KeyBinding Key="F" Modifiers="Ctrl+Shift" Command="{x:Static ApplicationCommands.Find}"/>
+    <KeyBinding Key="A" Modifiers="Ctrl+Shift" Command="{x:Static ApplicationCommands.Properties}"/>
   </Window.InputBindings>
   <Window.CommandBindings>
     <CommandBinding Command="{x:Static ApplicationCommands.New}" Executed="OnNewSession"/>
     <CommandBinding Command="{x:Static ApplicationCommands.Find}" Executed="OnFind"/>
+    <!-- Ctrl+Shift+A: attach or detach the agent on the active tab. -->
+    <CommandBinding Command="{x:Static ApplicationCommands.Properties}" Executed="OnToggleAgent"/>
   </Window.CommandBindings>
 
   <DockPanel>
@@ -19,7 +22,6 @@
         <MenuItem Header="New _folder..." Click="OnNewFolder"/>
         <MenuItem Header="_Move to folder..." Click="OnMoveToFolder"/>
         <MenuItem Header="_Connect" Click="OnConnect"/>
-        <MenuItem Header="_Clone" Click="OnClone"/>
         <MenuItem Header="_Properties..." Click="OnEdit"/>
         <MenuItem Header="_Delete" Click="OnDelete"/>
         <Rectangle/>
@@ -28,8 +30,11 @@
       <MenuItem Header="_Terminal">
         <MenuItem Header="_Find in scrollback" Click="OnFind" InputGestureText="Ctrl+Shift+F"/>
         <MenuItem Header="C_lear screen" Click="OnClear"/>
-        <MenuItem Header="_Disconnect tab" Click="OnDisconnectTab"/>
+        <MenuItem x:Name="ConnToggleMenu" Header="_Disconnect tab" Click="OnToggleConnection"/>
         <MenuItem Header="Close ta_b" Click="OnCloseTab"/>
+        <Separator/>
+        <MenuItem Header="_Agent on this tab" Click="OnToggleAgent" InputGestureText="Ctrl+Shift+A"/>
+        <MenuItem Header="Agent _endpoints and skills..." Click="OnAgentSettings"/>
       </MenuItem>
       <MenuItem Header="_Transfer">
         <MenuItem Header="Open _file transfer..." Click="OnTransfer"/>
@@ -63,14 +68,13 @@
 
         <Button Click="OnNewSession" ToolTip="New session (Ctrl+Shift+T)">New</Button>
         <Button Click="OnEdit" ToolTip="Open the selected session's properties">Open</Button>
-        <Button Click="OnClone" ToolTip="Clone the selected session, keeping its stored secret">Clone</Button>
         <Rectangle/>
         <Button Click="OnConnect" ToolTip="Connect the selected session in a new tab">Connect</Button>
-        <Button Click="OnDisconnectTab" ToolTip="Disconnect the active tab, leaving it open">Disconnect</Button>
+        <Button x:Name="ConnToggle" Click="OnToggleConnection"
+                ToolTip="Disconnect the active tab, leaving it open">Disconnect</Button>
         <Button Click="OnCloseTab" ToolTip="Disconnect and close the active tab">Close</Button>
         <Rectangle/>
-        <Button Click="OnQuickLocalShell" ToolTip="Local shell in a new tab, without saving a session">Local</Button>
-        <Button Click="OnAdminShell" ToolTip="Elevated shell. Relaunches BaudHoundTerm through UAC when it is not already elevated.">Admin</Button>
+        <Button Click="OnShellMenu" ToolTip="A local shell in a new tab, without saving a session: PowerShell or Command Prompt, as you or as administrator. Administrator relaunches BaudHoundTerm through UAC when it is not already elevated.">Shell ▾</Button>
         <Rectangle/>
         <Button Click="OnTransfer" ToolTip="SFTP/SCP file transfer for the active SSH session">Transfer</Button>
         <Button Click="OnFind" ToolTip="Find in scrollback (Ctrl+Shift+F)">Find</Button>
@@ -133,12 +137,34 @@
         <DockPanel DockPanel.Dock="Top" Margin="6">
           <Button DockPanel.Dock="Right" Content="+" Width="26" Margin="6,0,0,0"
                   ToolTip="New session" Click="OnNewSession"/>
+          <ToggleButton x:Name="GroupToggle" DockPanel.Dock="Right" Content="🖥" Width="26" Margin="6,0,0,0"
+                        Click="OnGroupToggle"
+                        ToolTip="Group sessions that share a host under one row. Off: a flat list. Remembered.">
+            <ToggleButton.Template>
+              <ControlTemplate TargetType="ToggleButton">
+                <Border x:Name="Box" Background="#2A3245" BorderBrush="#3A4459" BorderThickness="1" CornerRadius="2">
+                  <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <ControlTemplate.Triggers>
+                  <Trigger Property="IsChecked" Value="True">
+                    <Setter TargetName="Box" Property="Background" Value="#3D5A80"/>
+                    <Setter TargetName="Box" Property="BorderBrush" Value="#61AFEF"/>
+                  </Trigger>
+                  <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Box" Property="BorderBrush" Value="#8B94A7"/>
+                  </Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </ToggleButton.Template>
+          </ToggleButton>
           <TextBox x:Name="FilterBox" Padding="3" TextChanged="OnFilterChanged"
-                   ToolTip="Filter sessions by name, host or tag"/>
+                   ToolTip="Filter by name, host or tag. Protocol words narrow it: &quot;vnc atlas&quot;, &quot;ssh&quot;, &quot;serial&quot;."/>
         </DockPanel>
 
         <TreeView x:Name="SessionTree" Background="#141922" Foreground="#DFE4EE"
                   BorderThickness="0" MouseDoubleClick="OnTreeActivated"
+                  SelectedItemChanged="OnTreeSelectionChanged"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                   PreviewMouseRightButtonDown="OnTreeRightClick">
           <TreeView.ItemContainerStyle>
             <Style TargetType="TreeViewItem">
@@ -159,20 +185,7 @@
             </Style>
           </TreeView.ItemContainerStyle>
 
-          <TreeView.ContextMenu>
-            <ContextMenu Background="#1C2230" Foreground="#DFE4EE">
-              <MenuItem Header="_Connect" Click="OnConnect"/>
-              <Separator/>
-              <MenuItem Header="_Properties..." Click="OnEdit"/>
-              <MenuItem Header="C_lone" Click="OnClone"/>
-              <MenuItem Header="_Move to folder..." Click="OnMoveToFolder"/>
-              <MenuItem Header="_Delete" Click="OnDelete"/>
-              <Separator/>
-              <MenuItem Header="New _folder..." Click="OnNewFolder"/>
-              <MenuItem Header="Rename folder..." Click="OnRenameFolder"/>
-              <MenuItem Header="Delete folder..." Click="OnDeleteFolder"/>
-            </ContextMenu>
-          </TreeView.ContextMenu>
+          <!-- The right-click menu is built per click in OnTreeRightClick, from what was clicked. -->
         </TreeView>
       </DockPanel>
 
@@ -181,7 +194,8 @@
       <!-- The TabControl's own Background does not paint the content panel, which left a
            white slab before the first tab existed. The Border behind it does. -->
       <Border Grid.Column="2" Background="#0F131A">
-        <TabControl x:Name="Tabs" Background="Transparent" BorderThickness="0"/>
+        <TabControl x:Name="Tabs" Background="Transparent" BorderThickness="0"
+                    SelectionChanged="OnTabSelectionChanged"/>
       </Border>
     </Grid>
   </DockPanel>

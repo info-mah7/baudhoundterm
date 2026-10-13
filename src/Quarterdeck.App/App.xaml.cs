@@ -37,3 +37,20 @@ public partial class App : Application
         e.Handled = true;
     }
 }
+
+/// <summary>
+/// Whether this process is running elevated. It decides both what the Admin button has to do and
+/// which WebView2 user data folder a terminal may use, so it lives in one place.
+/// </summary>
+internal static class Elevation
+{
+    public static bool IsCurrentProcessElevated
+    {
+        get
+        {
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            return new System.Security.Principal.WindowsPrincipal(identity)
+                .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+        }
+    }
+}

@@ -118,10 +118,16 @@ public static class AppPaths
                 {
                     Directory.Move(former, dir);
                 }
+                catch (DirectoryNotFoundException)
+                {
+                    // Two instances started together and the other one moved it first. The new
+                    // directory is the real one; recreating the old name here would leave this
+                    // instance running against an empty store with none of the user's sessions.
+                }
                 catch (IOException)
                 {
-                    // Another instance holds a file open. Fall back to the old location so
-                    // the user keeps their sessions rather than losing them to a half-move.
+                    // Another instance still holds a file open in the old directory. Share it,
+                    // so the user keeps their sessions rather than losing them to a half-move.
                     Directory.CreateDirectory(former);
                     return former;
                 }

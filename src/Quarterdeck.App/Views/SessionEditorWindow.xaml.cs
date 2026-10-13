@@ -215,7 +215,20 @@ public partial class SessionEditorWindow : Window
     {
         var d = Definition;
 
-        d.Name = string.IsNullOrWhiteSpace(NameBox.Text) ? "Untitled" : NameBox.Text.Trim();
+        // A blank name takes the host (or port): in a host group that reads as just the badge
+        // and target, which is all a second protocol on the same machine needs.
+        var protocol = (SessionProtocol)Math.Max(0, ProtocolBox.SelectedIndex);
+        var fallback = (protocol switch
+        {
+            SessionProtocol.Ssh => HostBox.Text,
+            SessionProtocol.Telnet => TelnetHostBox.Text,
+            SessionProtocol.Vnc => VncHostBox.Text,
+            SessionProtocol.Serial => SerialPortBox.Text,
+            _ => "Local shell"
+        }).Trim();
+        d.Name = string.IsNullOrWhiteSpace(NameBox.Text)
+            ? (fallback.Length > 0 ? fallback : "Untitled")
+            : NameBox.Text.Trim();
         d.Folder = FolderBox.Text.Trim().Trim('/');
         d.Protocol = (SessionProtocol)Math.Max(0, ProtocolBox.SelectedIndex);
 

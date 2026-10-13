@@ -254,6 +254,7 @@
       case 'font':       if (term) { term.options.fontSize = m.size; fit.fit(); } break;
       case 'find':       openFind(); break;
       case 'clear':      term && term.clear(); break;
+      case 'focus':      term && term.focus(); break;
       case 'fit':        try { fit.fit(); } catch (e) {} break;
       case 'selectAll':  term && term.selectAll(); break;
       case 'paste':      term && send({ t: 'in', d: m.d }); break;

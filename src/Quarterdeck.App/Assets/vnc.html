@@ -109,6 +109,7 @@ function connect(cfg) {
 
   rfb.addEventListener('connect', () => {
     log('rfb CONNECT');
+    rfb.focus();   // the 'focus' from the host came before there was a session to focus
     logEl.classList.add('gone');
     say('Connected.', false);
     send({ t: 'vnc', s: 'connected' });
@@ -138,6 +139,7 @@ host && host.addEventListener('message', ev => {
     case 'note':     log('bridge: ' + m.d); break;
     case 'viewonly': if (rfb) rfb.viewOnly = !!m.on; say(m.on ? 'View only.' : 'Input enabled.', false); break;
     case 'cad':      if (rfb) rfb.sendCtrlAltDel(); break;
+    case 'focus':    if (rfb) rfb.focus(); break;
     case 'disconnect': if (rfb) rfb.disconnect(); break;
   }
 });
