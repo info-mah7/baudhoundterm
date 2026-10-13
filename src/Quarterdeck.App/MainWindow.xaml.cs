@@ -359,7 +359,7 @@ public partial class MainWindow : Window
         }
 
         var dialog = new InputPromptWindow("Rename folder", folder.Path,
-            "Renaming moves every session and subfolder underneath it.") { Owner = this };
+            "Renaming moves every shortcut and subfolder underneath it.") { Owner = this };
 
         if (dialog.ShowDialog() != true || dialog.Value.Length == 0)
         {
@@ -397,8 +397,8 @@ public partial class MainWindow : Window
             this,
             contents == 0
                 ? $"Delete the empty folder \"{folder.Path}\"?"
-                : $"\"{folder.Path}\" holds {contents} session(s).\n\n" +
-                  "Delete the folder and move them to the top level? The sessions are kept.",
+                : $"\"{folder.Path}\" holds {contents} shortcut(s).\n\n" +
+                  "Delete the folder and move them to the top level? The shortcuts are kept.",
             "BaudHoundTerm", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
         if (answer != MessageBoxResult.Yes)
@@ -420,7 +420,7 @@ public partial class MainWindow : Window
     {
         if (Selected is not { } session)
         {
-            MessageBox.Show(this, "Select a session first.", "BaudHoundTerm");
+            MessageBox.Show(this, "Select a shortcut first.", "BaudHoundTerm");
             return;
         }
 
