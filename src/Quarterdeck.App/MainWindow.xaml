@@ -52,7 +52,7 @@
     <Border DockPanel.Dock="Top" Background="#141922" BorderBrush="#0F131A" BorderThickness="0,0,0,1" Padding="4,3">
       <WrapPanel Orientation="Horizontal">
         <WrapPanel.Resources>
-          <Style TargetType="Button">
+          <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#DFE4EE"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
