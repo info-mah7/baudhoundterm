@@ -149,6 +149,27 @@
     <Style TargetType="Separator">
       <Setter Property="Background" Value="#3A4459"/>
     </Style>
+    <!-- Menus look up their separators by this key, not by the implicit Separator style,
+         and the stock one draws a white line. -->
+    <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Separator">
+            <Border Height="1" Margin="0,4" Background="#3A4459"/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <!-- Text boxes otherwise show WPF's built-in edit menu, an internal ContextMenu subclass
+         that implicit styles never reach, so it stays light. Ours is driven from App.xaml.cs
+         rather than by routed commands, which asked the wrong element whether they could run. -->
+    <ContextMenu x:Key="QdEditMenu" x:Shared="False" Opened="OnEditMenuOpened">
+      <MenuItem Header="Cu_t" Tag="cut" InputGestureText="Ctrl+X" Click="OnEditMenuClick"/>
+      <MenuItem Header="_Copy" Tag="copy" InputGestureText="Ctrl+C" Click="OnEditMenuClick"/>
+      <MenuItem Header="_Paste" Tag="paste" InputGestureText="Ctrl+V" Click="OnEditMenuClick"/>
+      <Separator/>
+      <MenuItem Header="Select _all" Tag="all" InputGestureText="Ctrl+A" Click="OnEditMenuClick"/>
+    </ContextMenu>
     <!-- The stock ComboBox paints its own light surface from theme brushes, so a dark
          Foreground setter alone leaves pale text on white. Template it. -->
     <Style TargetType="ComboBox">
@@ -284,20 +305,70 @@
       <Setter Property="Background" Value="#0F131A"/>
       <Setter Property="BorderBrush" Value="#232A38"/>
     </Style>
+    <Style TargetType="ToolTip">
+      <Setter Property="Foreground" Value="#DFE4EE"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToolTip">
+            <Border Background="#1C2230" BorderBrush="#3A4459" BorderThickness="1" Padding="8,4"
+                    MaxWidth="460">
+              <ContentPresenter>
+                <ContentPresenter.Resources>
+                  <Style TargetType="TextBlock">
+                    <Setter Property="TextWrapping" Value="Wrap"/>
+                  </Style>
+                </ContentPresenter.Resources>
+              </ContentPresenter>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <!-- Templated: the stock button turns pale blue on hover and press. -->
     <Style TargetType="Button">
       <Setter Property="Background" Value="#2A3245"/>
       <Setter Property="Foreground" Value="#DFE4EE"/>
       <Setter Property="BorderBrush" Value="#3A4459"/>
+      <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Padding" Value="6,3"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Grid>
+              <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2"/>
+              <Border x:Name="Shade" Background="Transparent" CornerRadius="2"/>
+              <ContentPresenter Margin="{TemplateBinding Padding}" RecognizesAccessKey="True"
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Shade" Property="Background" Value="#22FFFFFF"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Shade" Property="Background" Value="#33000000"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="#5C6370"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
     <Style TargetType="TextBox">
       <Setter Property="Background" Value="#10141C"/>
+      <Setter Property="ContextMenu" Value="{StaticResource QdEditMenu}"/>
       <Setter Property="Foreground" Value="#DFE4EE"/>
       <Setter Property="BorderBrush" Value="#3A4459"/>
       <Setter Property="CaretBrush" Value="#DFE4EE"/>
     </Style>
     <Style TargetType="PasswordBox">
       <Setter Property="Background" Value="#10141C"/>
+      <Setter Property="ContextMenu" Value="{StaticResource QdEditMenu}"/>
       <Setter Property="Foreground" Value="#DFE4EE"/>
       <Setter Property="BorderBrush" Value="#3A4459"/>
       <Setter Property="CaretBrush" Value="#DFE4EE"/>

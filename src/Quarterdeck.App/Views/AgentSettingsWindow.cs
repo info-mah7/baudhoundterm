@@ -42,7 +42,13 @@ internal sealed class AgentSettingsWindow : Window
     };
     private readonly TextBlock _note = new() { Foreground = new SolidColorBrush(Color.FromRgb(0x8B, 0x94, 0xA7)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
 
-    private AgentEndpoint? _editing;
+    private readonly TextBlock _heading = new() { FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) };
+    private readonly Button _saveButton;
+    private readonly Button _deleteButton;
+
+    // The endpoint in the form. A new one is a draft: not in the list or the config until saved.
+    private AgentEndpoint _editing = new();
+    private string _clean = "";
 
     public AgentSettingsWindow(CredentialVault vault)
     {
@@ -60,13 +66,15 @@ internal sealed class AgentSettingsWindow : Window
             "Each .md file is a skill; its header lists the protocols it applies to"));
         bottom.Children.Add(Btn("Logs folder", () => AgentPanel.OpenFolder(AgentConfig.LogDirectory)));
         bottom.Children.Add(Btn("Close", Close));
+        Closing += (_, e) => e.Cancel = !ConfirmLeave();
         DockPanel.SetDock(bottom, Dock.Bottom);
         root.Children.Add(bottom);
 
         var left = new DockPanel();
         var leftButtons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
-        leftButtons.Children.Add(Btn("Add", Add));
-        leftButtons.Children.Add(Btn("Delete", Delete));
+        leftButtons.Children.Add(Btn("New", New, "Start a new endpoint; it is added when you press Add endpoint"));
+        _deleteButton = Btn("Delete", Delete);
+        leftButtons.Children.Add(_deleteButton);
         DockPanel.SetDock(leftButtons, Dock.Bottom);
         left.Children.Add(leftButtons);
         left.Children.Add(_list);
@@ -75,6 +83,7 @@ internal sealed class AgentSettingsWindow : Window
 
         var form = new StackPanel();
         Field(form, "Name", _name);
+        ((TextBlock)form.Children[0]).Margin = new Thickness(0, 0, 0, 2);
         Field(form, "Base URL (up to /v1)", _url);
         var modelRow = new DockPanel();
         var fetch = Btn("Fetch models", async () => await FetchModelsAsync(), "Ask the server which models it serves");
@@ -93,13 +102,25 @@ internal sealed class AgentSettingsWindow : Window
         Field(form, "Risky commands: one regex per line, case-insensitive", _risky);
         form.Children.Add(_noLocal);
         form.Children.Add(_default);
-        var actions = new StackPanel { Orientation = Orientation.Horizontal };
-        actions.Children.Add(Btn("Save", Save));
-        actions.Children.Add(Btn("Test connection", async () => await TestAsync(),
+
+        // The heading and the action row stay put; only the fields scroll.
+        var right = new DockPanel();
+        DockPanel.SetDock(_heading, Dock.Top);
+        right.Children.Add(_heading);
+        var actions = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+        var actionRow = new StackPanel { Orientation = Orientation.Horizontal };
+        _saveButton = Btn("Save changes", () => Save());
+        _saveButton.Background = new SolidColorBrush(Color.FromRgb(0x2E, 0x5C, 0x8A));
+        actionRow.Children.Add(_saveButton);
+        actionRow.Children.Add(Btn("Revert", () => Edit(_editing), "Undo the edits since the last save"));
+        actionRow.Children.Add(Btn("Test connection", async () => await TestAsync(),
             "Check the values as typed (saved or not): server reachable, key accepted, model answers, tool calling works"));
-        form.Children.Add(actions);
-        form.Children.Add(_note);
-        root.Children.Add(new ScrollViewer { Content = form, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        actions.Children.Add(actionRow);
+        actions.Children.Add(_note);
+        DockPanel.SetDock(actions, Dock.Bottom);
+        right.Children.Add(actions);
+        right.Children.Add(new ScrollViewer { Content = form, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        root.Children.Add(right);
 
         Content = root;
 
@@ -113,23 +134,74 @@ internal sealed class AgentSettingsWindow : Window
         _list.Resources[SystemColors.InactiveSelectionHighlightBrushKey] = new SolidColorBrush(Color.FromRgb(0x23, 0x2A, 0x38));
         _list.Resources[SystemColors.InactiveSelectionHighlightTextBrushKey] = new SolidColorBrush(Color.FromRgb(0xDF, 0xE4, 0xEE));
 
-        _list.SelectionChanged += (_, _) =>
+        _list.SelectionChanged += (_, e) =>
         {
-            if (!_refreshing)
+            if (_refreshing || _list.SelectedItem is not AgentEndpoint ep || ep == _editing)
             {
-                Edit(_list.SelectedItem as AgentEndpoint);
+                return;
+            }
+
+            if (ConfirmLeave())
+            {
+                Edit(ep);
+            }
+            else
+            {
+                // Stay on the endpoint being edited.
+                _refreshing = true;
+                _list.SelectedItem = IsNew ? null : _editing;
+                _refreshing = false;
             }
         };
-        _note.Text = "Any OpenAI-compatible server: vLLM, llama.cpp, Ollama, OpenRouter, OpenAI. " +
-                     "For Qwen thinking models on vLLM, Extra JSON {\"chat_template_kwargs\":{\"enable_thinking\":false}} keeps replies fast.";
         Refresh();
+    }
+
+    private bool IsNew => !_config.Endpoints.Contains(_editing);
+
+    private void Hint() => Note(
+        "Any OpenAI-compatible server: vLLM, llama.cpp, Ollama, OpenRouter, OpenAI. " +
+        "For Qwen thinking models on vLLM, Extra JSON {\"chat_template_kwargs\":{\"enable_thinking\":false}} keeps replies fast.");
+
+    private void Note(string text, Color? color = null)
+    {
+        _note.Text = text;
+        _note.Foreground = new SolidColorBrush(color ?? Color.FromRgb(0x8B, 0x94, 0xA7));
+    }
+
+    /// <summary>Everything the form holds, to tell whether it has unsaved edits.</summary>
+    private string Snapshot() => string.Join("\u0001", _name.Text, _url.Text, _model.Text, _key.Password,
+        _temperature.Text, _steps.Text, _extra.Text, _default.IsChecked, _approval.SelectedIndex, _risky.Text, _noLocal.IsChecked);
+
+    private bool Dirty => Snapshot() != _clean;
+
+    /// <summary>
+    /// Before the form is replaced or the window closes: offers to save unsaved edits.
+    /// Returns false when the user cancels, or the save failed.
+    /// </summary>
+    private bool ConfirmLeave()
+    {
+        if (!Dirty)
+        {
+            return true;
+        }
+
+        var what = IsNew ? "the new endpoint" : $"the changes to {_editing.Name}";
+        var answer = MessageBox.Show(this, $"Save {what}?", "Agent endpoints",
+            MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+        return answer switch
+        {
+            MessageBoxResult.Yes => Save(),
+            MessageBoxResult.No => true,
+            _ => false
+        };
     }
 
     private bool _refreshing;
 
     /// <summary>
-    /// Rebuilds the list and loads the chosen endpoint into the form. Selection changes made
-    /// here are ignored: clearing the list used to fire one that blanked the form mid-save.
+    /// Rebuilds the list and loads the chosen endpoint into the form, or a new draft when
+    /// there are none. Selection changes made here are ignored: clearing the list used to
+    /// fire one that blanked the form mid-save.
     /// </summary>
     private void Refresh(AgentEndpoint? select = null)
     {
@@ -149,12 +221,17 @@ internal sealed class AgentSettingsWindow : Window
             _refreshing = false;
         }
 
-        Edit(_list.SelectedItem as AgentEndpoint);
+        Edit(_list.SelectedItem as AgentEndpoint ?? new AgentEndpoint());
     }
 
-    private void Edit(AgentEndpoint? ep)
+    private void Edit(AgentEndpoint ep)
     {
         _editing = ep;
+        var isNew = IsNew;
+        _heading.Text = isNew ? "New endpoint (not saved yet)" : "Editing: " + ep.Name;
+        _saveButton.Content = isNew ? "Add endpoint" : "Save changes";
+        _deleteButton.Content = isNew ? "Discard" : "Delete";
+        _deleteButton.IsEnabled = !isNew || _config.Endpoints.Count > 0;
         _name.Text = ep?.Name ?? "";
         _url.Text = ep?.BaseUrl ?? "";
         _model.Text = ep?.Model ?? "";
@@ -162,24 +239,41 @@ internal sealed class AgentSettingsWindow : Window
         _temperature.Text = (ep?.Temperature ?? 0.2).ToString(CultureInfo.InvariantCulture);
         _steps.Text = (ep?.MaxSteps ?? 30).ToString(CultureInfo.InvariantCulture);
         _extra.Text = ep?.ExtraJson ?? "";
-        _default.IsChecked = ep is not null && _config.DefaultEndpoint == ep.Id;
+        _default.IsChecked = _config.DefaultEndpoint == ep.Id || (isNew && _config.Endpoints.Count == 0);
         _approval.SelectedIndex = (int)(ep?.Approval ?? AgentApproval.Risky);
         _risky.Text = ep?.RiskyPatterns ?? AgentEndpoint.DefaultRiskyPatterns;
         _noLocal.IsChecked = ep?.NeverOnLocalShells ?? false;
-        _key.ToolTip = ep is not null && _vault.Get(ep.Id, "apikey") is not null ? "A key is saved" : "No key saved";
+        _key.ToolTip = !isNew && _vault.Get(ep.Id, "apikey") is not null ? "A key is saved" : "No key saved";
+        _clean = Snapshot();
+        Hint();
     }
 
-    private void Add()
+    private void New()
     {
-        var ep = new AgentEndpoint();
-        _config.Endpoints.Add(ep);
-        _config.DefaultEndpoint ??= ep.Id;
-        Refresh(ep);
+        if (!ConfirmLeave())
+        {
+            return;
+        }
+
+        _refreshing = true;
+        _list.SelectedItem = null;
+        _refreshing = false;
+        Edit(new AgentEndpoint());
+        Note("Fill in the fields, then press Add endpoint. Test connection works before saving.");
+        _name.Focus();
+        _name.SelectAll();
     }
 
     private void Delete()
     {
-        if (_editing is null)
+        if (IsNew)
+        {
+            Refresh();
+            return;
+        }
+
+        if (MessageBox.Show(this, $"Delete the endpoint {_editing.Name} and its saved key?", "Agent endpoints",
+                MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
         {
             return;
         }
@@ -191,22 +285,15 @@ internal sealed class AgentSettingsWindow : Window
             _config.DefaultEndpoint = _config.Endpoints.FirstOrDefault()?.Id;
         }
 
+        var name = _editing.Name;
         _config.Save();
         Refresh();
+        Note($"Deleted {name}.");
     }
 
-    private void Save()
+    /// <summary>Writes the form to the endpoint, adding it first if it is a new one.</summary>
+    private bool Save()
     {
-        // Saving with nothing selected (the first endpoint ever) creates one from what was typed.
-        // It used to call Add(), which reloaded the form with defaults first, so the typed
-        // URL, model and name were replaced by "New endpoint" at localhost.
-        if (_editing is null)
-        {
-            _editing = new AgentEndpoint();
-            _config.Endpoints.Add(_editing);
-            _config.DefaultEndpoint ??= _editing.Id;
-        }
-
         var ep = _editing;
         try
         {
@@ -214,8 +301,15 @@ internal sealed class AgentSettingsWindow : Window
         }
         catch (Exception ex) when (ex is FormatException or System.Text.Json.JsonException)
         {
-            _note.Text = "Extra JSON is not valid: " + ex.Message;
-            return;
+            Note("Not saved: Extra JSON is not valid: " + ex.Message, Color.FromRgb(0xE0, 0x6C, 0x75));
+            return false;
+        }
+
+        var added = IsNew;
+        if (added)
+        {
+            _config.Endpoints.Add(ep);
+            _config.DefaultEndpoint ??= ep.Id;
         }
 
         ep.Name = string.IsNullOrWhiteSpace(_name.Text) ? "Endpoint" : _name.Text.Trim();
@@ -239,8 +333,9 @@ internal sealed class AgentSettingsWindow : Window
         }
 
         _config.Save();
-        _note.Text = $"Saved {ep.Name}.";
         Refresh(ep);
+        Note(added ? $"Added {ep.Name}." : $"Saved {ep.Name}.", Color.FromRgb(0x98, 0xC3, 0x79));
+        return true;
     }
 
     /// <summary>Runs the connection test on the form's current values and shows each step.</summary>
@@ -252,14 +347,12 @@ internal sealed class AgentSettingsWindow : Window
             Model = _model.Text.Trim(),
             ExtraJson = _extra.Text.Trim()
         };
-        var key = _key.Password.Length > 0 ? _key.Password : _editing is null ? null : _vault.Get(_editing.Id, "apikey");
+        var key = _key.Password.Length > 0 ? _key.Password : IsNew ? null : _vault.Get(_editing.Id, "apikey");
 
-        _note.Text = "Testing...";
+        Note("Testing...");
         var lines = await EndpointTest.RunAsync(probe, key);
-        _note.Text = string.Join(Environment.NewLine, lines.Select(l => (l.Ok ? (l.Warning ? "! " : "✔ ") : "✖ ") + l.Text));
-        _note.Foreground = new SolidColorBrush(lines.All(l => l.Ok)
-            ? Color.FromRgb(0x98, 0xC3, 0x79)
-            : Color.FromRgb(0xE0, 0x6C, 0x75));
+        Note(string.Join(Environment.NewLine, lines.Select(l => (l.Ok ? (l.Warning ? "! " : "✔ ") : "✖ ") + l.Text)),
+            lines.All(l => l.Ok) ? Color.FromRgb(0x98, 0xC3, 0x79) : Color.FromRgb(0xE0, 0x6C, 0x75));
     }
 
     private async Task FetchModelsAsync()
@@ -269,7 +362,7 @@ internal sealed class AgentSettingsWindow : Window
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            var key = _key.Password.Length > 0 ? _key.Password : _editing is null ? null : _vault.Get(_editing.Id, "apikey");
+            var key = _key.Password.Length > 0 ? _key.Password : IsNew ? null : _vault.Get(_editing.Id, "apikey");
             if (!string.IsNullOrEmpty(key))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
@@ -283,11 +376,11 @@ internal sealed class AgentSettingsWindow : Window
             _model.Items.Clear();
             ids.ForEach(id => _model.Items.Add(id));
             _model.Text = current.Length > 0 ? current : ids.FirstOrDefault() ?? "";
-            _note.Text = ids.Count > 0 ? $"{ids.Count} model(s): {string.Join(", ", ids.Take(6))}" : $"{url} answered {(int)response.StatusCode} with no models.";
+            Note(ids.Count > 0 ? $"{ids.Count} model(s): {string.Join(", ", ids.Take(6))}" : $"{url} answered {(int)response.StatusCode} with no models.");
         }
         catch (Exception ex)
         {
-            _note.Text = $"Could not reach {url}: {ex.Message}";
+            Note($"Could not reach {url}: {ex.Message}", Color.FromRgb(0xE0, 0x6C, 0x75));
         }
     }
 
