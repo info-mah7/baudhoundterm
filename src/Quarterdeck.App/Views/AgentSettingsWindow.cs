@@ -109,25 +109,43 @@ internal sealed class AgentSettingsWindow : Window
         _list.Resources[SystemColors.InactiveSelectionHighlightBrushKey] = new SolidColorBrush(Color.FromRgb(0x23, 0x2A, 0x38));
         _list.Resources[SystemColors.InactiveSelectionHighlightTextBrushKey] = new SolidColorBrush(Color.FromRgb(0xDF, 0xE4, 0xEE));
 
-        _list.SelectionChanged += (_, _) => Edit(_list.SelectedItem as AgentEndpoint);
+        _list.SelectionChanged += (_, _) =>
+        {
+            if (!_refreshing)
+            {
+                Edit(_list.SelectedItem as AgentEndpoint);
+            }
+        };
         _note.Text = "Any OpenAI-compatible server: vLLM, llama.cpp, Ollama, OpenRouter, OpenAI. " +
                      "For Qwen thinking models on vLLM, Extra JSON {\"chat_template_kwargs\":{\"enable_thinking\":false}} keeps replies fast.";
         Refresh();
     }
 
+    private bool _refreshing;
+
+    /// <summary>
+    /// Rebuilds the list and loads the chosen endpoint into the form. Selection changes made
+    /// here are ignored: clearing the list used to fire one that blanked the form mid-save.
+    /// </summary>
     private void Refresh(AgentEndpoint? select = null)
     {
-        _list.Items.Clear();
-        foreach (var ep in _config.Endpoints)
+        _refreshing = true;
+        try
         {
-            _list.Items.Add(ep);
+            _list.Items.Clear();
+            foreach (var ep in _config.Endpoints)
+            {
+                _list.Items.Add(ep);
+            }
+
+            _list.SelectedItem = select ?? _config.Endpoints.FirstOrDefault();
+        }
+        finally
+        {
+            _refreshing = false;
         }
 
-        _list.SelectedItem = select ?? _config.Endpoints.FirstOrDefault();
-        if (_list.SelectedItem is null)
-        {
-            Edit(null);
-        }
+        Edit(_list.SelectedItem as AgentEndpoint);
     }
 
     private void Edit(AgentEndpoint? ep)
@@ -175,12 +193,17 @@ internal sealed class AgentSettingsWindow : Window
 
     private void Save()
     {
+        // Saving with nothing selected (the first endpoint ever) creates one from what was typed.
+        // It used to call Add(), which reloaded the form with defaults first, so the typed
+        // URL, model and name were replaced by "New endpoint" at localhost.
         if (_editing is null)
         {
-            Add();
+            _editing = new AgentEndpoint();
+            _config.Endpoints.Add(_editing);
+            _config.DefaultEndpoint ??= _editing.Id;
         }
 
-        var ep = _editing!;
+        var ep = _editing;
         try
         {
             AgentConfig.ParseExtra(_extra.Text);
