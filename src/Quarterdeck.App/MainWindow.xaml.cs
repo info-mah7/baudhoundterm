@@ -9,6 +9,7 @@ using Quarterdeck.App.Views;
 using Quarterdeck.Core.Model;
 using Quarterdeck.Core.Security;
 using Quarterdeck.Core.Terminal;
+using Quarterdeck.Core.Transfer;
 
 namespace Quarterdeck.App;
 
@@ -1757,6 +1758,53 @@ public partial class MainWindow : Window
                     await view.SendTextFileAsync(dialog.FileName);
                 }
             }));
+
+        // Binary transfers over the serial line: boot loaders and BaudHound targets.
+        var serial = protocol == SessionProtocol.Serial;
+        var modemReady = serial && view!.CanModem;
+        var modemTip = !serial ? "Needs a serial tab"
+            : !view!.IsConnected ? "Connect the tab first"
+            : view.IsSending ? "A transfer is already running"
+            : "";
+
+        var send = new MenuItem { Header = "Send _binary file", IsEnabled = modemReady, ToolTip = modemTip.Length > 0 ? modemTip : "Start the device's receive first (U-Boot: loady / loadx, Linux: rb / rx), then pick the file" };
+        ToolTipService.SetShowOnDisabled(send, true);
+        foreach (var (label, proto, multi) in new[]
+                 {
+                     ("_YMODEM (name and size travel with it; several files)...", ModemProtocol.Ymodem, true),
+                     ("XMODEM-_1K (U-Boot loadx)...", ModemProtocol.Xmodem1K, false),
+                     ("_XMODEM 128-byte...", ModemProtocol.Xmodem, false)
+                 })
+        {
+            var p = proto;
+            var allowMany = multi;
+            send.Items.Add(Item(label, true, "", async () =>
+            {
+                var dialog = new Microsoft.Win32.OpenFileDialog { Title = $"Send over {label.Replace("_", "").Split(' ')[0]}", Multiselect = allowMany };
+                if (dialog.ShowDialog(this) == true)
+                {
+                    await view!.ModemSendAsync(p, dialog.FileNames);
+                }
+            }));
+        }
+
+        var receive = new MenuItem { Header = "_Receive binary file", IsEnabled = modemReady, ToolTip = modemTip.Length > 0 ? modemTip : "Pick a folder, then start the device's send (Linux: sb / sx, U-Boot: loadb is Kermit and not supported)" };
+        ToolTipService.SetShowOnDisabled(receive, true);
+        foreach (var (label, proto) in new[] { ("_YMODEM...", ModemProtocol.Ymodem), ("_XMODEM / XMODEM-1K...", ModemProtocol.Xmodem1K) })
+        {
+            var p = proto;
+            receive.Items.Add(Item(label, true, "", async () =>
+            {
+                var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Save received files in" };
+                if (dialog.ShowDialog(this) == true)
+                {
+                    await view!.ModemReceiveAsync(p, dialog.FolderName);
+                }
+            }));
+        }
+
+        items.Add(send);
+        items.Add(receive);
 
         items.Add(new Separator());
         var tftpRunning = _tftp?.IsRunning == true;

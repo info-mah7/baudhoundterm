@@ -747,6 +747,78 @@ public partial class TerminalView : UserControl, ITerminalTarget
         }
     }
 
+    // ---------- XMODEM / YMODEM ----------
+
+    public bool CanModem => Definition.Protocol == SessionProtocol.Serial && IsConnected && _sendCts is null;
+
+    public Task ModemSendAsync(ModemProtocol protocol, IReadOnlyList<string> files) =>
+        RunModemAsync(protocol, "Sending", (m, token) => m.SendAsync(protocol, files, token));
+
+    public Task ModemReceiveAsync(ModemProtocol protocol, string folder) =>
+        RunModemAsync(protocol, "Receiving", async (m, token) =>
+        {
+            var name = $"xmodem-{DateTime.Now:yyyyMMdd-HHmmss}.bin";
+            var got = await m.ReceiveAsync(protocol, folder, name, token);
+            if (got.Count > 0)
+            {
+                Dispatcher.Invoke(() => Write($"[baudhoundterm] saved in {folder}\r\n"));
+            }
+        });
+
+    /// <summary>
+    /// Borrows the serial port in raw mode for one transfer. The screen shows nothing of the
+    /// binary traffic; progress is in the status bar and a summary lands in the terminal.
+    /// </summary>
+    private async Task RunModemAsync(ModemProtocol protocol, string verb, Func<ModemTransfer, CancellationToken, Task> body)
+    {
+        if (_controller?.Serial is not { } serial || _sendCts is not null)
+        {
+            return;
+        }
+
+        _sendCts = new CancellationTokenSource();
+        StatusCancel.Visibility = Visibility.Visible;
+        var label = protocol switch
+        {
+            ModemProtocol.Ymodem => "YMODEM",
+            ModemProtocol.Xmodem1K => "XMODEM-1K",
+            _ => "XMODEM"
+        };
+
+        var link = serial.BeginRaw();
+        var modem = new ModemTransfer(link);
+        modem.Log += line => Dispatcher.BeginInvoke(() => Write($"\r\n[baudhoundterm] {label}: {line}\r\n"));
+        modem.Progress += p => Dispatcher.BeginInvoke(() => StatusText.Text = p.Total > 0
+            ? $"{verb} {p.File} ({label}): {p.Done:N0} of {p.Total:N0} bytes, {100 * p.Done / p.Total}%"
+            : $"{verb} {p.File} ({label}): {p.Done:N0} bytes");
+        StatusText.Text = verb == "Sending"
+            ? $"{label}: waiting for the device to start receiving (loady / loadx / rb / rx)..."
+            : $"{label}: waiting for the device to start sending...";
+
+        try
+        {
+            var token = _sendCts.Token;
+            await Task.Run(() => body(modem, token), token);
+            StatusText.Text = $"{label} transfer finished.";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText.Text = $"{label} transfer cancelled.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"{label} transfer failed: {ex.Message}";
+            Write($"\r\n[baudhoundterm] {label}: {ex.Message}\r\n");
+        }
+        finally
+        {
+            serial.EndRaw();
+            _sendCts.Dispose();
+            _sendCts = null;
+            StatusCancel.Visibility = Visibility.Collapsed;
+        }
+    }
+
     // ---------- agent ----------
 
     /// <summary>Plain text of everything this tab has printed, for an attached agent.</summary>
