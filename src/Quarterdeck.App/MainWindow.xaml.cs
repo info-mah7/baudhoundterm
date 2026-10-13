@@ -1,11 +1,14 @@
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using Quarterdeck.App.Views;
 using Quarterdeck.Core.Model;
 using Quarterdeck.Core.Security;
+using Quarterdeck.Core.Terminal;
 
 namespace Quarterdeck.App;
 
@@ -15,6 +18,7 @@ public partial class MainWindow : Window
     private readonly CredentialVault _vault = new();
     private List<SessionDefinition> _sessions;
     private List<string> _folders;
+    private readonly UiPreferences _ui = UiPreferences.Load();
 
     public MainWindow()
     {
@@ -24,12 +28,15 @@ public partial class MainWindow : Window
 
         _sessions = _store.Load();
         _folders = _store.LoadFolders();
+        GroupToggle.IsChecked = _ui.GroupByHost;   // Click, not Checked: setting it here saves nothing
         RebuildTree();
 
         // Relaunched through UAC by the Admin button: open the shell the user asked for.
-        if (Environment.GetCommandLineArgs().Contains(AdminShellSwitch, StringComparer.OrdinalIgnoreCase))
+        var args = Environment.GetCommandLineArgs();
+        if (args.Contains(AdminShellSwitch, StringComparer.OrdinalIgnoreCase))
         {
-            Loaded += (_, _) => OnAdminShell(this, new RoutedEventArgs());
+            var shell = AdminShellFromCommandLine(args);
+            Loaded += (_, _) => LaunchShell(shell, elevated: true);
         }
 
         Closing += async (_, _) =>
@@ -46,14 +53,10 @@ public partial class MainWindow : Window
     private void RebuildTree()
     {
         SessionTree.Items.Clear();
+        _liveRows.Clear();
+        var placed = new HashSet<LiveTab>();
 
-        var filter = FilterBox?.Text?.Trim() ?? "";
-        var visible = string.IsNullOrEmpty(filter)
-            ? _sessions
-            : _sessions.Where(s =>
-                s.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                s.Host.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                s.Tags.Any(t => t.Contains(filter, StringComparison.OrdinalIgnoreCase))).ToList();
+        var visible = _sessions.Where(MatchesFilter(FilterBox?.Text ?? "")).ToList();
 
         // Every folder that must appear: the ones declared in their own right, plus any implied
         // by a session's path, plus every ancestor of both.
@@ -80,7 +83,15 @@ public partial class MainWindow : Window
         foreach (var path in paths)
         {
             var name = path[(path.LastIndexOf('/') + 1)..];
-            var node = new TreeViewItem { Header = $"📁  {name}", Tag = new FolderNode(path) };
+            // ItemContainerStyle reaches only the tree's own children; nested rows have to be
+            // handed it, or they start collapsed and select in the system's black-on-blue.
+            var node = new TreeViewItem
+            {
+                Header = $"📁  {name}",
+                Tag = new FolderNode(path),
+                ItemContainerStyle = SessionTree.ItemContainerStyle,
+                IsExpanded = true
+            };
             nodes[path] = node;
 
             var slash = path.LastIndexOf('/');
@@ -94,27 +105,194 @@ public partial class MainWindow : Window
             }
         }
 
-        foreach (var session in visible.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
+        ItemsControl ContainerFor(string folder) =>
+            folder.Length > 0 && nodes.TryGetValue(folder, out var parent) ? parent : SessionTree;
+
+        // Grouping is worked out here, from Host, and never stored: a host row exists only while
+        // two or more saved sessions in the same folder point at that host, so it never shows a
+        // protocol that is not configured.
+        var groups = visible
+            .GroupBy(s => (Folder: s.Folder.Trim().Trim('/'), Host: _ui.GroupByHost ? SessionPresentation.HostKey(s) : null))
+            .OrderBy(g => g.Key.Host is null ? g.First().Name : GroupTitle(g.ToList()), StringComparer.OrdinalIgnoreCase);
+
+        var loose = new List<(string Folder, SessionDefinition Session)>();
+
+        foreach (var group in groups)
         {
-            var header = session.Protocol == SessionProtocol.Ssh && !string.IsNullOrEmpty(session.Host)
-                ? $"{session.Name}  ({session.Host})"
-                : session.Name;
+            var members = group.ToList();
 
-            var item = new TreeViewItem { Header = header, Tag = session };
-            var folder = session.Folder.Trim().Trim('/');
+            if (group.Key.Host is null || members.Count < 2)
+            {
+                loose.AddRange(members.Select(m => (group.Key.Folder, m)));
+                continue;
+            }
 
-            if (folder.Length > 0 && nodes.TryGetValue(folder, out var parent))
+            var title = GroupTitle(members);
+            var hostNode = new TreeViewItem
             {
-                parent.Items.Add(item);
-            }
-            else
+                Header = SessionPresentation.HostRow(title, members[0].Host.Trim()),
+                Tag = new HostNode(members[0].Host.Trim(), group.Key.Folder, members),
+                ItemContainerStyle = SessionTree.ItemContainerStyle,
+                IsExpanded = true
+            };
+
+            foreach (var session in members
+                         .OrderBy(s => s.Protocol)
+                         .ThenBy(s => s.Port)
+                         .ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
             {
-                SessionTree.Items.Add(item);
+                // The name says nothing new when it is the group's title; the badge and target do.
+                var name = string.Equals(session.Name, title, StringComparison.OrdinalIgnoreCase) ? null : session.Name;
+                hostNode.Items.Add(WithLiveRows(new TreeViewItem
+                {
+                    Header = SessionPresentation.Row(session, name, hostShown: true),
+                    Tag = session
+                }, session, placed));
             }
+
+            ContainerFor(group.Key.Folder).Items.Add(hostNode);
+        }
+
+        foreach (var (folder, session) in loose.OrderBy(l => l.Session.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            ContainerFor(folder).Items.Add(WithLiveRows(new TreeViewItem
+            {
+                Header = SessionPresentation.Row(session, session.Name, hostShown: false),
+                Tag = session
+            }, session, placed));
+        }
+
+        // Quick connections with no shortcut to sit under, and open tabs whose session the
+        // filter is hiding, still need a row: a connection that is open is never invisible.
+        var strays = _live.Where(l => !placed.Contains(l)).ToList();
+        if (strays.Count > 0)
+        {
+            var open = new TreeViewItem
+            {
+                Header = "⚡  Open, not in the list above",
+                ItemContainerStyle = SessionTree.ItemContainerStyle,
+                IsExpanded = true
+            };
+
+            foreach (var live in strays)
+            {
+                var badge = SessionPresentation.BadgeElement(live.Definition);
+                var header = LiveRowHeader(live);
+                header.Children.Insert(1, badge);
+                var child = new TreeViewItem { Header = header, Tag = live };
+                _liveRows[live] = child;
+                open.Items.Add(child);
+            }
+
+            SessionTree.Items.Add(open);
         }
     }
 
-    /// <summary>Marks a tree node as a folder and carries its full path.</summary>
+    /// <summary>
+    /// A host group is called by the name most of its sessions share; on a tie, by the SSH
+    /// session's name, since that is usually the machine's own; with no names, by the host.
+    /// </summary>
+    private static string GroupTitle(List<SessionDefinition> members)
+    {
+        var best = members
+            .Where(m => m.Name.Trim().Length > 0)
+            .GroupBy(m => m.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(g => g.Count())
+            .ThenByDescending(g => g.Any(m => m.Protocol == SessionProtocol.Ssh))
+            .FirstOrDefault();
+
+        return best?.Key ?? members[0].Host.Trim();
+    }
+
+    /// <summary>
+    /// The filter box: protocol words ("vnc", "ssh", "serial") narrow by protocol, every other
+    /// word has to appear in the name, host, target or a tag. "vnc atlas" is atlas over VNC.
+    /// </summary>
+    private static Func<SessionDefinition, bool> MatchesFilter(string text)
+    {
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (words.Length == 0)
+        {
+            return _ => true;
+        }
+
+        var protocols = words.Select(SessionPresentation.ProtocolWord).OfType<SessionProtocol>().ToHashSet();
+        var terms = words.Where(w => SessionPresentation.ProtocolWord(w) is null).ToList();
+
+        return s =>
+            (protocols.Count == 0 || protocols.Contains(s.Protocol)) &&
+            terms.All(t =>
+                s.Name.Contains(t, StringComparison.OrdinalIgnoreCase) ||
+                s.Host.Contains(t, StringComparison.OrdinalIgnoreCase) ||
+                SessionPresentation.Target(s).Contains(t, StringComparison.OrdinalIgnoreCase) ||
+                s.Tags.Any(tag => tag.Contains(t, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private sealed record HostNode(string Host, string Folder, List<SessionDefinition> Sessions);
+
+    private HostNode? SelectedHost => (SessionTree.SelectedItem as TreeViewItem)?.Tag as HostNode;
+
+    private void OnGroupToggle(object sender, RoutedEventArgs e)
+    {
+        _ui.GroupByHost = GroupToggle.IsChecked == true;
+
+        try
+        {
+            _ui.Save();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The view still changes; it just will not be remembered.
+        }
+
+        RebuildTree();
+    }
+
+    /// <summary>
+    /// "Add protocol" on a host row or a session with a host: a new session for the same host,
+    /// with the port that protocol normally uses. What Clone was good for, without copying
+    /// every setting of the old one.
+    /// </summary>
+    private void OnAddProtocol(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: string tag } || !Enum.TryParse<SessionProtocol>(tag, out var protocol))
+        {
+            return;
+        }
+
+        var siblings = SelectedHost?.Sessions
+                       ?? (Selected is { } one && SessionPresentation.HostKey(one) is not null
+                           ? new List<SessionDefinition> { one }
+                           : null);
+        if (siblings is null)
+        {
+            return;
+        }
+
+        var template = siblings[0];
+        var definition = new SessionDefinition
+        {
+            Protocol = protocol,
+            Host = template.Host.Trim(),
+            Folder = template.Folder,
+            Name = GroupTitle(siblings),
+            Port = protocol switch
+            {
+                SessionProtocol.Vnc => 5900,
+                SessionProtocol.Telnet => 23,
+                _ => 22
+            },
+            Username = siblings.FirstOrDefault(s => s.Protocol == SessionProtocol.Ssh)?.Username ?? ""
+        };
+
+        var editor = new SessionEditorWindow(definition, _vault) { Owner = this };
+        if (editor.ShowDialog() == true)
+        {
+            _sessions.Add(definition);
+            Save();
+        }
+    }
+
     private sealed record FolderNode(string Path);
 
     private FolderNode? SelectedFolder => (SessionTree.SelectedItem as TreeViewItem)?.Tag as FolderNode;
@@ -262,6 +440,7 @@ public partial class MainWindow : Window
     {
         if (Selected is not null)
         {
+            e.Handled = true;   // or the tree item takes the click, and the keyboard, back
             Connect(Selected);
         }
     }
@@ -274,9 +453,11 @@ public partial class MainWindow : Window
 
     // ---------- session commands ----------
 
-    private void OnNewSession(object sender, RoutedEventArgs e)
+    private void OnNewSession(object sender, RoutedEventArgs e) => NewSessionIn("");
+
+    private void NewSessionIn(string folder)
     {
-        var definition = new SessionDefinition();
+        var definition = new SessionDefinition { Folder = folder };
         var editor = new SessionEditorWindow(definition, _vault) { Owner = this };
 
         if (editor.ShowDialog() == true)
@@ -300,30 +481,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnClone(object sender, RoutedEventArgs e)
-    {
-        if (Selected is null)
-        {
-            return;
-        }
-
-        var copy = Selected.Clone();
-
-        // Carry the saved secret across so a cloned session connects without re-entry.
-        if (_vault.Get(Selected.Id) is { } password)
-        {
-            _vault.Set(copy.Id, password);
-        }
-
-        if (_vault.Get(Selected.Id, "passphrase") is { } passphrase)
-        {
-            _vault.Set(copy.Id, passphrase, "passphrase");
-        }
-
-        _sessions.Add(copy);
-        Save();
-    }
-
     private void OnDelete(object sender, RoutedEventArgs e)
     {
         if (Selected is null)
@@ -332,7 +489,7 @@ public partial class MainWindow : Window
         }
 
         var answer = MessageBox.Show(
-            this, $"Delete session \"{Selected.Name}\"?", "BaudHoundTerm",
+            this, $"Delete the shortcut \"{Selected.Name}\"? Open tabs from it stay open.", "BaudHoundTerm",
             MessageBoxButton.YesNo, MessageBoxImage.Question);
 
         if (answer != MessageBoxResult.Yes)
@@ -357,18 +514,35 @@ public partial class MainWindow : Window
     {
         var view = new TerminalView(definition, _vault);
         var tab = new TabItem { Content = view };
+        var live = new LiveTab(tab, view, definition) { Title = definition.Name, Colour = ColourForNewTab(definition) };
+        _live.Add(live);
 
-        SetTabHeader(tab, definition, definition.Name);
+        RefreshTab(live);
         tab.ContextMenu = BuildTabMenu(tab, definition);
         view.TitleChanged += (_, title) =>
-            SetTabHeader(tab, definition, string.IsNullOrWhiteSpace(title) ? definition.Name : title);
+        {
+            live.Title = string.IsNullOrWhiteSpace(title) ? definition.Name : title;
+            RefreshTab(live);
+        };
+        view.AgentAttachedChanged += (_, _) => RefreshTab(live);
+        view.StateChanged += (_, e) =>
+        {
+            live.State = e.State;
+            RefreshLiveRow(live);
+
+            if (ReferenceEquals(view, ActiveView))
+            {
+                UpdateConnectionToggle();
+            }
+        };
 
         view.EditCommandsRequested += (_, _) =>
         {
             var editor = new SessionEditorWindow(definition, _vault) { Owner = this };
             if (editor.ShowDialog() == true)
             {
-                SetTabHeader(tab, definition, tab.Header is StackPanel ? definition.Name : definition.Name);
+                live.Title = definition.Name;
+                RefreshTab(live);
                 view.ApplyHighlights();
 
                 if (_sessions.Any(s => s.Id == definition.Id))
@@ -380,9 +554,216 @@ public partial class MainWindow : Window
 
         Tabs.Items.Add(tab);
         Tabs.SelectedItem = tab;
+        view.FocusTerminal();
+        RebuildTree();   // the new connection shows under its shortcut straight away
 
         await view.ConnectAsync();
         Save();
+    }
+
+    // ---------- open connections ----------
+
+    /// <summary>
+    /// An open tab as the window tracks it: its own colour (two tabs of one session can differ)
+    /// and what the session list shows for it.
+    /// </summary>
+    private sealed class LiveTab(TabItem tab, TerminalView view, SessionDefinition definition)
+    {
+        public TabItem Tab { get; } = tab;
+        public TerminalView View { get; } = view;
+        public SessionDefinition Definition { get; } = definition;
+        public string Title { get; set; } = "";
+        public string Colour { get; set; } = "";
+        public SessionState State { get; set; } = SessionState.Connecting;
+    }
+
+    private readonly List<LiveTab> _live = new();
+
+    /// <summary>The list row each open tab has, rebuilt with the tree, so a title or state
+    /// change updates one row instead of redrawing the list under the pointer.</summary>
+    private readonly Dictionary<LiveTab, TreeViewItem> _liveRows = new();
+
+    private LiveTab? LiveFor(TabItem tab) => _live.FirstOrDefault(l => ReferenceEquals(l.Tab, tab));
+
+    /// <summary>Tabs that go to the same machine: same host for network sessions, the same
+    /// saved session for a COM port or a local shell.</summary>
+    private static bool SameTarget(SessionDefinition a, SessionDefinition b)
+    {
+        var ka = SessionPresentation.HostKey(a);
+        return ka is not null ? ka == SessionPresentation.HostKey(b) : a.Id == b.Id;
+    }
+
+    /// <summary>
+    /// The first tab to a machine wears the session's own colour, or none. Once a second one
+    /// opens, every tab on that machine gets a colour of its own from the palette, so the
+    /// strip and the session list both say which is which. Assigned colours are not saved;
+    /// one picked from the tab menu still is.
+    /// </summary>
+    private string ColourForNewTab(SessionDefinition definition)
+    {
+        var siblings = _live.Where(l => SameTarget(l.Definition, definition)).ToList();
+        if (siblings.Count == 0)
+        {
+            return definition.TabColor;
+        }
+
+        var palette = TabPalette.Select(p => p.Hex).Where(h => h.Length > 0).ToList();
+        var used = new HashSet<string>(siblings.Select(s => s.Colour).Where(c => c.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+
+        string Next()
+        {
+            var free = palette.FirstOrDefault(c => !used.Contains(c)) ?? palette[used.Count % palette.Count];
+            used.Add(free);
+            return free;
+        }
+
+        foreach (var sibling in siblings.Where(s => s.Colour.Length == 0))
+        {
+            sibling.Colour = Next();
+            RefreshTab(sibling);
+        }
+
+        return definition.TabColor.Length > 0 && !used.Contains(definition.TabColor)
+            ? definition.TabColor
+            : Next();
+    }
+
+    private void RefreshTab(LiveTab live)
+    {
+        SetTabHeader(live.Tab, live.Definition, live.Title, live.Colour, live.View);
+        RefreshLiveRow(live);
+    }
+
+    private void RefreshLiveRow(LiveTab live)
+    {
+        if (_liveRows.TryGetValue(live, out var row))
+        {
+            row.Header = LiveRowHeader(live);
+        }
+    }
+
+    private static StackPanel LiveRowHeader(LiveTab live)
+    {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        panel.Children.Add(ColourStripe(live.Colour, hollow: true));
+        panel.Children.Add(new TextBlock { Text = ShortTitle(live.Title), VerticalAlignment = VerticalAlignment.Center });
+        panel.Children.Add(new TextBlock
+        {
+            Text = live.State switch
+            {
+                SessionState.Connected => "",
+                SessionState.Connecting => "connecting",
+                SessionState.Reconnecting => "reconnecting",
+                SessionState.Failed => "failed",
+                _ => "disconnected"
+            },
+            Foreground = new SolidColorBrush(Color.FromRgb(0x7F, 0x8A, 0xA3)),
+            Margin = new Thickness(8, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        return panel;
+    }
+
+    /// <summary>
+    /// A shell's title is often the full path of its executable, which says nothing in a
+    /// 260-pixel sidebar that the badge does not: keep the last segment, and cap the rest.
+    /// </summary>
+    private static string ShortTitle(string title)
+    {
+        var t = title.Trim();
+        var cut = t.LastIndexOfAny(new[] { '\\', '/' });
+        // Only an executable's path: "user@server: ~/work" is a directory worth keeping whole.
+        if (cut >= 0 && t.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            t = t[(cut + 1)..];
+        }
+
+        return t.Length > 40 ? t[..39] + "…" : t;
+    }
+
+    /// <summary>The tab's colour as a stripe. With no colour, an outline on the list (so the
+    /// row still reads as an open connection) and nothing on the tab.</summary>
+    private static FrameworkElement ColourStripe(string colour, bool hollow)
+    {
+        Brush? brush = null;
+        if (!string.IsNullOrWhiteSpace(colour))
+        {
+            try
+            {
+                brush = (Brush)new BrushConverter().ConvertFromString(colour)!;
+            }
+            catch (FormatException)
+            {
+                // A colour the user mistyped should not cost them the tab.
+            }
+        }
+
+        return new System.Windows.Shapes.Rectangle
+        {
+            Width = 4,
+            Height = 14,
+            RadiusX = 2,
+            RadiusY = 2,
+            Fill = brush ?? Brushes.Transparent,
+            Stroke = brush is null && hollow ? new SolidColorBrush(Color.FromRgb(0x5A, 0x64, 0x7A)) : null,
+            StrokeThickness = 1,
+            Margin = new Thickness(0, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+    }
+
+    /// <summary>
+    /// The open tabs a saved session should carry in the list: its own, plus quick connections
+    /// that went to exactly the same place, which belong to this shortcut in all but name.
+    /// </summary>
+    private IEnumerable<LiveTab> LiveFor(SessionDefinition session) => _live.Where(l =>
+        l.Definition.Id == session.Id ||
+        (!_sessions.Any(s => s.Id == l.Definition.Id) && SameEndpoint(l.Definition, session)));
+
+    private static bool SameEndpoint(SessionDefinition a, SessionDefinition b) =>
+        a.Protocol == b.Protocol && a.Protocol switch
+        {
+            SessionProtocol.Serial => string.Equals(a.SerialPort, b.SerialPort, StringComparison.OrdinalIgnoreCase),
+            SessionProtocol.LocalShell => false,
+            _ => SessionPresentation.HostKey(a) is { } k && k == SessionPresentation.HostKey(b) && a.Port == b.Port
+        };
+
+    private TreeViewItem WithLiveRows(TreeViewItem row, SessionDefinition session, HashSet<LiveTab> placed)
+    {
+        foreach (var live in LiveFor(session))
+        {
+            var child = new TreeViewItem { Header = LiveRowHeader(live), Tag = live };
+            _liveRows[live] = child;
+            placed.Add(live);
+            row.Items.Add(child);
+        }
+
+        row.ItemContainerStyle = SessionTree.ItemContainerStyle;
+        row.IsExpanded = true;
+        return row;
+    }
+
+    /// <summary>Clicking an open connection in the list brings its tab forward.</summary>
+    private void OnTreeSelectionChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        if ((e.NewValue as TreeViewItem)?.Tag is LiveTab live && Tabs.Items.Contains(live.Tab))
+        {
+            Tabs.SelectedItem = live.Tab;
+        }
+    }
+
+    /// <summary>Switching tabs puts the keyboard back on the terminal, not on whatever was
+    /// clicked to get here.</summary>
+    private void OnTabSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, Tabs))
+        {
+            return;   // a ComboBox inside a tab, not the tab strip
+        }
+
+        ActiveView?.FocusTerminal();
+        UpdateConnectionToggle();
     }
 
     /// <summary>The palette offered when right-clicking a tab.</summary>
@@ -455,11 +836,30 @@ public partial class MainWindow : Window
             var editor = new SessionEditorWindow(definition, _vault) { Owner = this };
             if (editor.ShowDialog() == true)
             {
-                SetTabHeader(tab, definition, definition.Name);
+                if (LiveFor(tab) is { } live)
+                {
+                    live.Title = definition.Name;
+                    RefreshTab(live);
+                }
+
                 PersistIfSaved(definition);
             }
         };
         menu.Items.Add(properties);
+
+        if (definition.Protocol != SessionProtocol.Vnc)
+        {
+            var agent = new MenuItem { Header = "_Agent on this tab" };
+            agent.Click += (_, _) =>
+            {
+                if (tab.Content is TerminalView v)
+                {
+                    ToggleAgent(v);
+                }
+            };
+            menu.Items.Add(new Separator());
+            menu.Items.Add(agent);
+        }
 
         return menu;
     }
@@ -468,12 +868,12 @@ public partial class MainWindow : Window
     {
         definition.TabColor = colour.Trim();
 
-        // Keep whatever title the far end last gave us rather than snapping back to the name.
-        var title = tab.Header is StackPanel panel && panel.Children.Count > 0
-            ? panel.Children.OfType<TextBlock>().FirstOrDefault()?.Text ?? definition.Name
-            : definition.Name;
+        if (LiveFor(tab) is { } live)
+        {
+            live.Colour = definition.TabColor;   // the title stays whatever the far end last set
+            RefreshTab(live);
+        }
 
-        SetTabHeader(tab, definition, title);
         PersistIfSaved(definition);
     }
 
@@ -490,33 +890,17 @@ public partial class MainWindow : Window
     /// A coloured stripe beside the tab title. The stripe is part of the header content rather
     /// than TabItem.Background, which the default template paints over when the tab is selected.
     /// </summary>
-    private static void SetTabHeader(TabItem tab, SessionDefinition definition, string title)
+    private static void SetTabHeader(TabItem tab, SessionDefinition definition, string title, string colour, TerminalView view)
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
 
-        if (!string.IsNullOrWhiteSpace(definition.TabColor))
+        if (!string.IsNullOrWhiteSpace(colour))
         {
-            try
-            {
-                var brush = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter()
-                    .ConvertFromString(definition.TabColor)!;
-
-                panel.Children.Add(new System.Windows.Shapes.Rectangle
-                {
-                    Width = 4,
-                    Height = 14,
-                    RadiusX = 2,
-                    RadiusY = 2,
-                    Fill = brush,
-                    Margin = new Thickness(0, 0, 6, 0),
-                    VerticalAlignment = VerticalAlignment.Center
-                });
-            }
-            catch (FormatException)
-            {
-                // A colour the user mistyped should not cost them the tab.
-            }
+            panel.Children.Add(ColourStripe(colour, hollow: false));
         }
+
+        // Two tabs on one host differ only by protocol; the badge says which is which.
+        panel.Children.Add(SessionPresentation.BadgeElement(definition));
 
         var text = new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center };
 
@@ -529,7 +913,54 @@ public partial class MainWindow : Window
         });
 
         panel.Children.Add(text);
+
+        if (view.CanAttachAgent)
+        {
+            panel.Children.Add(AgentToggle(tab, view));
+        }
+
         tab.Header = panel;
+    }
+
+    /// <summary>
+    /// The bot on the tab: dim when no agent is attached, lit (and outlined) when one is and can
+    /// type into the session. Clicking it attaches or detaches the agent for this tab only.
+    /// </summary>
+    private static Button AgentToggle(TabItem tab, TerminalView view)
+    {
+        var on = view.IsAgentAttached;
+        var colour = on ? Color.FromRgb(0x56, 0xB6, 0xC2) : Color.FromRgb(0x6B, 0x75, 0x8A);
+
+        var button = new Button
+        {
+            Content = SessionPresentation.BotIcon(14, new SolidColorBrush(colour)),
+            Padding = new Thickness(3, 1, 3, 1),
+            Margin = new Thickness(8, 0, 0, 0),
+            MinWidth = 0,
+            MinHeight = 0,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = on ? new SolidColorBrush(Color.FromArgb(0x33, 0x56, 0xB6, 0xC2)) : Brushes.Transparent,
+            BorderBrush = on ? new SolidColorBrush(colour) : Brushes.Transparent,
+            BorderThickness = new Thickness(1),
+            Focusable = false,   // a click here must not steal the keyboard from the terminal
+            ToolTip = on
+                ? "An agent is attached and can type into this session. Click to detach it."
+                : "Attach an agent to this session (Ctrl+Shift+A)"
+        };
+
+        button.Click += (_, e) =>
+        {
+            e.Handled = true;
+            if (tab.Parent is TabControl tabs)
+            {
+                tabs.SelectedItem = tab;
+            }
+
+            ToggleAgent(view);
+        };
+
+        return button;
     }
 
     // ---------- terminal commands ----------
@@ -538,12 +969,64 @@ public partial class MainWindow : Window
 
     private void OnClear(object sender, RoutedEventArgs e) => ActiveView?.ClearScreen();
 
-    private async void OnDisconnectTab(object sender, RoutedEventArgs e)
+    private void OnToggleAgent(object sender, RoutedEventArgs e)
     {
-        if (ActiveView is not null)
+        if (ActiveView is { } view)
         {
-            await ActiveView.DisconnectAsync();
+            ToggleAgent(view);
         }
+    }
+
+    /// <summary>Sharing is per tab: the agent docks into this one and can touch nothing else.</summary>
+    private static void ToggleAgent(TerminalView view)
+    {
+        if (view.IsAgentAttached)
+        {
+            view.DetachAgent();
+        }
+        else
+        {
+            view.AttachAgent();
+        }
+    }
+
+    private void OnAgentSettings(object sender, RoutedEventArgs e) =>
+        new AgentSettingsWindow(_vault) { Owner = this }.ShowDialog();
+
+    /// <summary>One button: Disconnect a live tab (it stays open with its scrollback), or
+    /// Reconnect a dead one in place.</summary>
+    private async void OnToggleConnection(object sender, RoutedEventArgs e)
+    {
+        if (ActiveView is not { } view)
+        {
+            return;
+        }
+
+        if (view.IsConnected)
+        {
+            await view.DisconnectAsync();
+        }
+        else
+        {
+            await view.ReconnectAsync();
+            view.FocusTerminal();
+        }
+
+        UpdateConnectionToggle();
+    }
+
+    private void UpdateConnectionToggle()
+    {
+        var view = ActiveView;
+        var reconnect = view is not null && !view.IsConnected;
+
+        ConnToggle.Content = reconnect ? "Reconnect" : "Disconnect";
+        ConnToggle.ToolTip = reconnect
+            ? "Connect the active tab again, keeping its scrollback (or press Enter in it)"
+            : "Disconnect the active tab, leaving it open";
+        // Left enabled with no tab open: the toolbar's disabled look is a pale slab on this
+        // theme, and the click simply does nothing.
+        ConnToggleMenu.Header = reconnect ? "_Reconnect tab" : "_Disconnect tab";
     }
 
     private async void OnCloseTab(object sender, RoutedEventArgs e)
@@ -555,6 +1038,7 @@ public partial class MainWindow : Window
 
         if (tab.Content is TerminalView view)
         {
+            view.DetachAgent();
             await view.DisconnectAsync();
 
             // A quick-connect session was never saved, so its stored password has nothing to
@@ -566,6 +1050,12 @@ public partial class MainWindow : Window
         }
 
         Tabs.Items.Remove(tab);
+
+        if (LiveFor(tab) is { } live)
+        {
+            _live.Remove(live);
+            RebuildTree();
+        }
     }
 
     // ---------- quick connect ----------
@@ -668,6 +1158,126 @@ public partial class MainWindow : Window
         {
             item.IsSelected = true;
         }
+        else if (SessionTree.SelectedItem is TreeViewItem selected)
+        {
+            selected.IsSelected = false;   // empty space: the menu is about the list, not the last row
+        }
+
+        SessionTree.ContextMenu = BuildTreeMenu((source as TreeViewItem)?.Tag);
+    }
+
+    /// <summary>
+    /// What the right-click offers depends on what was clicked: a session gets session actions,
+    /// a folder folder actions, a host its protocols, an open connection its tab, and empty space
+    /// the ways to add something. Nothing offers an action on a thing that was not clicked.
+    /// </summary>
+    private ContextMenu BuildTreeMenu(object? tag)
+    {
+        var menu = new ContextMenu
+        {
+            Background = new SolidColorBrush(Color.FromRgb(0x1C, 0x22, 0x30)),
+            Foreground = new SolidColorBrush(Color.FromRgb(0xDF, 0xE4, 0xEE))
+        };
+
+        MenuItem Item(string header, Action act)
+        {
+            var item = new MenuItem { Header = header };
+            item.Click += (_, _) => act();
+            return item;
+        }
+
+        MenuItem AddProtocolMenu()
+        {
+            var add = new MenuItem { Header = "_Add protocol for this host" };
+            foreach (var (label, protocol) in new[] { ("SSH...", "Ssh"), ("VNC...", "Vnc"), ("Telnet...", "Telnet") })
+            {
+                var item = new MenuItem { Header = label, Tag = protocol };
+                item.Click += OnAddProtocol;
+                add.Items.Add(item);
+            }
+
+            return add;
+        }
+
+        var none = new RoutedEventArgs();
+
+        switch (tag)
+        {
+            case SessionDefinition session:
+                menu.Items.Add(Item("_Connect", () => Connect(session)));
+                menu.Items.Add(new Separator());
+                menu.Items.Add(Item("_Properties...", () => OnEdit(this, none)));
+                menu.Items.Add(Item("_Move to folder...", () => OnMoveToFolder(this, none)));
+                if (SessionPresentation.HostKey(session) is not null)
+                {
+                    menu.Items.Add(AddProtocolMenu());
+                }
+
+                menu.Items.Add(new Separator());
+                menu.Items.Add(Item("_Delete shortcut", () => OnDelete(this, none)));
+                break;
+
+            case HostNode host:
+                var connect = new MenuItem { Header = "_Connect" };
+                foreach (var session in host.Sessions.OrderBy(s => s.Protocol).ThenBy(s => s.Port))
+                {
+                    var (badge, _) = SessionPresentation.Badge(session);
+                    var target = session;
+                    connect.Items.Add(Item($"{badge}  {SessionPresentation.Target(session, hostShown: true)}",
+                        () => Connect(target)));
+                }
+
+                menu.Items.Add(connect);
+                menu.Items.Add(AddProtocolMenu());
+                break;
+
+            case FolderNode folder:
+                menu.Items.Add(Item("New _shortcut here...", () => NewSessionIn(folder.Path)));
+                menu.Items.Add(Item("New _folder inside...", () => OnNewFolder(this, none)));
+                menu.Items.Add(new Separator());
+                menu.Items.Add(Item("_Rename folder...", () => OnRenameFolder(this, none)));
+                menu.Items.Add(Item("_Delete folder...", () => OnDeleteFolder(this, none)));
+                break;
+
+            case LiveTab live:
+                menu.Items.Add(Item("_Show tab", () => Tabs.SelectedItem = live.Tab));
+                if (live.View.CanAttachAgent)
+                {
+                    menu.Items.Add(Item(live.View.IsAgentAttached ? "Detach _agent" : "Attach _agent...", () =>
+                    {
+                        Tabs.SelectedItem = live.Tab;
+                        ToggleAgent(live.View);
+                    }));
+                }
+
+                menu.Items.Add(Item(live.View.IsConnected ? "_Disconnect" : "_Reconnect", async () =>
+                {
+                    Tabs.SelectedItem = live.Tab;
+                    if (live.View.IsConnected)
+                    {
+                        await live.View.DisconnectAsync();
+                    }
+                    else
+                    {
+                        await live.View.ReconnectAsync();
+                    }
+
+                    UpdateConnectionToggle();
+                }));
+                menu.Items.Add(Item("Close _tab", () =>
+                {
+                    Tabs.SelectedItem = live.Tab;
+                    OnCloseTab(this, none);
+                }));
+                break;
+
+            default:
+                menu.Items.Add(Item("New _shortcut...", () => OnNewSession(this, none)));
+                menu.Items.Add(Item("New _folder...", () => OnNewFolder(this, none)));
+                break;
+        }
+
+        return menu;
     }
 
     private void OnQuickAddressKey(object sender, KeyEventArgs e)
@@ -847,37 +1457,83 @@ public partial class MainWindow : Window
 
     // ---------- quick shells ----------
 
-    /// <summary>A throwaway local shell tab. Nothing is written to the session store.</summary>
-    private void OnQuickLocalShell(object sender, RoutedEventArgs e) =>
-        Connect(new SessionDefinition
-        {
-            Name = "Local shell",
-            Protocol = SessionProtocol.LocalShell,
-            ShellCommand = "powershell.exe"
-        });
+    /// <summary>
+    /// The shells the Local and Admin buttons offer. A fixed list on purpose: the elevated path
+    /// passes the key on our own command line, and accepting an arbitrary executable there would
+    /// turn our UAC prompt into a way for any caller to elevate anything.
+    /// </summary>
+    private static readonly (string Key, string Label, string Command)[] Shells =
+    [
+        ("powershell", "Windows PowerShell", "powershell.exe"),
+        ("cmd",        "Command Prompt",     "cmd.exe"),
+        ("pwsh",       "PowerShell 7",       "pwsh.exe")
+    ];
 
     /// <summary>
-    /// An elevated shell. A medium-integrity process cannot attach a pseudoconsole to a
-    /// high-integrity child, so when we are not already elevated the only honest option is to
-    /// relaunch Quarterdeck itself through UAC and open the shell on the other side.
+    /// A throwaway local shell tab, as you or as administrator; nothing is written to the session
+    /// store. The list drops under the button. PowerShell 7 only appears when it is actually
+    /// installed, since it ships with nothing and is a separate download.
     /// </summary>
-    private void OnAdminShell(object sender, RoutedEventArgs e)
+    private void OnShellMenu(object sender, RoutedEventArgs e)
     {
-        if (IsElevated)
+        if (sender is not FrameworkElement anchor)
+        {
+            return;
+        }
+
+        var menu = new ContextMenu { PlacementTarget = anchor, Placement = PlacementMode.Bottom };
+        var present = Shells.Where(s => IsShellPresent(s.Command)).ToList();
+
+        foreach (var elevated in new[] { false, true })
+        {
+            if (elevated)
+            {
+                menu.Items.Add(new Separator());
+            }
+
+            foreach (var (key, label, _) in present)
+            {
+                var item = new MenuItem { Header = elevated ? $"{label} (administrator)" : label };
+                var chosen = key;
+                var admin = elevated;
+                item.Click += (_, _) => LaunchShell(chosen, admin);
+                menu.Items.Add(item);
+            }
+        }
+
+        menu.IsOpen = true;
+    }
+
+    /// <summary>
+    /// Opens one of <see cref="Shells"/>, elevated or not. A medium-integrity process cannot
+    /// attach a pseudoconsole to a high-integrity child, so when elevation is asked for and we do
+    /// not have it, the only honest option is to relaunch through UAC and open the shell there.
+    /// </summary>
+    private void LaunchShell(string key, bool elevated)
+    {
+        var shell = Shells.FirstOrDefault(s => s.Key == key);
+        if (shell.Command is null)
+        {
+            return;
+        }
+
+        if (!elevated || IsElevated)
         {
             Connect(new SessionDefinition
             {
-                Name = "Administrator: shell",
+                Name = elevated ? $"Administrator: {shell.Label}" : shell.Label,
                 Protocol = SessionProtocol.LocalShell,
-                ShellCommand = "powershell.exe"
+                ShellCommand = shell.Command,
+                TabColor = elevated ? "#e06c75" : ""
             });
             return;
         }
 
         var answer = MessageBox.Show(
             this,
-            "An elevated shell cannot run inside this window because Quarterdeck is not elevated.\n\n" +
-            "Relaunch Quarterdeck as administrator and open the shell there?\n" +
+            $"An elevated {shell.Label} cannot run inside this window, because BaudHoundTerm is " +
+            "not itself elevated.\n\n" +
+            "Relaunch BaudHoundTerm as administrator and open the shell there?\n" +
             "Open sessions in this window stay open.",
             "BaudHoundTerm", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
@@ -890,8 +1546,8 @@ public partial class MainWindow : Window
         {
             Process.Start(new ProcessStartInfo
             {
-                FileName = Environment.ProcessPath ?? "Quarterdeck.exe",
-                Arguments = AdminShellSwitch,
+                FileName = Environment.ProcessPath ?? "BaudHoundTerm.exe",
+                Arguments = $"{AdminShellSwitch} {shell.Key}",
                 UseShellExecute = true,
                 Verb = "runas"           // triggers the UAC prompt
             });
@@ -902,17 +1558,54 @@ public partial class MainWindow : Window
         }
     }
 
+    private static bool IsShellPresent(string command)
+    {
+        if (Path.IsPathRooted(command))
+        {
+            return File.Exists(command);
+        }
+
+        // cmd and powershell.exe live in System32, which is always on PATH; pwsh.exe may not be
+        // installed at all.
+        return (Environment.GetEnvironmentVariable("PATH") ?? "")
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Any(dir =>
+            {
+                try
+                {
+                    return File.Exists(Path.Combine(dir.Trim(), command));
+                }
+                catch (ArgumentException)
+                {
+                    return false;   // a malformed PATH entry is not a reason to fail the menu
+                }
+            });
+    }
+
+    /// <summary>
+    /// Reads the shell key that the elevated relaunch was asked for. Unrecognised values fall back
+    /// to PowerShell rather than being run, which is what keeps the switch from naming anything.
+    /// </summary>
+    private static string AdminShellFromCommandLine(string[] args)
+    {
+        var at = Array.FindIndex(args, a =>
+            string.Equals(a, AdminShellSwitch, StringComparison.OrdinalIgnoreCase));
+
+        if (at >= 0 && at + 1 < args.Length)
+        {
+            var asked = args[at + 1];
+            if (Shells.Any(s => string.Equals(s.Key, asked, StringComparison.OrdinalIgnoreCase)))
+            {
+                return asked.ToLowerInvariant();
+            }
+        }
+
+        return "powershell";
+    }
+
     internal const string AdminShellSwitch = "--admin-shell";
 
-    private static bool IsElevated
-    {
-        get
-        {
-            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
-            return new System.Security.Principal.WindowsPrincipal(identity)
-                .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
-        }
-    }
+    private static bool IsElevated => Elevation.IsCurrentProcessElevated;
 
     private void OnTransfer(object sender, RoutedEventArgs e)
     {

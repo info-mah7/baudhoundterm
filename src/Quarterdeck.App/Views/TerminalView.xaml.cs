@@ -2,7 +2,9 @@ using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
+using Quarterdeck.Core.Agent;
 using Quarterdeck.Core.Model;
 using Quarterdeck.Core.Security;
 using Quarterdeck.Core.Terminal;
@@ -14,7 +16,7 @@ namespace Quarterdeck.App.Views;
 /// One terminal tab: an xterm.js surface in WebView2 wired to a <see cref="SessionController"/>.
 /// Bytes never round-trip through the UI thread's message loop in bulk; only JSON envelopes do.
 /// </summary>
-public partial class TerminalView : UserControl
+public partial class TerminalView : UserControl, ITerminalTarget
 {
     private readonly CredentialVault _vault;
     private SessionController? _controller;
@@ -40,11 +42,28 @@ public partial class TerminalView : UserControl
 
     public event EventHandler<SessionStateEventArgs>? StateChanged;
 
+    private SessionState _state = SessionState.Connecting;
+
+    /// <summary>Whether the tab holds a live (or coming-up) connection: what decides if the
+    /// toolbar offers Disconnect or Reconnect, and whether Enter types or reconnects.</summary>
+    public bool IsConnected => _state is SessionState.Connected or SessionState.Connecting or SessionState.Reconnecting;
+
+    private void RaiseState(SessionState state, string? message)
+    {
+        _state = state;
+        StateChanged?.Invoke(this, new SessionStateEventArgs(state, message));
+    }
+
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         Loaded -= OnLoaded;
 
-        var userData = Path.Combine(AppPaths.DataDirectory, "webview");
+        // A WebView2 user data folder belongs to one browser process family. An elevated copy of
+        // BaudHoundTerm cannot attach to the one a medium-integrity copy already started, and the
+        // failure surfaces as ERROR_INVALID_STATE (0x8007139F), so the two get separate folders.
+        var userData = Path.Combine(
+            AppPaths.DataDirectory,
+            Elevation.IsCurrentProcessElevated ? "webview-elevated" : "webview");
         Directory.CreateDirectory(userData);
 
         // WebView2 is Chromium and will talk to Microsoft on its own account unless told not
@@ -73,12 +92,23 @@ public partial class TerminalView : UserControl
             EnableTrackingPrevention = true
         };
 
-        var env = await CoreWebView2Environment.CreateAsync(
-            browserExecutableFolder: null,
-            userDataFolder: userData,
-            options: options);
+        // This runs from an async void handler, so anything thrown here reaches the dispatcher and
+        // takes the whole window down with every open session in it. A terminal that cannot start
+        // is one dead tab, not a dead app.
+        try
+        {
+            var env = await CoreWebView2Environment.CreateAsync(
+                browserExecutableFolder: null,
+                userDataFolder: userData,
+                options: options);
 
-        await Web.EnsureCoreWebView2Async(env);
+            await Web.EnsureCoreWebView2Async(env);
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"The terminal surface could not start: {ex.Message} ({userData})");
+            return;
+        }
 
         var core = Web.CoreWebView2;
         var assets = ResolveAssetsDirectory();
@@ -151,6 +181,29 @@ public partial class TerminalView : UserControl
         }) });
     }
 
+    /// <summary>
+    /// Puts the keyboard on the terminal. The page focuses xterm.js when it opens, but that only
+    /// decides where keys go once the WebView itself has focus; without this the toolbar button
+    /// that opened the tab keeps it, the first thing typed goes nowhere, and Space or Enter
+    /// presses that button again. The page is then told to focus xterm (or the VNC canvas) itself,
+    /// because its own term.focus() ran before the WebView had the keyboard. A tab that is not
+    /// showing does not take focus: a slow session opening behind the active one must not steal it.
+    /// </summary>
+    public void FocusTerminal() => Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+    {
+        // Before the WebView exists, Focus() only marks the control focused in WPF; the browser
+        // window never gets the keyboard, and the real call on "ready" is then a no-op because
+        // WPF thinks focus is already there. That is what lost the first keys after a
+        // double-click in the session list.
+        if (!IsVisible || Web.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        Web.Focus();
+        Post(new { t = "focus" });
+    });
+
     private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
         using var doc = JsonDocument.Parse(e.TryGetWebMessageAsString());
@@ -165,6 +218,9 @@ public partial class TerminalView : UserControl
                 {
                     Write(_pending.Dequeue());
                 }
+
+                // The page exists now, so a focus request has something to land on.
+                FocusTerminal();
 
                 if (Definition.Protocol == SessionProtocol.Vnc)
                 {
@@ -221,6 +277,12 @@ public partial class TerminalView : UserControl
                     "failed" => $"Rejected: {(root.TryGetProperty("reason", out var r) ? r.GetString() : "")}",
                     _ => "Disconnected."
                 });
+                RaiseState(state switch
+                {
+                    "connected" => SessionState.Connected,
+                    "disconnected" => SessionState.Disconnected,
+                    _ => SessionState.Failed
+                }, null);
                 break;
         }
     }
@@ -290,10 +352,12 @@ public partial class TerminalView : UserControl
             });
 
             SetStatus($"Connecting to {Definition.Host}:{Definition.Port}...");
+            RaiseState(SessionState.Connecting, null);
         }
         catch (Exception ex)
         {
             SetStatus($"VNC bridge failed: {ex.Message}");
+            RaiseState(SessionState.Failed, ex.Message);
         }
     }
 
@@ -406,6 +470,16 @@ public partial class TerminalView : UserControl
     /// </summary>
     private async void SendInput(string text)
     {
+        if (!IsConnected)
+        {
+            if (text.Contains('\r'))
+            {
+                await ReconnectAsync();
+            }
+
+            return;
+        }
+
         if (_controller is null)
         {
             return;
@@ -448,15 +522,27 @@ public partial class TerminalView : UserControl
             return;
         }
 
-        _controller = new SessionController(Definition, _vault, PromptForSecret);
-        _controller.DataReceived += (_, e) => Dispatcher.BeginInvoke(() => Write(e.Text));
-        _controller.StateChanged += (_, e) => Dispatcher.BeginInvoke(() =>
+        var controller = new SessionController(Definition, _vault, PromptForSecret);
+        _controller = controller;
+        controller.DataReceived += (_, e) =>
         {
+            Transcript.Append(e.Text);   // the agent's view of the screen, kept off the UI thread
+            Dispatcher.BeginInvoke(() => Write(e.Text));
+        };
+        controller.StateChanged += (_, e) => Dispatcher.BeginInvoke(() =>
+        {
+            // A disposed controller still reports its "Disconnected" a beat later; after a
+            // Reconnect that would mark the new, live connection dead.
+            if (!ReferenceEquals(controller, _controller))
+            {
+                return;
+            }
+
             StatusText.Text = e.Message ?? e.State.ToString();
-            StateChanged?.Invoke(this, e);
+            RaiseState(e.State, e.Message);
         });
 
-        await _controller.ConnectAsync();
+        await controller.ConnectAsync();
     }
 
     private string? PromptForSecret(string prompt)
@@ -501,6 +587,8 @@ public partial class TerminalView : UserControl
 
     public async Task DisconnectAsync()
     {
+        var was = IsConnected;
+
         if (_bridge is not null)
         {
             Post(new { t = "disconnect" });
@@ -513,5 +601,98 @@ public partial class TerminalView : UserControl
             await _controller.DisposeAsync();
             _controller = null;
         }
+
+        RaiseState(SessionState.Disconnected, "Disconnected.");
+
+        if (was && Definition.Protocol != SessionProtocol.Vnc)
+        {
+            Write("\r\n[baudhoundterm] Disconnected. Press Enter or Reconnect to connect again.\r\n");
+        }
+    }
+
+    // ---------- agent ----------
+
+    /// <summary>Plain text of everything this tab has printed, for an attached agent.</summary>
+    public TerminalTranscript Transcript { get; } = new();
+
+    public string SessionName => Definition.Name;
+
+    public string Describe =>
+        $"{Definition.Name} ({SessionPresentation.Badge(Definition).Text} {SessionPresentation.Target(Definition)})";
+
+    /// <summary>Typed input from the agent, delivered exactly as keystrokes from the page are.</summary>
+    public Task SendAsync(string text) =>
+        Dispatcher.InvokeAsync(() => _controller?.WriteAsync(text) ?? Task.CompletedTask).Task.Unwrap();
+
+    private AgentPanel? _agent;
+
+    public bool IsAgentAttached => _agent is not null;
+
+    public event EventHandler? AgentAttachedChanged;
+
+    /// <summary>VNC is a picture, not text: there is nothing for a terminal agent to read.</summary>
+    public bool CanAttachAgent => Definition.Protocol != SessionProtocol.Vnc;
+
+    public void AttachAgent()
+    {
+        if (_agent is not null || !CanAttachAgent)
+        {
+            _agent?.FocusGoal();
+            return;
+        }
+
+        _agent = new AgentPanel(this, Definition.Protocol, _vault);
+        _agent.CloseRequested += (_, _) => DetachAgent();
+        AgentHost.Child = _agent;
+        AgentHost.Visibility = Visibility.Visible;
+        AgentAttachedChanged?.Invoke(this, EventArgs.Empty);
+        _agent.FocusGoal();
+    }
+
+    public void DetachAgent()
+    {
+        if (_agent is null)
+        {
+            return;
+        }
+
+        _agent.Cancel();
+        AgentHost.Child = null;
+        AgentHost.Visibility = Visibility.Collapsed;
+        _agent = null;
+        AgentAttachedChanged?.Invoke(this, EventArgs.Empty);
+        FocusTerminal();
+    }
+
+    /// <summary>The same tab, connected again: scrollback stays, the session starts over.</summary>
+    public async Task ReconnectAsync()
+    {
+        if (IsConnected)
+        {
+            return;
+        }
+
+        // A session that failed on its own still holds a controller (or bridge); clear it first.
+        if (_controller is not null)
+        {
+            await _controller.DisposeAsync();
+            _controller = null;
+        }
+
+        if (_bridge is not null)
+        {
+            await _bridge.DisposeAsync();
+            _bridge = null;
+        }
+
+        RaiseState(SessionState.Connecting, null);
+
+        if (Definition.Protocol == SessionProtocol.Vnc)
+        {
+            StartVnc();
+            return;
+        }
+
+        await ConnectAsync();
     }
 }

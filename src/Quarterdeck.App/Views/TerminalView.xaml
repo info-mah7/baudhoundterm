@@ -8,7 +8,15 @@
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
-    <wv2:WebView2 x:Name="Web" Grid.Row="0" DefaultBackgroundColor="#10141C"/>
+    <Grid Grid.Row="0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+      </Grid.ColumnDefinitions>
+      <wv2:WebView2 x:Name="Web" Grid.Column="0" DefaultBackgroundColor="#10141C"/>
+      <!-- The agent panel docks here when one is attached to this tab. -->
+      <Border x:Name="AgentHost" Grid.Column="1" BorderBrush="#2A3245" BorderThickness="1,0,0,0" Visibility="Collapsed"/>
+    </Grid>
 
     <Border Grid.Row="1" Background="#171C27" Padding="8,3">
       <TextBlock x:Name="StatusText" Foreground="#8B94A7" FontSize="11" Text="Disconnected."/>
