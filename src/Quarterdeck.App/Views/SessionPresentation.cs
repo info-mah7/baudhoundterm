@@ -17,6 +17,7 @@ internal static class SessionPresentation
     {
         SessionProtocol.Ssh => ("SSH", Color.FromRgb(0x61, 0xAF, 0xEF)),
         SessionProtocol.Vnc => ("VNC", Color.FromRgb(0xC6, 0x78, 0xDD)),
+        SessionProtocol.Rtsp => ("CAM", Color.FromRgb(0xE0, 0x6C, 0x75)),
         SessionProtocol.Telnet => ("TEL", Color.FromRgb(0xE5, 0xC0, 0x7B)),
         SessionProtocol.Serial => ("COM", Color.FromRgb(0x98, 0xC3, 0x79)),
         _ => (ShellBadge(s.ShellCommand), Color.FromRgb(0x56, 0xB6, 0xC2))
@@ -47,6 +48,7 @@ internal static class SessionPresentation
                 (string.IsNullOrEmpty(s.Username) ? "" : s.Username + "@") + host + PortSuffix(s.Port, 22, hostShown),
             SessionProtocol.Telnet => host + PortSuffix(s.Port, 23, hostShown),
             SessionProtocol.Vnc => host + PortSuffix(s.Port, 5900, hostShown) + (s.ViewOnly ? "  · view only" : ""),
+            SessionProtocol.Rtsp => host + PortSuffix(s.Port, 554, hostShown) + (s.RtspPath.Length > 0 ? s.RtspPath : "  · ONVIF"),
             SessionProtocol.Serial => $"{s.SerialPort} · {s.BaudRate} {Framing(s)}",
             _ => s.ShellCommand
         };
@@ -69,7 +71,7 @@ internal static class SessionPresentation
     /// port or a local shell never groups.
     /// </summary>
     public static string? HostKey(SessionDefinition s) =>
-        s.Protocol is SessionProtocol.Ssh or SessionProtocol.Telnet or SessionProtocol.Vnc
+        s.Protocol is SessionProtocol.Ssh or SessionProtocol.Telnet or SessionProtocol.Vnc or SessionProtocol.Rtsp
         && !string.IsNullOrWhiteSpace(s.Host)
             ? s.Host.Trim().ToLowerInvariant()
             : null;
@@ -79,6 +81,7 @@ internal static class SessionPresentation
     {
         "ssh" => SessionProtocol.Ssh,
         "vnc" => SessionProtocol.Vnc,
+        "rtsp" or "cam" or "camera" => SessionProtocol.Rtsp,
         "telnet" or "tel" => SessionProtocol.Telnet,
         "serial" or "com" => SessionProtocol.Serial,
         "local" or "shell" or "ps" or "cmd" => SessionProtocol.LocalShell,

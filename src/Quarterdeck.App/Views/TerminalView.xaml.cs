@@ -54,9 +54,26 @@ public partial class TerminalView : UserControl, ITerminalTarget
         StateChanged?.Invoke(this, new SessionStateEventArgs(state, message));
     }
 
+    private CameraView? _camera;
+    private readonly TaskCompletionSource _cameraReady = new();
+
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         Loaded -= OnLoaded;
+
+        if (Definition.Protocol == SessionProtocol.Rtsp)
+        {
+            // A camera is video, not a page: LibVLC draws it, and the web surface is never made.
+            Web.Visibility = Visibility.Collapsed;
+            _camera = new CameraView(Definition, _vault, (state, message) =>
+            {
+                StatusText.Text = message ?? state.ToString();
+                RaiseState(state, message);
+            });
+            ((Grid)Web.Parent).Children.Add(_camera);
+            _cameraReady.TrySetResult();
+            return;
+        }
 
         // A WebView2 user data folder belongs to one browser process family. An elevated copy of
         // BaudHoundTerm cannot attach to the one a medium-integrity copy already started, and the
@@ -521,6 +538,13 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
     public async Task ConnectAsync()
     {
+        if (Definition.Protocol == SessionProtocol.Rtsp)
+        {
+            await _cameraReady.Task;
+            await _camera!.PlayAsync();
+            return;
+        }
+
         // A VNC session is driven entirely by the page: the bridge starts once the document
         // is loaded, so there is no controller and no pty to build here.
         if (Definition.Protocol == SessionProtocol.Vnc)
@@ -602,6 +626,14 @@ public partial class TerminalView : UserControl, ITerminalTarget
     {
         var was = IsConnected;
 
+        if (_camera is not null)
+        {
+            await _camera.StopAsync();
+            RaiseState(SessionState.Disconnected, "Stopped.");
+            StatusText.Text = "Stopped. Reconnect to play again.";
+            return;
+        }
+
         if (_bridge is not null)
         {
             Post(new { t = "disconnect" });
@@ -636,7 +668,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         RaiseState(SessionState.Disconnected, "Restored from last time.");
         StatusText.Text = "Restored from last time. Press Enter or Reconnect to connect.";
 
-        if (Definition.Protocol != SessionProtocol.Vnc)
+        if (Definition.Protocol is not (SessionProtocol.Vnc or SessionProtocol.Rtsp))
         {
             Write("[baudhoundterm] Restored from last time. Press Enter or Reconnect to connect.\r\n");
         }
@@ -840,7 +872,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
     public event EventHandler? AgentAttachedChanged;
 
     /// <summary>VNC is a picture, not text: there is nothing for a terminal agent to read.</summary>
-    public bool CanAttachAgent => Definition.Protocol != SessionProtocol.Vnc;
+    public bool CanAttachAgent => Definition.Protocol is not (SessionProtocol.Vnc or SessionProtocol.Rtsp);
 
     public void AttachAgent()
     {
@@ -895,6 +927,12 @@ public partial class TerminalView : UserControl, ITerminalTarget
         }
 
         RaiseState(SessionState.Connecting, null);
+
+        if (Definition.Protocol == SessionProtocol.Rtsp)
+        {
+            await ConnectAsync();
+            return;
+        }
 
         if (Definition.Protocol == SessionProtocol.Vnc)
         {

@@ -12,7 +12,10 @@ public enum SessionProtocol
     Telnet,
 
     /// <summary>A VNC desktop, drawn by noVNC through a loopback bridge.</summary>
-    Vnc
+    Vnc,
+
+    /// <summary>An IP camera's RTSP stream, played by LibVLC; ONVIF for PTZ and stream lookup.</summary>
+    Rtsp
 }
 
 public enum SshAuthMethod
@@ -58,6 +61,19 @@ public sealed class SessionDefinition
 
     /// <summary>VNC only: watch without sending input.</summary>
     public bool ViewOnly { get; set; }
+
+    // RTSP camera: Host, Port (554) and Username are shared fields; the password is in the vault.
+    /// <summary>Stream path after host:port, e.g. /Streaming/Channels/101. Blank asks the camera over ONVIF.</summary>
+    public string RtspPath { get; set; } = "";
+
+    /// <summary>RTP over the RTSP TCP connection: survives firewalls and NAT, costs a little latency.</summary>
+    public bool RtspTcp { get; set; } = true;
+
+    /// <summary>A 200 ms network buffer instead of 1 s: closer to live, less tolerant of a bad link.</summary>
+    public bool LowLatency { get; set; } = true;
+
+    /// <summary>The camera's ONVIF HTTP port, for PTZ and stream lookup.</summary>
+    public int OnvifPort { get; set; } = 80;
 
     /// <summary>Tab stripe colour as CSS hex, e.g. "#e06c75". Empty means no colour.</summary>
     public string TabColor { get; set; } = "";

@@ -39,6 +39,7 @@
               <ComboBoxItem Content="Local shell"/>
               <ComboBoxItem Content="Telnet"/>
               <ComboBoxItem Content="VNC"/>
+              <ComboBoxItem Content="RTSP camera"/>
             </ComboBox>
 
             <StackPanel x:Name="SshPanel">
@@ -111,6 +112,25 @@
               <CheckBox x:Name="VncViewOnlyBox" Content="View only, send no input"/>
               <TextBlock Text="Classic VNC auth is weak by design. Fine on a trusted network, not across one."
                          Foreground="#5C6370" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <StackPanel x:Name="RtspPanel" Visibility="Collapsed">
+              <TextBlock Text="Camera host"/>
+              <TextBox x:Name="RtspHostBox"/>
+              <TextBlock Text="RTSP port"/>
+              <TextBox x:Name="RtspPortBox"/>
+              <TextBlock Text="Stream path (blank: ask the camera over ONVIF)"/>
+              <TextBox x:Name="RtspPathBox"/>
+              <TextBlock Text="Hikvision /Streaming/Channels/101, Dahua /cam/realmonitor?channel=1&amp;subtype=0, Tapo /stream1, Reolink /h264Preview_01_main"
+                         Foreground="#5C6370" FontSize="11" TextWrapping="Wrap"/>
+              <TextBlock Text="Username"/>
+              <TextBox x:Name="RtspUserBox"/>
+              <TextBlock Text="Password (stored with DPAPI, blank keeps the existing one)"/>
+              <PasswordBox x:Name="RtspSecretBox" Padding="3"/>
+              <CheckBox x:Name="RtspTcpBox" Content="RTP over TCP (works through firewalls; UDP is lighter)"/>
+              <CheckBox x:Name="RtspLowLatencyBox" Content="Low latency (200 ms buffer instead of 1 s)"/>
+              <TextBlock Text="ONVIF port (for pan/tilt/zoom and stream lookup)"/>
+              <TextBox x:Name="RtspOnvifPortBox"/>
             </StackPanel>
 
             <StackPanel x:Name="ShellPanel" Visibility="Collapsed">

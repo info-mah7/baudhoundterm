@@ -21,5 +21,13 @@ Third-party components resolved at build time rather than vendored:
   SSH.NET 2026.0.0 - MIT License - https://github.com/sshnet/SSH.NET
   Microsoft.Web.WebView2 - BSD-style Microsoft license
   System.IO.Ports, System.Security.Cryptography.ProtectedData - MIT License, Microsoft
+  LibVLCSharp / LibVLCSharp.WPF 3.10.1 - LGPL-2.1-or-later - https://code.videolan.org/videolan/LibVLCSharp
+
+Shipped beside the executable (libvlc\win-x64), unmodified, as separate DLLs:
+
+  LibVLC 3.0.24 (VideoLAN.LibVLC.Windows), Copyright (C) the VideoLAN team and VLC authors.
+  GNU Lesser General Public License 2.1 or later. Source: https://code.videolan.org/videolan/vlc
+  Only a subset of the plugins is included (RTSP, decoders, video and audio output). Under the
+  LGPL you may replace these DLLs with your own build of the same LibVLC version.
 
 This is AI-assisted work.
