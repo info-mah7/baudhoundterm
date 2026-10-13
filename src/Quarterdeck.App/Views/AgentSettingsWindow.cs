@@ -28,6 +28,18 @@ internal sealed class AgentSettingsWindow : Window
     private readonly TextBox _steps = new();
     private readonly TextBox _extra = new() { AcceptsReturn = true, Height = 54, TextWrapping = TextWrapping.Wrap };
     private readonly CheckBox _default = new() { Content = "Use by default for new agents" };
+    private readonly ComboBox _approval = new();
+    private readonly TextBox _risky = new()
+    {
+        AcceptsReturn = true, Height = 90, TextWrapping = TextWrapping.NoWrap,
+        VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+        FontFamily = new FontFamily("Cascadia Mono, Consolas"), FontSize = 11
+    };
+    private readonly CheckBox _noLocal = new()
+    {
+        Content = "Never on local shells",
+        ToolTip = "Local shells run as you, and you can decrypt the credential vault: a model misled by remote output could read stored secrets."
+    };
     private readonly TextBlock _note = new() { Foreground = new SolidColorBrush(Color.FromRgb(0x8B, 0x94, 0xA7)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
 
     private AgentEndpoint? _editing;
@@ -37,7 +49,7 @@ internal sealed class AgentSettingsWindow : Window
         _vault = vault;
         Title = "Agent endpoints";
         Width = 640;
-        Height = 520;
+        Height = 700;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = new SolidColorBrush(Color.FromRgb(0x14, 0x19, 0x22));
 
@@ -74,6 +86,12 @@ internal sealed class AgentSettingsWindow : Window
         var nums = new UniformGrid2(_temperature, _steps);
         Field(form, "Temperature  /  Max steps per goal", nums);
         Field(form, "Extra request JSON (optional)", _extra);
+        _approval.Items.Add("Run freely: never ask");
+        _approval.Items.Add("Ask before risky commands (patterns below)");
+        _approval.Items.Add("Ask before every command");
+        Field(form, "Approval", _approval);
+        Field(form, "Risky commands: one regex per line, case-insensitive", _risky);
+        form.Children.Add(_noLocal);
         form.Children.Add(_default);
         form.Children.Add(Btn("Save", Save));
         form.Children.Add(_note);
@@ -123,6 +141,9 @@ internal sealed class AgentSettingsWindow : Window
         _steps.Text = (ep?.MaxSteps ?? 30).ToString(CultureInfo.InvariantCulture);
         _extra.Text = ep?.ExtraJson ?? "";
         _default.IsChecked = ep is not null && _config.DefaultEndpoint == ep.Id;
+        _approval.SelectedIndex = (int)(ep?.Approval ?? AgentApproval.Risky);
+        _risky.Text = ep?.RiskyPatterns ?? AgentEndpoint.DefaultRiskyPatterns;
+        _noLocal.IsChecked = ep?.NeverOnLocalShells ?? false;
         _key.ToolTip = ep is not null && _vault.Get(ep.Id, "apikey") is not null ? "A key is saved" : "No key saved";
     }
 
@@ -176,6 +197,9 @@ internal sealed class AgentSettingsWindow : Window
         ep.Temperature = double.TryParse(_temperature.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var t) ? t : 0.2;
         ep.MaxSteps = int.TryParse(_steps.Text, out var s) && s > 0 ? s : 30;
         ep.ExtraJson = _extra.Text.Trim();
+        ep.Approval = (AgentApproval)Math.Max(0, _approval.SelectedIndex);
+        ep.RiskyPatterns = _risky.Text.Trim().Length > 0 ? _risky.Text.Trim() : AgentEndpoint.DefaultRiskyPatterns;
+        ep.NeverOnLocalShells = _noLocal.IsChecked == true;
 
         if (_key.Password.Length > 0)
         {

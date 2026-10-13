@@ -195,6 +195,12 @@ internal sealed class AgentPanel : DockPanel
             return;
         }
 
+        if (endpoint.NeverOnLocalShells && _protocol == Core.Model.SessionProtocol.LocalShell)
+        {
+            Append($"\"{endpoint.Name}\" is set to never run on local shells (⚙ to change).");
+            return;
+        }
+
         var skills = _skills.Children.OfType<CheckBox>().Where(c => c.IsChecked == true)
             .Select(c => (AgentSkill)c.Tag).ToList();
 
@@ -204,6 +210,11 @@ internal sealed class AgentPanel : DockPanel
         {
             _runner = new AgentRunner(endpoint, _vault.Get(endpoint.Id, "apikey"), _target, skills, _log);
             _runner.Event += e => Dispatcher.BeginInvoke(() => Show(e));
+            _runner.Approve = command => Dispatcher.InvokeAsync(() => MessageBox.Show(
+                Window.GetWindow(this)!,
+                $"The agent wants to run:\n\n{command}\n\nin {_target.Describe}.\n\nAllow it?",
+                "BaudHoundTerm: agent approval", MessageBoxButton.YesNo, MessageBoxImage.Question,
+                MessageBoxResult.No) == MessageBoxResult.Yes).Task;
             _runnerKey = key;
         }
 
@@ -267,6 +278,7 @@ internal sealed class AgentPanel : DockPanel
     private void OpenSettings()
     {
         new AgentSettingsWindow(_vault) { Owner = Window.GetWindow(this) }.ShowDialog();
+        _runner = null;   // approval rules may have changed; the next goal starts with them
         Reload();
     }
 

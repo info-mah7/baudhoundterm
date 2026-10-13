@@ -44,6 +44,54 @@ public sealed class AgentRunner
 
     public event Action<AgentEvent>? Event;
 
+    /// <summary>
+    /// Asks the user whether a command may run; set by the panel. Unset means "no", so a
+    /// command that needs approval never runs without someone to grant it.
+    /// </summary>
+    public Func<string, Task<bool>>? Approve { get; set; }
+
+    /// <summary>Whether this command needs a yes under the endpoint's approval mode.</summary>
+    public static bool NeedsApproval(AgentEndpoint endpoint, string command)
+    {
+        switch (endpoint.Approval)
+        {
+            case AgentApproval.Free:
+                return false;
+            case AgentApproval.Always:
+                return true;
+        }
+
+        foreach (var raw in endpoint.RiskyPatterns.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            try
+            {
+                if (Regex.IsMatch(command, line, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100)))
+                {
+                    return true;
+                }
+            }
+            catch (ArgumentException)
+            {
+                if (command.Contains(line, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                return true;   // a pattern too slow to decide is treated as a match: ask
+            }
+        }
+
+        return false;
+    }
+
     public AgentRunner(AgentEndpoint endpoint, string? apiKey, ITerminalTarget target,
                        IReadOnlyList<AgentSkill> skills, AgentLog log)
     {
@@ -265,6 +313,20 @@ public sealed class AgentRunner
                 var text = args["text"]?.GetValue<string>() ?? "";
                 var enter = !string.Equals(args["enter"]?.ToString(), "false", StringComparison.OrdinalIgnoreCase);
                 RequireConnected();
+
+                if (NeedsApproval(_endpoint, text))
+                {
+                    Emit("action", "? " + text + "   (waiting for approval)");
+                    var allowed = Approve is not null && await Approve(text);
+                    Log(allowed ? "approved" : "denied", tool: name, text: text);
+                    if (!allowed)
+                    {
+                        Emit("action", "✖ denied");
+                        return "denied by the user: this command was not run. Do not retry it; " +
+                               "choose a safer approach or stop and explain what you wanted to do.";
+                    }
+                }
+
                 Emit("action", "$ " + text + (enter ? "" : "   (no Enter)"));
                 var mark = _target.Transcript.Mark;
                 await _target.SendAsync(enter ? text + "\r" : text);

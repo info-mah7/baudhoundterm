@@ -49,8 +49,11 @@ public partial class MainWindow : Window
             Loaded += (_, _) => LaunchShell(shell, elevated: true);
         }
 
+        Loaded += async (_, _) => await RestoreOpenTabsAsync();
+
         Closing += async (_, _) =>
         {
+            RememberOpenTabs();   // before the tabs start disconnecting
             foreach (var view in Tabs.Items.OfType<TabItem>().Select(t => t.Content).OfType<TerminalView>())
             {
                 await view.DisconnectAsync();
@@ -536,11 +539,17 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void Connect(SessionDefinition definition)
+    private async void Connect(SessionDefinition definition) => await OpenTabAsync(definition, connect: true);
+
+    private async Task OpenTabAsync(SessionDefinition definition, bool connect, string? colour = null)
     {
         var view = new TerminalView(definition, _vault);
         var tab = new TabItem { Content = view };
-        var live = new LiveTab(tab, view, definition) { Title = definition.Name, Colour = ColourForNewTab(definition) };
+        var live = new LiveTab(tab, view, definition)
+        {
+            Title = definition.Name,
+            Colour = string.IsNullOrEmpty(colour) ? ColourForNewTab(definition) : colour
+        };
         _live.Add(live);
 
         RefreshTab(live);
@@ -583,8 +592,75 @@ public partial class MainWindow : Window
         view.FocusTerminal();
         RebuildTree();   // the new connection shows under its shortcut straight away
 
+        if (!connect)
+        {
+            view.MarkRestored();
+            live.State = SessionState.Disconnected;
+            RefreshLiveRow(live);
+            return;
+        }
+
         await view.ConnectAsync();
         Save();
+    }
+
+    // ---------- tabs across restarts ----------
+
+    /// <summary>
+    /// What was open, in order. Only a normal instance keeps this: an elevated relaunch is a
+    /// side window and must not replace the list its parent will restore.
+    /// </summary>
+    private void RememberOpenTabs()
+    {
+        if (Elevation.IsCurrentProcessElevated)
+        {
+            return;
+        }
+
+        _ui.OpenTabs = _live
+            .OrderBy(l => Tabs.Items.IndexOf(l.Tab))
+            .Select(l => _sessions.Any(s => s.Id == l.Definition.Id)
+                ? new OpenTabRecord { SessionId = l.Definition.Id, Colour = l.Colour }
+                : new OpenTabRecord { Definition = l.Definition, Colour = l.Colour })
+            .ToList();
+        _ui.SelectedTab = Math.Max(0, Tabs.SelectedIndex);
+
+        try
+        {
+            _ui.Save();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Losing the tab list is an inconvenience, not a reason to block closing.
+        }
+    }
+
+    private async Task RestoreOpenTabsAsync()
+    {
+        if (Elevation.IsCurrentProcessElevated || !_ui.RestoreTabs || _ui.OpenTabs.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var record in _ui.OpenTabs)
+        {
+            // A shortcut deleted since then has nothing to come back to.
+            var definition = record.SessionId is { } id
+                ? _sessions.FirstOrDefault(s => s.Id == id)
+                : record.Definition;
+
+            if (definition is not null)
+            {
+                await OpenTabAsync(definition, connect: false, record.Colour);
+            }
+        }
+
+        if (_ui.SelectedTab < Tabs.Items.Count)
+        {
+            Tabs.SelectedIndex = _ui.SelectedTab;
+        }
+
+        RebuildTree();
     }
 
     // ---------- open connections ----------
