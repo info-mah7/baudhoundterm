@@ -1,6 +1,7 @@
 using System.IO.Ports;
 using System.Text;
 using Quarterdeck.Core.Model;
+using Quarterdeck.Core.Transfer;
 
 namespace Quarterdeck.Core.Terminal;
 
@@ -10,6 +11,25 @@ public sealed class SerialTerminalSession : ITerminalSession
     private readonly SessionDefinition _definition;
     private SerialPort? _port;
     private volatile bool _closing;
+
+    // While a binary transfer runs, received bytes go here instead of to the screen, and
+    // they stay bytes: the text path decodes UTF-8 and would mangle a firmware image.
+    private volatile QueuedByteLink? _raw;
+
+    /// <summary>Borrows the port for a binary transfer until <see cref="EndRaw"/>.</summary>
+    public IByteLink BeginRaw()
+    {
+        var raw = new QueuedByteLink((data, _) =>
+        {
+            var port = _port ?? throw new IOException("The serial port is closed.");
+            port.Write(data.ToArray(), 0, data.Length);
+            return Task.CompletedTask;
+        });
+        _raw = raw;
+        return raw;
+    }
+
+    public void EndRaw() => _raw = null;
 
     public SerialTerminalSession(SessionDefinition definition) => _definition = definition;
 
@@ -52,6 +72,19 @@ public sealed class SerialTerminalSession : ITerminalSession
 
         try
         {
+            if (_raw is { } raw)
+            {
+                var count = _port.BytesToRead;
+                if (count > 0)
+                {
+                    var buffer = new byte[count];
+                    var read = _port.Read(buffer, 0, count);
+                    raw.Push(buffer.AsSpan(0, read));
+                }
+
+                return;
+            }
+
             var text = _port.ReadExisting();
             if (text.Length > 0)
             {

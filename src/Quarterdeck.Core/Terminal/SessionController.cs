@@ -54,6 +54,8 @@ public sealed class SessionController : IAsyncDisposable
     /// <summary>The live SSH client when this is an SSH session, for the transfer pane.</summary>
     public SshTerminalSession? Ssh => _transport as SshTerminalSession;
 
+    public SerialTerminalSession? Serial => _transport as SerialTerminalSession;
+
     public string? LogPath => _logger?.CurrentPath;
 
     public event EventHandler<TerminalDataEventArgs>? DataReceived;
