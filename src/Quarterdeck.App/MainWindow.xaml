@@ -17,13 +17,13 @@
 
   <DockPanel>
     <Menu DockPanel.Dock="Top" Background="#171C27" Foreground="#DFE4EE">
-      <MenuItem Header="_Session">
-        <MenuItem Header="_New..." Click="OnNewSession" InputGestureText="Ctrl+Shift+T"/>
+      <MenuItem Header="_Shortcut">
+        <MenuItem Header="_New shortcut..." Click="OnNewSession" InputGestureText="Ctrl+Shift+T"/>
         <MenuItem Header="New _folder..." Click="OnNewFolder"/>
         <MenuItem Header="_Move to folder..." Click="OnMoveToFolder"/>
         <MenuItem Header="_Connect" Click="OnConnect"/>
         <MenuItem Header="_Properties..." Click="OnEdit"/>
-        <MenuItem Header="_Delete" Click="OnDelete"/>
+        <MenuItem Header="_Delete shortcut" Click="OnDelete"/>
         <Rectangle/>
         <MenuItem Header="E_xit" Click="OnExit"/>
       </MenuItem>
@@ -66,15 +66,15 @@
           </Style>
         </WrapPanel.Resources>
 
-        <Button Click="OnNewSession" ToolTip="New session (Ctrl+Shift+T)">New</Button>
-        <Button Click="OnEdit" ToolTip="Open the selected session's properties">Open</Button>
+        <Button Click="OnNewSession" ToolTip="New shortcut (Ctrl+Shift+T)">New</Button>
+        <Button Click="OnEdit" ToolTip="Open the selected shortcut's properties">Open</Button>
         <Rectangle/>
-        <Button Click="OnConnect" ToolTip="Connect the selected session in a new tab">Connect</Button>
+        <Button Click="OnConnect" ToolTip="Connect the selected shortcut in a new tab">Connect</Button>
         <Button x:Name="ConnToggle" Click="OnToggleConnection"
                 ToolTip="Disconnect the active tab, leaving it open">Disconnect</Button>
         <Button Click="OnCloseTab" ToolTip="Disconnect and close the active tab">Close</Button>
         <Rectangle/>
-        <Button Click="OnShellMenu" ToolTip="A local shell in a new tab, without saving a session: PowerShell or Command Prompt, as you or as administrator. Administrator relaunches BaudHoundTerm through UAC when it is not already elevated.">Shell ▾</Button>
+        <Button Click="OnShellMenu" ToolTip="A local shell in a new tab, without saving a shortcut: PowerShell or Command Prompt, as you or as administrator. Administrator relaunches BaudHoundTerm through UAC when it is not already elevated.">Shell ▾</Button>
         <Rectangle/>
         <Button Click="OnTransfer" ToolTip="SFTP/SCP file transfer for the active SSH session">Transfer</Button>
         <Button Click="OnFind" ToolTip="Find in scrollback (Ctrl+Shift+F)">Find</Button>
@@ -136,10 +136,10 @@
       <DockPanel Grid.Column="0" Background="#141922">
         <DockPanel DockPanel.Dock="Top" Margin="6">
           <Button DockPanel.Dock="Right" Content="+" Width="26" Margin="6,0,0,0"
-                  ToolTip="New session" Click="OnNewSession"/>
+                  ToolTip="New shortcut" Click="OnNewSession"/>
           <ToggleButton x:Name="GroupToggle" DockPanel.Dock="Right" Content="🖥" Width="26" Margin="6,0,0,0"
                         Click="OnGroupToggle"
-                        ToolTip="Group sessions that share a host under one row. Off: a flat list. Remembered.">
+                        ToolTip="Group shortcuts that share a host under one row. Off: a flat list. Remembered.">
             <ToggleButton.Template>
               <ControlTemplate TargetType="ToggleButton">
                 <Border x:Name="Box" Background="#2A3245" BorderBrush="#3A4459" BorderThickness="1" CornerRadius="2">
