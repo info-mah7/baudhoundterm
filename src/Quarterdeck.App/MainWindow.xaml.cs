@@ -1739,6 +1739,12 @@ public partial class MainWindow : Window
                                             : "Needs an SSH tab",
             () => OnTransfer(this, new RoutedEventArgs())));
 
+        var vnc = protocol == SessionProtocol.Vnc;
+        items.Add(Item("Browse and transfer (_TightVNC)...", vnc,
+            vnc ? "Upload, download and browse files on this VNC host. Needs TightVNC Server; others have no compatible file transfer."
+                : "Needs a VNC tab",
+            async () => await OpenVncFilesAsync(view!.Definition)));
+
         var terminal = view is not null && protocol != SessionProtocol.Vnc;
         items.Add(Item("Send _text file...", terminal && view!.IsConnected && !view.IsSending,
             !terminal ? "Needs a terminal tab"
@@ -1803,6 +1809,12 @@ public partial class MainWindow : Window
             }));
         }
 
+        if (!modemReady)
+        {
+            // The theme's submenu-header template has no disabled look of its own.
+            send.Foreground = receive.Foreground = new SolidColorBrush(Color.FromRgb(0x6B, 0x75, 0x8A));
+        }
+
         items.Add(send);
         items.Add(receive);
 
@@ -1829,6 +1841,27 @@ public partial class MainWindow : Window
         else
         {
             _tftp.Activate();
+        }
+    }
+
+    /// <summary>
+    /// A second connection to the VNC server, for files only; the screen view is not touched.
+    /// </summary>
+    private async Task OpenVncFilesAsync(SessionDefinition definition)
+    {
+        Cursor = System.Windows.Input.Cursors.Wait;
+        try
+        {
+            var client = await TightVncFileClient.ConnectAsync(definition.Host, definition.Port, _vault.Get(definition.Id));
+            new TransferWindow(client, $"Files - {definition.Name} (TightVNC)") { Owner = this }.Show();
+        }
+        catch (Exception ex) when (ex is IOException or System.Net.Sockets.SocketException or NotSupportedException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, ex.Message, "BaudHoundTerm: VNC files", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        finally
+        {
+            Cursor = null;
         }
     }
 

@@ -5,7 +5,16 @@ using Renci.SshNet.Sftp;
 
 namespace Quarterdeck.Core.Transfer;
 
-public sealed record RemoteEntry(string Name, string FullPath, bool IsDirectory, long Length, DateTime Modified);
+public sealed record RemoteEntry(string Name, string FullPath, bool IsDirectory, long Length, DateTime Modified)
+{
+    /// <summary>Blank for folders: a "0" size reads as an empty file.</summary>
+    public string SizeText => IsDirectory ? "" : Length.ToString("N0");
+
+    /// <summary>Blank when the server gives none (TightVNC sends no time for folders).</summary>
+    public string ModifiedText => Modified == DateTime.MinValue ? "" : Modified.ToString("yyyy-MM-dd HH:mm");
+
+    public string DisplayName => IsDirectory ? Name + "/" : Name;
+}
 
 public sealed class TransferProgress(string file, long transferred, long total)
 {
@@ -19,7 +28,7 @@ public sealed class TransferProgress(string file, long transferred, long total)
 /// SFTP browsing plus SFTP and SCP transfers. Opens its own authenticated connection
 /// rather than borrowing the shell's, so a busy transfer cannot stall typing.
 /// </summary>
-public sealed class FileTransferService : IDisposable
+public sealed class FileTransferService : IRemoteFiles
 {
     private readonly SessionDefinition _definition;
     private readonly CredentialVault _vault;
@@ -54,6 +63,22 @@ public sealed class FileTransferService : IDisposable
 
         return new ConnectionInfo(_definition.Host, _definition.Port, _definition.Username, method);
     }
+
+    public string Home => ".";
+
+    public string Parent(string path)
+    {
+        if (path is "." or "/")
+        {
+            return "/";
+        }
+
+        var p = path.TrimEnd('/');
+        var cut = p.LastIndexOf('/');
+        return cut <= 0 ? "/" : p[..cut];
+    }
+
+    public string Combine(string folder, string name) => $"{folder.TrimEnd('/')}/{name}";
 
     public SftpClient Sftp
     {
