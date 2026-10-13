@@ -25,6 +25,9 @@ public sealed class CredentialVault
         _entries = LoadEntries();
     }
 
+    /// <summary>Set when the store was unreadable and had to be set aside.</summary>
+    public string? LoadProblem { get; private set; }
+
     private static string Key(Guid sessionId, string name) => $"{sessionId:N}:{name}";
 
     public string? Get(Guid sessionId, string name = "password")
@@ -99,11 +102,13 @@ public sealed class CredentialVault
         catch (JsonException)
         {
             // A corrupt vault must not take the app down, but it must be visible.
+            // Thrown from the window's constructor, this used to end the app before it could
+            // say anything. Set the file aside, start empty, and let the window report it.
             var quarantine = _path + $".corrupt-{DateTime.UtcNow:yyyyMMddHHmmss}";
             File.Move(_path, quarantine);
-            throw new InvalidOperationException(
-                $"Credential store was unreadable and has been moved to {quarantine}. " +
-                "Saved passwords must be re-entered.");
+            LoadProblem = $"The credential store could not be read and was moved to {quarantine}. " +
+                          "Saved passwords and keys must be entered again.";
+            return new Dictionary<string, string>(StringComparer.Ordinal);
         }
     }
 

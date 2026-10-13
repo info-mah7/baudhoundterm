@@ -103,20 +103,22 @@ public partial class TerminalView : UserControl, ITerminalTarget
                 options: options);
 
             await Web.EnsureCoreWebView2Async(env);
+
+            // Serve the terminal from a virtual host so xterm.js runs on a real origin and
+            // navigator.clipboard is available. DenyCors keeps the page from reaching the network.
+            Web.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                "baudhound.assets", ResolveAssetsDirectory(), CoreWebView2HostResourceAccessKind.DenyCors);
         }
         catch (Exception ex)
         {
-            SetStatus($"The terminal surface could not start: {ex.Message} ({userData})");
+            // The connection is already being made in parallel. Without a surface its output
+            // goes nowhere and typing is lost, so end it rather than leave it live and invisible.
+            SetStatus($"The terminal surface could not start, so the session was closed: {ex.Message} ({userData})");
+            await DisconnectAsync();
             return;
         }
 
         var core = Web.CoreWebView2;
-        var assets = ResolveAssetsDirectory();
-
-        // Serve the terminal from a virtual host so xterm.js runs on a real origin and
-        // navigator.clipboard is available. DenyCors keeps the page from reaching the network.
-        core.SetVirtualHostNameToFolderMapping(
-            "baudhound.assets", assets, CoreWebView2HostResourceAccessKind.DenyCors);
 
         core.Settings.AreDefaultContextMenusEnabled = false;
         core.Settings.AreDevToolsEnabled = false;
@@ -538,8 +540,15 @@ public partial class TerminalView : UserControl, ITerminalTarget
                 return;
             }
 
+            var wasLive = IsConnected;
             StatusText.Text = e.Message ?? e.State.ToString();
             RaiseState(e.State, e.Message);
+
+            // The far end ended it ("exit" in a shell): say how to get it back.
+            if (wasLive && e.State == SessionState.Disconnected)
+            {
+                Write($"\r\n[baudhoundterm] {e.Message ?? "Disconnected."} Press Enter or Reconnect to start again.\r\n");
+            }
         });
 
         await controller.ConnectAsync();

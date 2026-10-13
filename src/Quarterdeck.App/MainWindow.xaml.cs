@@ -28,6 +28,16 @@ public partial class MainWindow : Window
 
         _sessions = _store.Load();
         _folders = _store.LoadFolders();
+
+        var problems = new[] { _store.LoadProblem, _vault.LoadProblem }.OfType<string>().ToList();
+        if (problems.Count > 0)
+        {
+            Loaded += (_, _) => MessageBox.Show(this, string.Join("\n\n", problems), "BaudHoundTerm",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
+        // Unknown or changed SSH host keys are put to the user; nothing is trusted silently.
+        KnownHosts.Ask = q => Dispatcher.Invoke(() => AskHostKey(q));
         GroupToggle.IsChecked = _ui.GroupByHost;   // Click, not Checked: setting it here saves nothing
         RebuildTree();
 
@@ -46,6 +56,22 @@ public partial class MainWindow : Window
                 await view.DisconnectAsync();
             }
         };
+    }
+
+    private bool AskHostKey(HostKeyQuestion q)
+    {
+        var text = q.Changed
+            ? $"WARNING: the host key for {q.Host}:{q.Port} has CHANGED.\n\n" +
+              $"Trusted before:  SHA256:{q.PreviousFingerprint}\nPresented now:   SHA256:{q.Fingerprint} ({q.Algorithm})\n\n" +
+              "Either the server was reinstalled or re-keyed, or something is intercepting the connection " +
+              "and would receive your password. Only accept if you know the server changed.\n\nTrust the new key?"
+            : $"First connection to {q.Host}:{q.Port}.\n\nHost key ({q.Algorithm}):\nSHA256:{q.Fingerprint}\n\n" +
+              "If you can, compare this with the server's own fingerprint (ssh-keygen -lf on the host key). " +
+              "Trust it and remember it for next time?";
+
+        return MessageBox.Show(this, text, "BaudHoundTerm: SSH host key", MessageBoxButton.YesNo,
+                   q.Changed ? MessageBoxImage.Warning : MessageBoxImage.Question,
+                   q.Changed ? MessageBoxResult.No : MessageBoxResult.Yes) == MessageBoxResult.Yes;
     }
 
     // ---------- session tree ----------
@@ -1464,9 +1490,12 @@ public partial class MainWindow : Window
     /// </summary>
     private static readonly (string Key, string Label, string Command)[] Shells =
     [
-        ("powershell", "Windows PowerShell", "powershell.exe"),
-        ("cmd",        "Command Prompt",     "cmd.exe"),
-        ("pwsh",       "PowerShell 7",       "pwsh.exe")
+        // Absolute paths: CreateProcess searches the app's own folder before System32, so a bare
+        // "cmd.exe" planted next to BaudHoundTerm would run elevated from the Admin entries.
+        ("powershell", "Windows PowerShell", System.IO.Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe")),
+        ("cmd",        "Command Prompt",     System.IO.Path.Combine(Environment.SystemDirectory, "cmd.exe")),
+        ("pwsh",       "PowerShell 7",       System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"PowerShell\7\pwsh.exe"))
     ];
 
     /// <summary>

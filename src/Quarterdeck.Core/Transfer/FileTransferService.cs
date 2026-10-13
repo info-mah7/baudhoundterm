@@ -63,7 +63,7 @@ public sealed class FileTransferService : IDisposable
             {
                 _sftp?.Dispose();
                 _sftp = new SftpClient(BuildConnectionInfo());
-                _sftp.Connect();
+                KnownHosts.Connect(_sftp, _definition.Host, _definition.Port);
             }
 
             return _sftp;
@@ -80,7 +80,7 @@ public sealed class FileTransferService : IDisposable
                 // Shell-quote remote paths: the plain constructor passes them to a remote
                 // shell unescaped, which turns a filename with a backtick into command execution.
                 _scp = new ScpClient(BuildConnectionInfo(), RemotePathTransformation.ShellQuote);
-                _scp.Connect();
+                KnownHosts.Connect(_scp, _definition.Host, _definition.Port);
             }
 
             return _scp;

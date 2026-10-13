@@ -25,6 +25,9 @@ public sealed class SessionStore
         _foldersPath = Path.Combine(Path.GetDirectoryName(_path)!, "folders.json");
     }
 
+    /// <summary>Set when <see cref="Load"/> had to set a damaged file aside.</summary>
+    public string? LoadProblem { get; private set; }
+
     public List<SessionDefinition> Load()
     {
         lock (_gate)
@@ -40,8 +43,21 @@ public sealed class SessionStore
                 return new List<SessionDefinition>();
             }
 
-            return JsonSerializer.Deserialize<List<SessionDefinition>>(json, JsonOptions)
-                   ?? new List<SessionDefinition>();
+            try
+            {
+                return JsonSerializer.Deserialize<List<SessionDefinition>>(json, JsonOptions)
+                       ?? new List<SessionDefinition>();
+            }
+            catch (JsonException ex)
+            {
+                // A truncated or hand-broken file used to stop the app before its window
+                // existed. Keep the file (it may be repairable) and start empty, saying so.
+                var aside = _path + $".damaged-{DateTime.UtcNow:yyyyMMddHHmmss}";
+                File.Move(_path, aside);
+                LoadProblem = $"sessions.json could not be read ({ex.Message}) and was moved to {aside}. " +
+                              "The list starts empty; the old file is kept for repair.";
+                return new List<SessionDefinition>();
+            }
         }
     }
 

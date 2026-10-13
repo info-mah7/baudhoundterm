@@ -131,7 +131,7 @@ public sealed class ConPtyTerminalSession : ITerminalSession
                 }
 
                 var count = decoder.GetChars(buffer, 0, read, chars, 0);
-                if (count > 0)
+                if (count > 0 && !_closing)
                 {
                     DataReceived?.Invoke(this, new TerminalDataEventArgs(new string(chars, 0, count)));
                 }
@@ -154,8 +154,10 @@ public sealed class ConPtyTerminalSession : ITerminalSession
         }
 
         await Task.Run(() => ConPty.WaitForSingleObject(_process.hProcess, 0xFFFFFFFF)).ConfigureAwait(false);
-        Closed?.Invoke(this, new TerminalClosedEventArgs(
-            _closing ? "Disconnected." : "Shell exited.", _closing));
+        // A shell that exits on its own ("exit", Ctrl+D) was asked to by the user. Reporting it
+        // as unexpected made the reconnect policy start another one, for ever, elevated in an
+        // Admin tab. The tab offers Reconnect instead.
+        Closed?.Invoke(this, new TerminalClosedEventArgs(_closing ? "Disconnected." : "Shell exited.", true));
     }
 
     public async Task WriteAsync(string text, CancellationToken cancellationToken = default)
@@ -180,10 +182,9 @@ public sealed class ConPtyTerminalSession : ITerminalSession
         return Task.CompletedTask;
     }
 
-    public Task DisconnectAsync()
+    public async Task DisconnectAsync()
     {
         _closing = true;
-        _pump?.Cancel();
 
         if (_process.hProcess != IntPtr.Zero)
         {
@@ -193,18 +194,23 @@ public sealed class ConPtyTerminalSession : ITerminalSession
             _process = default;
         }
 
+        // Before Windows 11 24H2, ClosePseudoConsole waits until its output pipe is drained.
+        // The pump used to be cancelled first, so nothing drained it and the window hung on
+        // Close. Now the pump keeps reading (and discarding, since _closing is set) until the
+        // close returns, and the close runs off the caller's thread.
         if (_pty != IntPtr.Zero)
         {
-            ConPty.ClosePseudoConsole(_pty);
+            var pty = _pty;
             _pty = IntPtr.Zero;
+            var close = Task.Run(() => ConPty.ClosePseudoConsole(pty));
+            await Task.WhenAny(close, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(false);
         }
 
+        _pump?.Cancel();
         _writer?.Dispose();
         _reader?.Dispose();
         _writer = null;
         _reader = null;
-
-        return Task.CompletedTask;
     }
 
     public async ValueTask DisposeAsync() => await DisconnectAsync().ConfigureAwait(false);
