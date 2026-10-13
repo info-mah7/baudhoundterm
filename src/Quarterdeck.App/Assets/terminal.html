@@ -112,17 +112,24 @@
     term.attachCustomKeyEventHandler(ev => {
       if (ev.type !== 'keydown') return true;
 
+      // Returning false only stops xterm; the browser still acts on the key. Chromium reads
+      // Ctrl+Shift+V as "paste as plain text", so without preventDefault the textarea got a
+      // second, native paste: everything arrived twice. Ctrl+Shift+C with nothing selected
+      // fell through to xterm as Ctrl+C and interrupted the running program.
       if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyC') {
+        ev.preventDefault();
         const sel = term.getSelection();
-        if (sel) { navigator.clipboard.writeText(sel); return false; }
+        if (sel) { navigator.clipboard.writeText(sel); }
+        return false;
       }
       if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyV') {
+        ev.preventDefault();
         navigator.clipboard.readText()
           .then(t => t ? send({ t: 'in', d: t }) : send({ t: 'pasteimg' }))
           .catch(() => send({ t: 'pasteimg' }));
         return false;
       }
-      if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyF') { openFind(); return false; }
+      if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyF') { ev.preventDefault(); openFind(); return false; }
       return true;
     });
 
