@@ -36,8 +36,9 @@
         <MenuItem Header="_Agent on this tab" Click="OnToggleAgent" InputGestureText="Ctrl+Shift+A"/>
         <MenuItem Header="Agent _endpoints and skills..." Click="OnAgentSettings"/>
       </MenuItem>
-      <MenuItem Header="_Files">
-        <MenuItem Header="_Upload and download files..." Click="OnTransfer"/>
+      <!-- Filled when opened: what is offered depends on the active tab's protocol. -->
+      <MenuItem x:Name="FilesMenu" Header="_Files" SubmenuOpened="OnFilesMenuOpened">
+        <MenuItem Header="(no tab)" IsEnabled="False"/>
       </MenuItem>
       <MenuItem Header="_Help">
         <MenuItem Header="_Open log folder" Click="OnOpenLogs"/>
@@ -76,7 +77,7 @@
         <Rectangle/>
         <Button Click="OnShellMenu" ToolTip="A local shell in a new tab, without saving a shortcut: PowerShell or Command Prompt, as you or as administrator. Administrator relaunches BaudHoundTerm through UAC when it is not already elevated.">Shell ▾</Button>
         <Rectangle/>
-        <Button Click="OnTransfer" ToolTip="Upload and download files on the server of the active SSH tab (SFTP/SCP)">Files</Button>
+        <Button Click="OnFilesButton" ToolTip="Move files to and from the active tab's device or server: SFTP over SSH, typed text files for any terminal">Files ▾</Button>
         <Button Click="OnFind" ToolTip="Find in scrollback (Ctrl+Shift+F)">Find</Button>
         <Button Click="OnClear" ToolTip="Clear the screen">Clear</Button>
         <Rectangle/>

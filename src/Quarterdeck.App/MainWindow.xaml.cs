@@ -1712,6 +1712,103 @@ public partial class MainWindow : Window
 
     private static bool IsElevated => Elevation.IsCurrentProcessElevated;
 
+    // ---------- files ----------
+
+    /// <summary>
+    /// The file actions that make sense for the active tab. Each protocol moves files its own
+    /// way; an action that does not apply is shown disabled with the reason, not hidden, so the
+    /// menu also says what exists.
+    /// </summary>
+    private List<Control> FileMenuItems()
+    {
+        var view = ActiveView;
+        var protocol = view?.Definition.Protocol;
+        var items = new List<Control>();
+
+        MenuItem Item(string header, bool enabled, string tip, Action act)
+        {
+            var item = new MenuItem { Header = header, IsEnabled = enabled, ToolTip = tip };
+            ToolTipService.SetShowOnDisabled(item, true);
+            item.Click += (_, _) => act();
+            return item;
+        }
+
+        items.Add(Item("_Browse and transfer (SFTP)...", protocol == SessionProtocol.Ssh,
+            protocol == SessionProtocol.Ssh ? "Upload, download and browse files on this SSH server"
+                                            : "Needs an SSH tab",
+            () => OnTransfer(this, new RoutedEventArgs())));
+
+        var terminal = view is not null && protocol != SessionProtocol.Vnc;
+        items.Add(Item("Send _text file...", terminal && view!.IsConnected && !view.IsSending,
+            !terminal ? "Needs a terminal tab"
+            : !view!.IsConnected ? "Connect the tab first"
+            : "Type a text file into this session, paced so the far end keeps up. Works on serial, telnet, SSH and local shells.",
+            async () =>
+            {
+                var dialog = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title = "Send a text file into " + view!.Definition.Name,
+                    Filter = "Text files|*.txt;*.cfg;*.conf;*.ini;*.sh;*.ps1;*.py;*.json;*.yaml;*.yml|All files|*.*"
+                };
+
+                if (dialog.ShowDialog(this) == true)
+                {
+                    view.FocusTerminal();
+                    await view.SendTextFileAsync(dialog.FileName);
+                }
+            }));
+
+        items.Add(new Separator());
+        var tftpRunning = _tftp?.IsRunning == true;
+        items.Add(Item(tftpRunning ? "TFTP _server (firmware) - running" : "TFTP _server (firmware)...", true,
+            "Serve a folder over TFTP so routers, switches and boot loaders can pull firmware from this PC",
+            OpenTftp));
+
+        return items;
+    }
+
+    private TftpWindow? _tftp;
+
+    /// <summary>One TFTP window: a second would only fight the first for port 69.</summary>
+    private void OpenTftp()
+    {
+        if (_tftp is null)
+        {
+            _tftp = new TftpWindow(_ui) { Owner = this };
+            _tftp.Closed += (_, _) => _tftp = null;
+            _tftp.Show();
+        }
+        else
+        {
+            _tftp.Activate();
+        }
+    }
+
+    private void OnFilesMenuOpened(object sender, RoutedEventArgs e)
+    {
+        FilesMenu.Items.Clear();
+        foreach (var item in FileMenuItems())
+        {
+            FilesMenu.Items.Add(item);
+        }
+    }
+
+    private void OnFilesButton(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement anchor)
+        {
+            return;
+        }
+
+        var menu = new ContextMenu { PlacementTarget = anchor, Placement = PlacementMode.Bottom };
+        foreach (var item in FileMenuItems())
+        {
+            menu.Items.Add(item);
+        }
+
+        menu.IsOpen = true;
+    }
+
     private void OnTransfer(object sender, RoutedEventArgs e)
     {
         var definition = ActiveView?.Definition ?? Selected;

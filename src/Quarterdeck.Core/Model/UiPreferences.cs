@@ -36,6 +36,12 @@ public sealed class UiPreferences
 
     public int SelectedTab { get; set; }
 
+    // The TFTP server's last settings, so firmware day starts where it left off.
+    public string TftpFolder { get; set; } = "";
+    public string TftpAddress { get; set; } = "";
+    public int TftpPort { get; set; } = 69;
+    public bool TftpUploads { get; set; }
+
     public static string DefaultPath => Path.Combine(AppPaths.DataDirectory, "ui.json");
 
     /// <summary>Missing or unreadable preferences are not worth failing startup over.</summary>

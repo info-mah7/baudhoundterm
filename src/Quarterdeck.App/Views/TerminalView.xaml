@@ -19,7 +19,13 @@
     </Grid>
 
     <Border Grid.Row="1" Background="#171C27" Padding="8,3">
-      <TextBlock x:Name="StatusText" Foreground="#8B94A7" FontSize="11" Text="Disconnected."/>
+      <DockPanel>
+        <!-- Shown while a file is being sent, so a long send can be stopped. -->
+        <Button x:Name="StatusCancel" DockPanel.Dock="Right" Content="Cancel" Padding="8,0"
+                FontSize="11" Visibility="Collapsed" Click="OnStatusCancel"/>
+        <TextBlock x:Name="StatusText" Foreground="#8B94A7" FontSize="11" Text="Disconnected."
+                   VerticalAlignment="Center"/>
+      </DockPanel>
     </Border>
   </Grid>
 </UserControl>
