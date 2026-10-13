@@ -309,6 +309,7 @@ public partial class MainWindow : Window
             Port = protocol switch
             {
                 SessionProtocol.Vnc => 5900,
+                SessionProtocol.Rtsp => 554,
                 SessionProtocol.Telnet => 23,
                 _ => 22
             },
@@ -950,7 +951,7 @@ public partial class MainWindow : Window
         };
         menu.Items.Add(properties);
 
-        if (definition.Protocol != SessionProtocol.Vnc)
+        if (definition.Protocol is not (SessionProtocol.Vnc or SessionProtocol.Rtsp))
         {
             var agent = new MenuItem { Header = "_Agent on this tab" };
             agent.Click += (_, _) =>
@@ -1292,7 +1293,7 @@ public partial class MainWindow : Window
         MenuItem AddProtocolMenu()
         {
             var add = new MenuItem { Header = "_Add protocol for this host" };
-            foreach (var (label, protocol) in new[] { ("SSH...", "Ssh"), ("VNC...", "Vnc"), ("Telnet...", "Telnet") })
+            foreach (var (label, protocol) in new[] { ("SSH...", "Ssh"), ("VNC...", "Vnc"), ("Telnet...", "Telnet"), ("RTSP camera...", "Rtsp") })
             {
                 var item = new MenuItem { Header = label, Tag = protocol };
                 item.Click += OnAddProtocol;
@@ -1745,7 +1746,7 @@ public partial class MainWindow : Window
                 : "Needs a VNC tab",
             async () => await OpenVncFilesAsync(view!.Definition)));
 
-        var terminal = view is not null && protocol != SessionProtocol.Vnc;
+        var terminal = view is not null && protocol is not (SessionProtocol.Vnc or SessionProtocol.Rtsp);
         items.Add(Item("Send _text file...", terminal && view!.IsConnected && !view.IsSending,
             !terminal ? "Needs a terminal tab"
             : !view!.IsConnected ? "Connect the tab first"

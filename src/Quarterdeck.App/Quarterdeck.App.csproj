@@ -25,7 +25,40 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+    <!-- RTSP camera tabs. LibVLC and LibVLCSharp are LGPL-2.1-or-later, used as separate DLLs. -->
+    <PackageReference Include="LibVLCSharp.WPF" Version="3.10.1" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.24" />
   </ItemGroup>
+
+  <!-- Only what a camera viewer needs from VLC's 113 MB of plugins: RTSP (live555), the H.264 /
+       H.265 / AAC / G.711 decoders, video and audio output, colour conversion and PNG for
+       snapshots. No Lua, no services discovery, no web interface: nothing that can reach out
+       on its own. -->
+  <ItemGroup>
+    <VlcWindowsX64IncludeFiles Include="libvlc.dll;libvlccore.dll" />
+    <VlcWindowsX64IncludeFiles Include="plugins\access\liblive555_plugin.dll;plugins\access\librtp_plugin.dll;plugins\access\libtcp_plugin.dll;plugins\access\libudp_plugin.dll" />
+    <VlcWindowsX64IncludeFiles Include="plugins\codec\libavcodec_plugin.dll;plugins\codec\libd3d11va_plugin.dll;plugins\codec\libdxva2_plugin.dll;plugins\codec\libg711_plugin.dll;plugins\codec\libpng_plugin.dll" />
+    <VlcWindowsX64IncludeFiles Include="plugins\packetizer\%2A;plugins\demux\libes_plugin.dll;plugins\demux\libts_plugin.dll" />
+    <VlcWindowsX64IncludeFiles Include="plugins\video_output\libdirect3d11_plugin.dll;plugins\video_output\libdirect3d9_plugin.dll;plugins\video_output\libwingdi_plugin.dll;plugins\video_output\libvmem_plugin.dll;plugins\video_output\libdrawable_plugin.dll" />
+    <VlcWindowsX64IncludeFiles Include="plugins\video_chroma\%2A;plugins\d3d11\%2A;plugins\d3d9\%2A;plugins\video_filter\libdeinterlace_plugin.dll" />
+    <VlcWindowsX64IncludeFiles Include="plugins\audio_output\%2A;plugins\audio_filter\%2A;plugins\audio_mixer\%2A" />
+  </ItemGroup>
+
+  <!-- VLC loads its plugins from a folder at run time, so libvlc must sit beside the exe as real
+       files (like Assets), not inside the single-file bundle. -->
+  <Target Name="KeepLibVlcBesideExe" AfterTargets="CollectVlcFilesToCopyWindows">
+    <ItemGroup>
+      <Content Condition="$([System.String]::Copy('%(Content.Link)').StartsWith('libvlc'))">
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </Content>
+    </ItemGroup>
+  </Target>
+
+  <PropertyGroup>
+    <!-- The app ships for x64 only. -->
+    <VlcWindowsX86Enabled>false</VlcWindowsX86Enabled>
+    <VlcWindowsArm64Enabled>false</VlcWindowsArm64Enabled>
+  </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Quarterdeck.Core\Quarterdeck.Core.csproj" />

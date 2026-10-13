@@ -70,6 +70,13 @@ public partial class SessionEditorWindow : Window
         VncHostBox.Text = d.Host;
         VncPortBox.Text = d.Port.ToString(CultureInfo.InvariantCulture);
         VncViewOnlyBox.IsChecked = d.ViewOnly;
+        RtspHostBox.Text = d.Host;
+        RtspPortBox.Text = (d.Protocol == SessionProtocol.Rtsp ? d.Port : 554).ToString(CultureInfo.InvariantCulture);
+        RtspPathBox.Text = d.RtspPath;
+        RtspUserBox.Text = d.Username;
+        RtspTcpBox.IsChecked = d.RtspTcp;
+        RtspLowLatencyBox.IsChecked = d.LowLatency;
+        RtspOnvifPortBox.Text = d.OnvifPort.ToString(CultureInfo.InvariantCulture);
 
         ThemeBox.Text = d.Theme;
         FontBox.Text = d.FontFamily;
@@ -109,6 +116,7 @@ public partial class SessionEditorWindow : Window
         ShellPanel.Visibility = protocol == SessionProtocol.LocalShell ? Visibility.Visible : Visibility.Collapsed;
         TelnetPanel.Visibility = protocol == SessionProtocol.Telnet ? Visibility.Visible : Visibility.Collapsed;
         VncPanel.Visibility = protocol == SessionProtocol.Vnc ? Visibility.Visible : Visibility.Collapsed;
+        RtspPanel.Visibility = protocol == SessionProtocol.Rtsp ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>Rebuild the port list on open: USB adapters appear and vanish.</summary>
@@ -223,6 +231,7 @@ public partial class SessionEditorWindow : Window
             SessionProtocol.Ssh => HostBox.Text,
             SessionProtocol.Telnet => TelnetHostBox.Text,
             SessionProtocol.Vnc => VncHostBox.Text,
+            SessionProtocol.Rtsp => RtspHostBox.Text,
             SessionProtocol.Serial => SerialPortBox.Text,
             _ => "Local shell"
         }).Trim();
@@ -262,6 +271,22 @@ public partial class SessionEditorWindow : Window
             if (!string.IsNullOrEmpty(VncSecretBox.Password))
             {
                 _vault.Set(d.Id, VncSecretBox.Password);
+            }
+        }
+
+        if (d.Protocol == SessionProtocol.Rtsp)
+        {
+            d.Host = RtspHostBox.Text.Trim();
+            d.Port = ParseInt(RtspPortBox.Text, 554);
+            d.RtspPath = RtspPathBox.Text.Trim();
+            d.Username = RtspUserBox.Text.Trim();
+            d.RtspTcp = RtspTcpBox.IsChecked == true;
+            d.LowLatency = RtspLowLatencyBox.IsChecked == true;
+            d.OnvifPort = ParseInt(RtspOnvifPortBox.Text, 80);
+
+            if (!string.IsNullOrEmpty(RtspSecretBox.Password))
+            {
+                _vault.Set(d.Id, RtspSecretBox.Password);
             }
         }
 
