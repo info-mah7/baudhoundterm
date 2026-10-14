@@ -17,6 +17,9 @@ namespace Quarterdeck.Core.BaudHound;
 /// <param name="Baud">Configured speed; 0 means auto-detect.</param>
 /// <param name="Rate">The speed the UART is running at now, or 0 when unknown.</param>
 /// <param name="Legacy">Found through its web page rather than discovery (firmware before 1.4).</param>
+/// <param name="TlsPort">The TLS console's port, or 0 when it has none.</param>
+/// <param name="TlsFingerprint">"SHA256:..." of its certificate, as its Settings page shows it.</param>
+/// <param name="Locked">A TLS session is open on it: no other connection is accepted until it ends.</param>
 public sealed record BaudHoundDevice(
     string Name,
     string Address,
@@ -26,7 +29,10 @@ public sealed record BaudHoundDevice(
     int TelnetPort,
     int Baud,
     int Rate,
-    bool Legacy);
+    bool Legacy,
+    int TlsPort = 0,
+    string TlsFingerprint = "",
+    bool Locked = false);
 
 /// <summary>
 /// Finds BaudHounds on the networks this PC is on. Firmware 1.4 and later answer a UDP
@@ -152,7 +158,10 @@ public static class BaudHoundDiscovery
                 Number(root, "telnet", 23),
                 Number(root, "baud", 0),
                 Number(root, "rate", 0),
-                Legacy: false);
+                Legacy: false,
+                Number(root, "tls", 0),
+                Text(root, "tlsfp"),
+                Flag(root, "locked"));
         }
         catch (JsonException)
         {
@@ -190,7 +199,10 @@ public static class BaudHoundDiscovery
                 23,
                 Number(root, "baud", 0),
                 Number(root, "rate", 0),
-                Legacy: true);
+                Legacy: true,
+                Number(root, "tls", 0),
+                Text(root, "tlsfp"),
+                Flag(root, "locked"));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
         {
@@ -266,6 +278,9 @@ public static class BaudHoundDiscovery
 
     private static string Text(JsonElement root, string name) =>
         root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+
+    private static bool Flag(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
 
     private static int Number(JsonElement root, string name, int fallback) =>
         root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n) ? n : fallback;

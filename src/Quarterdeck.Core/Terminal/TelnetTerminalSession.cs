@@ -1,12 +1,20 @@
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Quarterdeck.Core.Model;
+using Quarterdeck.Core.Security;
 
 namespace Quarterdeck.Core.Terminal;
 
 /// <summary>
 /// A TCP console: telnet proper, or the raw sockets that most embedded consoles actually serve.
 /// BaudHound exposes its UART this way on port 23, as do console servers and network gear.
+/// With <see cref="SessionDefinition.UseTls"/> the same stream runs inside TLS (telnets, BaudHound
+/// port 992). Devices like that have self-signed certificates, so the certificate is pinned on
+/// first use in the SSH known-hosts store rather than checked against a CA.
 /// </summary>
 public sealed class TelnetTerminalSession : ITerminalSession
 {
@@ -26,7 +34,7 @@ public sealed class TelnetTerminalSession : ITerminalSession
     private readonly char[] _chars = new char[64 * 1024];
 
     private TcpClient? _client;
-    private NetworkStream? _stream;
+    private Stream? _stream;
     private CancellationTokenSource? _pump;
     private volatile bool _closing;
 
@@ -53,10 +61,57 @@ public sealed class TelnetTerminalSession : ITerminalSession
         await _client.ConnectAsync(_definition.Host, _definition.Port, cancellationToken)
             .ConfigureAwait(false);
 
-        _stream = _client.GetStream();
+        _stream = _definition.UseTls
+            ? await StartTlsAsync(_client.GetStream(), cancellationToken).ConfigureAwait(false)
+            : _client.GetStream();
         _pump = new CancellationTokenSource();
         _ = Task.Run(() => PumpAsync(_pump.Token), _pump.Token);
     }
+
+    private async Task<Stream> StartTlsAsync(NetworkStream network, CancellationToken token)
+    {
+        var refused = false;
+        var tls = new SslStream(network, leaveInnerStreamOpen: false, (_, certificate, _, _) =>
+        {
+            if (certificate is null)
+            {
+                return false;
+            }
+
+            // The pin is the certificate itself, so name and chain errors do not matter; a
+            // different certificate does, and KnownHosts asks before trusting it.
+            var trusted = KnownHosts.Verify(_definition.Host, _definition.Port, "TLS certificate", Fingerprint(certificate));
+            refused = !trusted;
+            return trusted;
+        });
+
+        try
+        {
+            await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+            {
+                TargetHost = _definition.Host,
+                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                CertificateRevocationCheckMode = X509RevocationMode.NoCheck
+            }, token).ConfigureAwait(false);
+        }
+        catch (AuthenticationException) when (refused)
+        {
+            await tls.DisposeAsync().ConfigureAwait(false);
+            throw new HostKeyRejectedException(
+                $"TLS certificate for {_definition.Host}:{_definition.Port} was not trusted, so the connection was not made.");
+        }
+        catch
+        {
+            await tls.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+
+        return tls;
+    }
+
+    /// <summary>SHA-256 of the certificate, unpadded base64: what BaudHound's Settings page shows after "SHA256:".</summary>
+    public static string Fingerprint(X509Certificate certificate) =>
+        Convert.ToBase64String(SHA256.HashData(certificate.GetRawCertData())).TrimEnd('=');
 
     private async Task PumpAsync(CancellationToken token)
     {
