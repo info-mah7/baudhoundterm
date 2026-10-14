@@ -141,8 +141,78 @@ host && host.addEventListener('message', ev => {
     case 'cad':      if (rfb) rfb.sendCtrlAltDel(); break;
     case 'focus':    if (rfb) rfb.focus(); break;
     case 'disconnect': if (rfb) rfb.disconnect(); break;
+    case 'shot':     agentReply(m, () => shot(m)); break;
+    case 'thumb':    agentReply(m, () => thumb()); break;
+    case 'ptr':      agentReply(m, () => { mayAct(); RFB.messages.pointerEvent(rfb._sock, m.x, m.y, m.mask); return {}; }); break;
+    case 'key':      agentReply(m, () => { mayAct(); rfb.sendKey(m.keysym, null, !!m.down); return {}; }); break;
   }
 });
+
+// ---------- agent: the eyes and hands of the built-in agent on this tab ----------
+// The host asks with an id and gets {t:'agent', id, ok, ...} back. Pictures come from the
+// framebuffer (display._backbuffer), not the scaled canvas on screen, so coordinates are the
+// remote desktop's own pixels whatever the window size.
+
+function agentReply(m, work) {
+  let reply;
+  try { reply = Object.assign({ t: 'agent', id: m.id, ok: true }, work()); }
+  catch (e) { reply = { t: 'agent', id: m.id, ok: false, err: String(e && e.message || e) }; }
+  send(reply);
+}
+
+function frame() {
+  const fb = rfb && rfb._display && rfb._display._backbuffer;
+  if (!fb || !fb.width || !fb.height) throw new Error('no picture yet: the session is not connected');
+  return fb;
+}
+
+// The raw RFB senders skip noVNC's own view-only check, so it is made here.
+function mayAct() {
+  frame();
+  if (rfb.viewOnly) throw new Error('this session is view only: the agent may look but not act');
+}
+
+// Whole screen or a region, scaled to at most maxw wide, optionally with a crosshair on one point
+// (the click check asks the model what is there). The arms stop short of the point, so the label
+// under it stays readable.
+function shot(m) {
+  const fb = frame();
+  const x = Math.max(0, Math.min(fb.width - 1, m.x | 0)), y = Math.max(0, Math.min(fb.height - 1, m.y | 0));
+  const w = Math.max(1, Math.min(fb.width - x, (m.w | 0) || fb.width)), h = Math.max(1, Math.min(fb.height - y, (m.h | 0) || fb.height));
+  // A region (zoom, click check) is enlarged to fit maxw, up to 3x; the whole screen only ever shrinks.
+  const fit = (m.maxw | 0) > 0 ? Math.min(m.maxw / w, m.maxw / h) : 1;
+  const scale = Math.min((m.w | 0) > 0 ? 3 : 1, fit) || 1;
+  const ow = Math.max(1, Math.round(w * scale)), oh = Math.max(1, Math.round(h * scale));
+  const c = document.createElement('canvas');
+  c.width = ow; c.height = oh;
+  const g = c.getContext('2d');
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(fb, x, y, w, h, 0, 0, ow, oh);
+  if (m.mark) {
+    const mx = (m.mark.x - x) * scale, my = (m.mark.y - y) * scale, r = Math.max(6, m.mark.r * scale);
+    const gap = Math.max(8, r * 0.6), arm = gap + Math.max(14, r);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      for (const [colour, width] of [['#ffffff', 5], ['#ff0000', 3]]) {
+        g.strokeStyle = colour; g.lineWidth = width; g.beginPath();
+        g.moveTo(mx + dx * gap, my + dy * gap); g.lineTo(mx + dx * arm, my + dy * arm); g.stroke();
+      }
+    }
+  }
+  const url = c.toDataURL('image/jpeg', 0.85);
+  return { fw: fb.width, fh: fb.height, w: ow, h: oh, data: url.slice(url.indexOf(',') + 1) };
+}
+
+// 64x36 grey thumbnail, so the host can tell when the screen changed without moving pictures.
+function thumb() {
+  const fb = frame();
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 36;
+  const g = c.getContext('2d');
+  g.drawImage(fb, 0, 0, fb.width, fb.height, 0, 0, 64, 36);
+  const px = g.getImageData(0, 0, 64, 36).data, grey = new Array(64 * 36);
+  for (let i = 0; i < grey.length; i++) grey[i] = (px[i * 4] * 3 + px[i * 4 + 1] * 6 + px[i * 4 + 2]) / 10 | 0;
+  return { fw: fb.width, fh: fb.height, grey };
+}
 
 // noVNC ships as ES modules, so it loads dynamically rather than with a static import: that
 // puts the load inside a try/catch, and it lets the page announce itself only once RFB is in

@@ -43,6 +43,15 @@ public sealed class AgentEndpoint
     /// </summary>
     public bool NeverOnLocalShells { get; set; }
 
+    /// <summary>Remote desktops (VNC): screenshots go to the model at most this wide. The model needs vision.</summary>
+    public int ScreenshotWidth { get; set; } = 1280;
+
+    /// <summary>
+    /// Remote desktops: before each click, show the model a close-up with a ring on the point and
+    /// ask whether it is on the named target. A no means no click.
+    /// </summary>
+    public bool ConfirmClicks { get; set; } = true;
+
     public const string DefaultRiskyPatterns = """
         \brm\s+(\S+\s+)*(-\w*[rf]|--recursive|--force)
         \b(reboot|shutdown|poweroff|halt)\b

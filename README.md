@@ -37,6 +37,10 @@ for SSH, and a serial port for consoles, rendered by xterm.js.
   paths stay on each PC. Conflicts keep both versions.
 - **VNC viewer** in a tab beside the terminals, rendered by noVNC over a WebSocket-to-TCP bridge
   bound to 127.0.0.1 behind a per-session token. View-only is a per-session setting.
+- **AI agent** on any tab, through an OpenAI-compatible endpoint (vLLM, llama.cpp, Ollama,
+  OpenRouter). On a terminal it types commands and reads the output; on a VNC tab it sees
+  screenshots and clicks and types. Risky actions can need your approval, and every step is
+  logged.
 - **Session logging** to file, optionally timestamped per line and stripped of ANSI sequences,
   with size-based rolling.
 - **Auto-login scripting**: expect/send steps with literal or regex matching and a timeout per
@@ -91,6 +95,25 @@ button uses it whenever the device offers it; a saved session can turn it on wit
 The device asks for no password: whoever connects first holds it. The firmware's
 [docs/TLS.md](https://github.com/magicsmokepress/BaudHound/blob/main/docs/TLS.md) has the
 details.
+
+## Agent on a remote desktop
+
+Attach the agent to a VNC tab and it works the desktop through that tab's own connection:
+screenshots in, pointer and key events out. Nothing is installed on the remote machine.
+
+- **One model does everything**, so the endpoint's model must accept images and call tools.
+  **Test** in Agent endpoints checks both. On vLLM, Qwen3.8-27B works with its vision tower
+  enabled.
+- Positions are on a 0-1000 grid over the screen, so the screen's resolution does not matter.
+  Screenshots are scaled to 1280 px wide by default (endpoint setting).
+- **Clicks are checked first.** The model names what is under a crosshair on a close-up of the
+  point, and that has to match what it said it was clicking. If not, nothing is clicked and it
+  is told what is there instead.
+- Only the latest screenshot stays in the conversation. Each action carries a note of what the
+  screen showed, so text the agent reports comes from the screen, not from memory.
+- **Approval:** under "Ask before risky", clicks on things like Delete, Uninstall or Shut down,
+  typed text matching the risky patterns, and combinations such as Win+R, Ctrl+Alt+Del and
+  Alt+F4 need a yes. A view-only session can be looked at but not driven.
 
 ## Where things are stored
 

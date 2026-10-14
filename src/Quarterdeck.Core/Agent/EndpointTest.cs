@@ -197,9 +197,111 @@ public static class EndpointTest
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             results.Add(new EndpointCheck(false, $"The completion request failed: {Plain(ex)}"));
+            return results;
+        }
+
+        // 4. Pictures, which only the remote-desktop (VNC) agent needs: a generated image, left
+        //    half red and right half blue, and a question about it. A miss is a warning.
+        var picture = new JsonObject
+        {
+            ["model"] = endpoint.Model,
+            ["messages"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["role"] = "user",
+                    ["content"] = new JsonArray
+                    {
+                        new JsonObject { ["type"] = "text", ["text"] = "What colour is the left half of this picture, and the right half? Reply exactly like: left=red right=green" },
+                        new JsonObject { ["type"] = "image_url", ["image_url"] = new JsonObject { ["url"] = "data:image/png;base64," + Convert.ToBase64String(TestPicture()) } }
+                    }
+                }
+            },
+            ["max_tokens"] = 256,
+            ["temperature"] = 0
+        };
+
+        foreach (var (k, v) in AgentConfig.ParseExtra(endpoint.ExtraJson) ?? new JsonObject())
+        {
+            picture[k] = v?.DeepClone();
+        }
+
+        const string noPictures = "so the agent cannot drive remote desktops (VNC) with this model. Terminals are not affected.";
+        try
+        {
+            using var response = await http.SendAsync(Request(HttpMethod.Post, "/chat/completions", picture), token);
+            var text = await response.Content.ReadAsStringAsync(token);
+            var reply = response.IsSuccessStatusCode
+                ? (JsonNode.Parse(text)?["choices"]?[0]?["message"]?["content"]?.ToString() ?? "").ToLowerInvariant()
+                : "";
+
+            results.Add(!response.IsSuccessStatusCode
+                ? new EndpointCheck(false, $"Pictures refused ({(int)response.StatusCode}: {Short(ErrorText(text))}), " + noPictures, Warning: true)
+                : reply.Contains("red") && reply.Contains("blue") && reply.IndexOf("red", StringComparison.Ordinal) < reply.IndexOf("blue", StringComparison.Ordinal)
+                    ? new EndpointCheck(true, "Pictures work: the agent can also drive remote desktops (VNC) with this model.")
+                    : new EndpointCheck(false, $"It did not read a test picture correctly (\"{Short(reply)}\"), " + noPictures, Warning: true));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            results.Add(new EndpointCheck(false, $"The picture test failed ({Plain(ex)}), " + noPictures, Warning: true));
         }
 
         return results;
+    }
+
+    /// <summary>A 64x32 PNG: left half red, right half blue. Built by hand to keep Core free of imaging code.</summary>
+    public static byte[] TestPicture()
+    {
+        const int w = 64, h = 32;
+        var raw = new byte[h * (1 + w * 3)];
+        for (var y = 0; y < h; y++)
+        {
+            var row = y * (1 + w * 3);
+            for (var x = 0; x < w; x++)
+            {
+                var i = row + 1 + x * 3;
+                (raw[i], raw[i + 1], raw[i + 2]) = x < w / 2 ? ((byte)220, (byte)30, (byte)30) : ((byte)30, (byte)60, (byte)220);
+            }
+        }
+
+        using var idat = new MemoryStream();
+        using (var z = new System.IO.Compression.ZLibStream(idat, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+        {
+            z.Write(raw);
+        }
+
+        using var png = new MemoryStream();
+        png.Write([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+        Chunk(png, "IHDR", [0, 0, 0, w, 0, 0, 0, h, 8, 2, 0, 0, 0]);
+        Chunk(png, "IDAT", idat.ToArray());
+        Chunk(png, "IEND", []);
+        return png.ToArray();
+    }
+
+    private static void Chunk(Stream s, string type, byte[] data)
+    {
+        var typeBytes = Encoding.ASCII.GetBytes(type);
+        s.Write(BigEndian((uint)data.Length));
+        s.Write(typeBytes);
+        s.Write(data);
+        s.Write(BigEndian(Crc32([.. typeBytes, .. data])));
+    }
+
+    private static byte[] BigEndian(uint v) => [(byte)(v >> 24), (byte)(v >> 16), (byte)(v >> 8), (byte)v];
+
+    private static uint Crc32(byte[] data)
+    {
+        var crc = 0xFFFFFFFFu;
+        foreach (var b in data)
+        {
+            crc ^= b;
+            for (var k = 0; k < 8; k++)
+            {
+                crc = (crc & 1) != 0 ? 0xEDB88320u ^ (crc >> 1) : crc >> 1;
+            }
+        }
+
+        return ~crc;
     }
 
     private static string ErrorText(string body)

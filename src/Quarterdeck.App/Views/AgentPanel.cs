@@ -15,7 +15,7 @@ namespace Quarterdeck.App.Views;
 /// </summary>
 internal sealed class AgentPanel : DockPanel
 {
-    private readonly ITerminalTarget _target;
+    private readonly IAgentTarget _target;
     private readonly Core.Model.SessionProtocol _protocol;
     private readonly CredentialVault _vault;
     private readonly AgentLog _log = new();
@@ -50,7 +50,7 @@ internal sealed class AgentPanel : DockPanel
 
     public event EventHandler? CloseRequested;
 
-    public AgentPanel(ITerminalTarget target, Core.Model.SessionProtocol protocol, CredentialVault vault)
+    public AgentPanel(IAgentTarget target, Core.Model.SessionProtocol protocol, CredentialVault vault)
     {
         _target = target;
         _protocol = protocol;
@@ -136,6 +136,11 @@ internal sealed class AgentPanel : DockPanel
 
         Reload();
         Append($"Attached to {_target.Describe}. It acts without asking; every step is logged.");
+        if (_protocol == Core.Model.SessionProtocol.Vnc)
+        {
+            Append("This is a remote desktop: the agent sees screenshots and clicks and types over VNC, so the endpoint's " +
+                   "model must accept images (Test in Agent endpoints checks). Clicks are checked against a close-up first.");
+        }
     }
 
     /// <summary>Endpoints and skills, re-read so edits in the settings window show up.</summary>
@@ -208,11 +213,14 @@ internal sealed class AgentPanel : DockPanel
         var key = endpoint.Id + "|" + string.Join("|", skills.Select(s => s.Path));
         if (_runner is null || key != _runnerKey)
         {
-            _runner = new AgentRunner(endpoint, _vault.Get(endpoint.Id, "apikey")?.Trim(), _target, skills, _log);
+            var apiKey = _vault.Get(endpoint.Id, "apikey")?.Trim();
+            _runner = _protocol == Core.Model.SessionProtocol.Vnc && _target is IScreenTarget screen
+                ? new AgentRunner(endpoint, apiKey, screen, skills, _log)
+                : new AgentRunner(endpoint, apiKey, (ITerminalTarget)_target, skills, _log);
             _runner.Event += e => Dispatcher.BeginInvoke(() => Show(e));
             _runner.Approve = command => Dispatcher.InvokeAsync(() => MessageBox.Show(
                 Window.GetWindow(this)!,
-                $"The agent wants to run:\n\n{command}\n\nin {_target.Describe}.\n\nAllow it?",
+                $"The agent wants to {(_protocol == Core.Model.SessionProtocol.Vnc ? "do this" : "run")}:\n\n{command}\n\nin {_target.Describe}.\n\nAllow it?",
                 "BaudHoundTerm: agent approval", MessageBoxButton.YesNo, MessageBoxImage.Question,
                 MessageBoxResult.No) == MessageBoxResult.Yes).Task;
             _runnerKey = key;
