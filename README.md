@@ -74,6 +74,24 @@ travel with it.
 WebView2, which ships with Windows 11 and current Windows 10. On a machine without it, install the
 Evergreen runtime from Microsoft.
 
+## BaudHound over TLS
+
+BaudHound firmware 1.4 and later serve the console encrypted on port 992. The **BaudHound**
+button uses it whenever the device offers it; a saved session can turn it on with **TLS
+(telnets)** in its telnet settings.
+
+1. The first connection shows the device's certificate fingerprint, `SHA256:...`. Compare it
+   with the TLS line on the device's **⚙ Settings** page, then trust it.
+2. Later connections check it silently. If it changes, the connection stops with a warning. That
+   is expected after the device's flash is erased; at any other time, refuse it.
+3. While the session is open, the device accepts no other connection, and its web console and
+   plain telnet port are paused. The picker marks such a device "in use". Closing the tab frees
+   it; a PC that drops off the network frees it after about 25 seconds.
+
+The device asks for no password: whoever connects first holds it. The firmware's
+[docs/TLS.md](https://github.com/magicsmokepress/BaudHound/blob/main/docs/TLS.md) has the
+details.
+
 ## Where things are stored
 
 `%APPDATA%\BaudHoundTerm\`
@@ -81,6 +99,7 @@ Evergreen runtime from Microsoft.
 | File | Contents |
 |---|---|
 | `sessions.json` | session definitions, no secrets |
+| `known_hosts.json` | trusted SSH host keys and TLS certificate fingerprints |
 | `credentials.dat` | DPAPI-encrypted secrets, keyed by session id |
 | `logs\` | session transcripts |
 | `webview\` | WebView2 user data |
@@ -129,12 +148,14 @@ is whether someone tampered with the file.
   tracking prevention is on. A build was verified with a WebView2 net-log to make no outbound
   connections of its own. It still executes the bundled xterm.js and noVNC, so treat a tampered
   `Assets` folder as equivalent to a tampered executable.
-- **Host keys**: SSH host key verification is handled by SSH.NET's defaults and there is no
-  trust-on-first-use prompt or known-hosts UI yet. Do not rely on this build to detect a
-  man-in-the-middle on first connect.
+- **Host keys and TLS certificates** are trusted on first use, like OpenSSH: the first
+  connection shows the SHA-256 fingerprint and asks, and a later change is refused unless you
+  accept it. Pins are kept in `known_hosts.json`. The first connection is only as safe as your
+  check of that fingerprint against the server or device.
 - **Telnet and VNC are cleartext protocols.** Passwords typed into a telnet session, and
   everything a VNC session displays, cross the network unencrypted. Tunnel them or keep them on
-  a network you trust.
+  a network you trust. The exception is telnet with **TLS** turned on (telnets, used for
+  BaudHound on port 992), which is encrypted and pinned as above.
 - Session **transcripts are written in plaintext** to `%APPDATA%\BaudHoundTerm\logs\`. Anything
   that appears on screen, including a password echoed by a careless remote prompt, lands there.
 
@@ -147,7 +168,6 @@ public text; there is no separate disclosure channel yet.
 
 - Highlight rules are applied to text as it arrives, so a match split across two reads is missed.
 - The jump-host field is stored but not yet used for connection chaining.
-- SSH agent authentication is selectable but not yet wired to Pageant or the Windows agent.
 - Port forwarding is not implemented.
 - Not tested against a hardened or non-OpenSSH server.
 - SFTP/SCP transfer, auto-login scripting, and a real BaudHound device are all implemented but
