@@ -51,6 +51,7 @@ public partial class MainWindow : Window
         }
 
         Loaded += async (_, _) => await RestoreOpenTabsAsync();
+        InitSync();
 
         Closing += async (_, _) =>
         {
@@ -459,6 +460,7 @@ public partial class MainWindow : Window
         _store.SaveFolders(_folders);
         _folders = _store.LoadFolders();
         RebuildTree();
+        ScheduleSync();
     }
 
     private SessionDefinition? Selected => (SessionTree.SelectedItem as TreeViewItem)?.Tag as SessionDefinition;
@@ -480,6 +482,7 @@ public partial class MainWindow : Window
     {
         _store.Save(_sessions);
         RebuildTree();
+        ScheduleSync();
     }
 
     // ---------- session commands ----------

@@ -26,6 +26,7 @@
         <MenuItem Header="_Delete shortcut" Click="OnDelete"/>
         <Separator/>
         <MenuItem Header="Passwords and _keys (KeePassXC)..." Click="OnKeePassXc"/>
+        <MenuItem Header="S_ync between PCs (git)..." Click="OnSyncSettings"/>
         <Separator/>
         <MenuItem Header="E_xit" Click="OnExit"/>
       </MenuItem>
@@ -84,6 +85,8 @@
         <Button Click="OnClear" ToolTip="Clear the screen">Clear</Button>
         <Rectangle/>
         <Button Click="OnBaudHound" ToolTip="Connect to a BaudHound wireless serial console over telnet">BaudHound</Button>
+        <Rectangle/>
+        <Button x:Name="SyncButton" Click="OnSyncSettings" ToolTip="Share shortcuts between PCs through a private git repository">Sync</Button>
       </WrapPanel>
     </Border>
 
