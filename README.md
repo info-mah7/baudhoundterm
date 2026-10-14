@@ -28,6 +28,13 @@ for SSH, and a serial port for consoles, rendered by xterm.js.
   `sessions.json`; the file is useless on another machine or account.
 - **Protocols**: SSH (password, public key, agent, keyboard-interactive), telnet, serial, local
   shell, and VNC.
+- **KeePassXC**: SSH passwords can be looked up in KeePassXC at each connect (never stored here),
+  and agent logins sign through Pageant or the Windows OpenSSH agent, where KeePassXC loads its keys.
+- **Sync between PCs** through a private git repository: shortcuts, folders, agent endpoints,
+  skills and trusted host keys, one file per shortcut. Needs Git for Windows; sign-in is git's
+  own (browser for GitHub, keys for ssh). A public repository is refused, checked before every
+  push by reading it anonymously. Secrets, KeePassXC pairings, serial port names and key file
+  paths stay on each PC. Conflicts keep both versions.
 - **VNC viewer** in a tab beside the terminals, rendered by noVNC over a WebSocket-to-TCP bridge
   bound to 127.0.0.1 behind a per-session token. View-only is a per-session setting.
 - **Session logging** to file, optionally timestamped per line and stripped of ANSI sequences,
@@ -67,6 +74,8 @@ Evergreen runtime from Microsoft.
 | `logs\` | session transcripts |
 | `webview\` | WebView2 user data |
 | `crash.log` | unhandled UI exceptions |
+| `sync.json` | this PC's sync settings and per-PC values (never synced) |
+| `sync\` | the git clone used for sync |
 
 ## Security
 
