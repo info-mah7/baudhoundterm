@@ -7,13 +7,8 @@ using System.Text.RegularExpressions;
 namespace Quarterdeck.Core.Agent;
 
 /// <summary>The one terminal an agent is allowed to touch: the tab it was attached to.</summary>
-public interface ITerminalTarget
+public interface ITerminalTarget : IAgentTarget
 {
-    /// <summary>"web01 (SSH admin@192.0.2.20:22)", for the prompt and the log.</summary>
-    string Describe { get; }
-
-    string SessionName { get; }
-    bool IsConnected { get; }
     TerminalTranscript Transcript { get; }
 
     /// <summary>Raw input, exactly as if typed.</summary>
@@ -24,11 +19,12 @@ public interface ITerminalTarget
 public sealed record AgentEvent(string Kind, string Text);
 
 /// <summary>
-/// The agent loop: the model gets the goal, the skills and four tools that act on one terminal,
-/// and runs until it answers without calling a tool, hits the step limit, or is stopped. It
-/// acts without asking; the log is the record of everything it did.
+/// The agent loop: the model gets the goal, the skills and tools that act on one tab (four for
+/// a terminal, screen tools for a remote desktop, see AgentRunner.Screen.cs), and runs until it
+/// answers without calling a tool, hits the step limit, or is stopped. The log is the record of
+/// everything it did.
 /// </summary>
-public sealed class AgentRunner
+public sealed partial class AgentRunner
 {
     private const int MaxToolOutput = 6000;
 
@@ -38,7 +34,8 @@ public sealed class AgentRunner
 
     private readonly AgentEndpoint _endpoint;
     private readonly string? _apiKey;
-    private readonly ITerminalTarget _target;
+    private readonly IAgentTarget _target;
+    private readonly ITerminalTarget? _terminal;
     private readonly IReadOnlyList<AgentSkill> _skills;
     private readonly AgentLog _log;
     private readonly JsonArray _messages = new();
@@ -105,13 +102,39 @@ public sealed class AgentRunner
 
     public AgentRunner(AgentEndpoint endpoint, string? apiKey, ITerminalTarget target,
                        IReadOnlyList<AgentSkill> skills, AgentLog log)
+        : this(endpoint, apiKey, target, target, null, skills, log)
+    {
+    }
+
+    public AgentRunner(AgentEndpoint endpoint, string? apiKey, IScreenTarget target,
+                       IReadOnlyList<AgentSkill> skills, AgentLog log)
+        : this(endpoint, apiKey, target, null, target, skills, log)
+    {
+    }
+
+    // The mode is chosen by the constructor called, not by type tests: one view can be both
+    // kinds of target, and a terminal tab must never get the screen tools.
+    private AgentRunner(AgentEndpoint endpoint, string? apiKey, IAgentTarget target, ITerminalTarget? terminal,
+                        IScreenTarget? screen, IReadOnlyList<AgentSkill> skills, AgentLog log)
     {
         _endpoint = endpoint;
         _apiKey = apiKey;
         _target = target;
+        _terminal = terminal;
+        _screen = screen;
         _skills = skills;
         _log = log;
-        _messages.Add(new JsonObject { ["role"] = "system", ["content"] = SystemPrompt() });
+        _messages.Add(new JsonObject { ["role"] = "system", ["content"] = _screen is null ? SystemPrompt() : ScreenSystemPrompt() });
+    }
+
+    private void AppendSkills(StringBuilder sb)
+    {
+        foreach (var skill in _skills)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"## Skill: {skill.Name}");
+            sb.AppendLine(skill.Body);
+        }
     }
 
     private string SystemPrompt()
@@ -127,13 +150,7 @@ public sealed class AgentRunner
         sb.AppendLine("When the goal is done, or cannot be done, reply in plain text without calling a tool: what you did, " +
                       "what you found, and anything left for the user. Be brief.");
 
-        foreach (var skill in _skills)
-        {
-            sb.AppendLine();
-            sb.AppendLine($"## Skill: {skill.Name}");
-            sb.AppendLine(skill.Body);
-        }
-
+        AppendSkills(sb);
         return sb.ToString();
     }
 
@@ -181,6 +198,7 @@ public sealed class AgentRunner
         Log("goal", text: goal);
         _goalMessage = new JsonObject { ["role"] = "user", ["content"] = goal };
         _messages.Add(_goalMessage);
+        await StartScreenGoalAsync(token);
 
         var emptyReplies = 0;
 
@@ -250,6 +268,7 @@ public sealed class AgentRunner
             // Every call gets a reply, even when the run is stopped part way: a tool call left
             // unanswered makes the server reject the whole conversation on the next goal.
             var answered = 0;
+            var skipRest = false;
             try
             {
                 foreach (var call in calls.OfType<JsonObject>())
@@ -269,7 +288,9 @@ public sealed class AgentRunner
                         var args = argNode is JsonObject obj
                             ? (JsonObject)obj.DeepClone()
                             : JsonNode.Parse(string.IsNullOrWhiteSpace(argText) ? "{}" : argText) as JsonObject ?? new JsonObject();
-                        result = await ExecuteAsync(name, args, token);
+                        result = skipRest
+                            ? "skipped: an earlier action in this turn did not happen. Look at the screen and decide again."
+                            : await ExecuteAsync(name, args, token);
                     }
                     catch (OperationCanceledException)
                     {
@@ -280,10 +301,15 @@ public sealed class AgentRunner
                         result = $"error: {ex.Message}";
                     }
 
+                    skipRest |= _screen is not null && ScreenActionFailed(result);
                     Log("tool_result", tool: name, text: result);
                     _messages.Add(new JsonObject { ["role"] = "tool", ["tool_call_id"] = id, ["content"] = result });
                     answered++;
                 }
+
+                // A screen tool's picture rides in one user message after the tool replies:
+                // most servers take images only in user turns.
+                AttachPendingScreenshot();
             }
             catch (OperationCanceledException)
             {
@@ -311,7 +337,7 @@ public sealed class AgentRunner
         {
             ["model"] = _endpoint.Model,
             ["messages"] = _messages.DeepClone(),
-            ["tools"] = Tools.DeepClone(),
+            ["tools"] = (_screen is null ? Tools : ScreenTools).DeepClone(),
             ["tool_choice"] = "auto",
             ["temperature"] = _endpoint.Temperature,
             ["max_tokens"] = 2048
@@ -364,13 +390,19 @@ public sealed class AgentRunner
 
     private async Task<string> ExecuteAsync(string name, JsonObject args, CancellationToken token)
     {
+        if (_screen is not null)
+        {
+            return await ExecuteScreenAsync(name, args, token);
+        }
+
+        var terminal = _terminal!;
         switch (name)
         {
             case "read_terminal":
             {
                 var lines = Clamp(Int(args, "lines", 60), 1, 400);
                 Emit("action", $"read {lines} lines");
-                return _target.Transcript.Tail(lines, MaxToolOutput);
+                return terminal.Transcript.Tail(lines, MaxToolOutput);
             }
 
             case "send_input":
@@ -386,8 +418,8 @@ public sealed class AgentRunner
                 }
 
                 Emit("action", "$ " + text + (enter ? "" : "   (no Enter)"));
-                var mark = _target.Transcript.Mark;
-                await _target.SendAsync(typed);
+                var mark = terminal.Transcript.Mark;
+                await terminal.SendAsync(typed);
                 Track(typed);
                 return await CollectAsync(mark, Int(args, "wait_seconds", 10), Str(args, "until"), token);
             }
@@ -404,8 +436,8 @@ public sealed class AgentRunner
                 }
 
                 Emit("action", $"key {key}");
-                var mark = _target.Transcript.Mark;
-                await _target.SendAsync(seq);
+                var mark = terminal.Transcript.Mark;
+                await terminal.SendAsync(seq);
                 TrackKey(key);
                 return await CollectAsync(mark, 3, null, token);
             }
@@ -414,7 +446,7 @@ public sealed class AgentRunner
             {
                 var seconds = Int(args, "seconds", 10);
                 Emit("action", $"wait up to {Clamp(seconds, 1, 120)} s");
-                return await CollectAsync(_target.Transcript.Mark, seconds, Str(args, "until"), token);
+                return await CollectAsync(terminal.Transcript.Mark, seconds, Str(args, "until"), token);
             }
 
             default:
@@ -577,7 +609,7 @@ public sealed class AgentRunner
     private void TrimHistory()
     {
         var trimmed = false;
-        while (_messages.ToJsonString().Length > HistoryBudget && _messages.Count > 2 && !ReferenceEquals(_messages[1], _goalMessage))
+        while (HistoryLength() > HistoryBudget && _messages.Count > 2 && !ReferenceEquals(_messages[1], _goalMessage))
         {
             _messages.RemoveAt(1);
             while (_messages.Count > 1 && _messages[1]?["role"]?.ToString() == "tool")
@@ -588,7 +620,7 @@ public sealed class AgentRunner
             trimmed = true;
         }
 
-        if (_messages.ToJsonString().Length > HistoryBudget)
+        if (HistoryLength() > HistoryBudget)
         {
             var tools = _messages.OfType<JsonObject>().Where(m => m["role"]?.ToString() == "tool").ToList();
             foreach (var m in tools.Take(Math.Max(0, tools.Count - 4)))
@@ -621,6 +653,7 @@ public sealed class AgentRunner
     /// </summary>
     private async Task<string> CollectAsync(long mark, int seconds, string? until, CancellationToken token)
     {
+        var terminal = _terminal!;
         var deadline = DateTime.UtcNow.AddSeconds(Clamp(seconds, 1, 120));
         Regex? pattern = null;
         if (!string.IsNullOrEmpty(until))
@@ -639,7 +672,7 @@ public sealed class AgentRunner
         while (DateTime.UtcNow < deadline)
         {
             await Task.Delay(250, token);
-            var output = _target.Transcript.Since(mark, int.MaxValue);
+            var output = terminal.Transcript.Since(mark, int.MaxValue);
 
             if (pattern is not null && SafeMatch(pattern, output))
             {
@@ -647,7 +680,7 @@ public sealed class AgentRunner
                 break;
             }
 
-            var quietFor = DateTime.UtcNow - _target.Transcript.LastChangeUtc;
+            var quietFor = DateTime.UtcNow - terminal.Transcript.LastChangeUtc;
             if (pattern is null && output.Length > 0 && quietFor > TimeSpan.FromMilliseconds(1500))
             {
                 timedOut = false;
@@ -655,7 +688,7 @@ public sealed class AgentRunner
             }
         }
 
-        var result = _target.Transcript.Since(mark, MaxToolOutput);
+        var result = terminal.Transcript.Since(mark, MaxToolOutput);
         if (result.Length == 0)
         {
             result = "(no output)";

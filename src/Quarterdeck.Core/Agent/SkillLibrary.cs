@@ -117,6 +117,7 @@ public static class SkillLibrary
         "serial" or "com" => SessionProtocol.Serial,
         "local" or "localshell" or "shell" => SessionProtocol.LocalShell,
         "telnet" => SessionProtocol.Telnet,
+        "vnc" or "desktop" => SessionProtocol.Vnc,
         _ => null
     };
 

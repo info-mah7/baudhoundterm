@@ -259,6 +259,10 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
         switch (kind)
         {
+            case "agent":
+                OnAgentReply(root);
+                break;
+
             case "ready":
                 _webReady = true;
                 while (_pending.Count > 0)
@@ -902,8 +906,11 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
     public event EventHandler? AgentAttachedChanged;
 
-    /// <summary>VNC is a picture, not text: there is nothing for a terminal agent to read.</summary>
-    public bool CanAttachAgent => Definition.Protocol is not (SessionProtocol.Vnc or SessionProtocol.Rtsp);
+    /// <summary>
+    /// Terminals get the text agent, VNC the screen agent (TerminalView.Screen.cs). A camera
+    /// has nothing to act on.
+    /// </summary>
+    public bool CanAttachAgent => Definition.Protocol is not SessionProtocol.Rtsp;
 
     public void AttachAgent()
     {
