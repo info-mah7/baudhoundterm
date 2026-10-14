@@ -24,7 +24,13 @@ public sealed class AgentSkill
     public string Body { get; init; } = "";
     public string Path { get; init; } = "";
 
-    public bool AppliesTo(SessionProtocol protocol) => Protocols.Count == 0 || Protocols.Contains(protocol);
+    /// <summary>
+    /// True when the header has a protocols line. A line naming only unknown protocols (a typo
+    /// such as "telnett") then applies nowhere instead of everywhere.
+    /// </summary>
+    public bool Restricted { get; init; }
+
+    public bool AppliesTo(SessionProtocol protocol) => !Restricted || Protocols.Contains(protocol);
 }
 
 public static class SkillLibrary
@@ -46,7 +52,7 @@ public static class SkillLibrary
             {
                 skills.Add(Parse(File.ReadAllText(file), file));
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // A skill being edited right now is skipped this time, not fatal.
             }
@@ -60,6 +66,7 @@ public static class SkillLibrary
         var name = System.IO.Path.GetFileNameWithoutExtension(path);
         var description = "";
         var protocols = new HashSet<SessionProtocol>();
+        var restricted = false;
         var body = text;
 
         var lines = text.Replace("\r\n", "\n").Split('\n');
@@ -84,6 +91,7 @@ public static class SkillLibrary
                         case "name": name = value; break;
                         case "description": description = value; break;
                         case "protocols":
+                            restricted |= value.Length > 0;
                             foreach (var word in value.Split(',', ' ', StringSplitOptions.RemoveEmptyEntries))
                             {
                                 if (ProtocolWord(word) is { } p)
@@ -100,7 +108,7 @@ public static class SkillLibrary
             }
         }
 
-        return new AgentSkill { Name = name, Description = description, Protocols = protocols, Body = body, Path = path };
+        return new AgentSkill { Name = name, Description = description, Protocols = protocols, Restricted = restricted, Body = body, Path = path };
     }
 
     private static SessionProtocol? ProtocolWord(string word) => word.Trim().ToLowerInvariant() switch

@@ -45,19 +45,56 @@ public sealed class TftpServer : IAsyncDisposable
         }
 
         _listener = new UdpClient(_bind);
+        IgnoreConnectionResets(_listener);
+
+        // Bound to every interface, each request must be answered from the address it reached:
+        // a device checks the reply's source, and on a PC with several addresses the routing
+        // table may pick another. Packet information says which address that was.
+        if (_bind.Address.Equals(IPAddress.Any) || _bind.Address.Equals(IPAddress.IPv6Any))
+        {
+            _listener.Client.SetSocketOption(
+                _bind.AddressFamily == AddressFamily.InterNetworkV6 ? SocketOptionLevel.IPv6 : SocketOptionLevel.IP,
+                SocketOptionName.PacketInformation, true);
+        }
+
         _cts = new CancellationTokenSource();
         _ = Task.Run(() => ListenAsync(_cts.Token));
         Write($"Serving {_root} on {_bind}{(_allowUploads ? " (uploads allowed)" : "")}");
     }
 
+    /// <summary>
+    /// Windows reports an ICMP "port unreachable" for an earlier datagram as an error on the
+    /// next receive. On UDP that is noise; switched off, it can no longer cut a wait short.
+    /// </summary>
+    private static void IgnoreConnectionResets(UdpClient client)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            const int SioUdpConnReset = unchecked((int)0x9800000C);
+            client.Client.IOControl(SioUdpConnReset, new byte[4], null);
+        }
+    }
+
     private async Task ListenAsync(CancellationToken token)
     {
+        var buffer = new byte[65536];
+        var any = new IPEndPoint(_bind.AddressFamily == AddressFamily.InterNetworkV6 ? IPAddress.IPv6Any : IPAddress.Any, 0);
+        var wildcard = _bind.Address.Equals(IPAddress.Any) || _bind.Address.Equals(IPAddress.IPv6Any);
+
         while (!token.IsCancellationRequested && _listener is not null)
         {
-            UdpReceiveResult packet;
+            byte[] request;
+            IPEndPoint peer;
+            var local = _bind.Address;
             try
             {
-                packet = await _listener.ReceiveAsync(token);
+                var got = await _listener.Client.ReceiveMessageFromAsync(buffer, SocketFlags.None, any, token);
+                request = buffer.AsSpan(0, got.ReceivedBytes).ToArray();
+                peer = (IPEndPoint)got.RemoteEndPoint;
+                if (wildcard && got.PacketInformation.Address is { } to)
+                {
+                    local = to;
+                }
             }
             catch (OperationCanceledException)
             {
@@ -69,17 +106,20 @@ public sealed class TftpServer : IAsyncDisposable
             }
             catch (SocketException)
             {
-                continue;   // an ICMP "port unreachable" from an earlier peer surfaces here on Windows
+                // A lasting fault (the network went away) must not spin a core.
+                await Task.Delay(250, CancellationToken.None);
+                continue;
             }
 
-            _ = Task.Run(() => HandleRequestAsync(packet.Buffer, packet.RemoteEndPoint, token), token);
+            _ = Task.Run(() => HandleRequestAsync(request, peer, local, token), token);
         }
     }
 
-    private async Task HandleRequestAsync(byte[] request, IPEndPoint peer, CancellationToken token)
+    private async Task HandleRequestAsync(byte[] request, IPEndPoint peer, IPAddress local, CancellationToken token)
     {
-        // Every transfer answers from a fresh port (its TID), on the same address as the listener.
-        using var socket = new UdpClient(new IPEndPoint(_bind.Address, 0));
+        // Every transfer answers from a fresh port (its TID), on the address the request reached.
+        using var socket = new UdpClient(new IPEndPoint(local, 0));
+        IgnoreConnectionResets(socket);
 
         try
         {
@@ -282,12 +322,14 @@ public sealed class TftpServer : IAsyncDisposable
         Write($"{peer.Address}  PUT {name}");
 
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var temp = path + ".part";
+
+        // A name of its own: an old .part, or a second upload of the same name, is never touched.
+        var temp = $"{path}.{Guid.NewGuid().ToString("N")[..8]}.part";
         var done = false;
         long written = 0;
         byte[] answer = accepted.Count > 0 ? Oack(accepted) : Ack(0);
 
-        await using (var file = new FileStream(temp, FileMode.Create, FileAccess.Write))
+        await using (var file = new FileStream(temp, FileMode.CreateNew, FileAccess.Write))
         {
             ushort expect = 1;
 
@@ -320,7 +362,21 @@ public sealed class TftpServer : IAsyncDisposable
             // Only a complete upload takes the real name; a broken one stays visible as .part.
             // The rename comes before the last ACK, so a device that checks straight after its
             // upload finishes always finds the file.
-            File.Move(temp, path);
+            try
+            {
+                File.Move(temp, path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Usually another upload of the same name finished first; otherwise a disk or
+                // permission problem, which gets its own message.
+                var exists = File.Exists(path);
+                Write($"{peer.Address}  PUT {name}: " + (exists ? "a file with that name appeared meanwhile" : "could not rename: " + ex.Message) +
+                      $"; kept as {Path.GetFileName(temp)}");
+                await SendErrorAsync(socket, peer, exists ? (ushort)6 : (ushort)2, exists ? "File already exists" : "Access violation");
+                return;
+            }
+
             await socket.SendAsync(answer, peer, token);
             Write($"{peer.Address}  PUT {name}: done, {Size(written)} in {clock.Elapsed.TotalSeconds:0.0} s");
         }
@@ -363,26 +419,31 @@ public sealed class TftpServer : IAsyncDisposable
     private static async Task<(byte[] Buffer, IPEndPoint From)?> ReceiveAsync(UdpClient socket, TimeSpan wait,
                                                                               CancellationToken token)
     {
-        if (wait <= TimeSpan.Zero)
+        var deadline = DateTime.UtcNow + wait;
+        while (deadline - DateTime.UtcNow is var left && left > TimeSpan.Zero)
         {
-            return null;
+            using var timer = CancellationTokenSource.CreateLinkedTokenSource(token);
+            timer.CancelAfter(left);
+            try
+            {
+                var r = await socket.ReceiveAsync(timer.Token);
+                return (r.Buffer, r.RemoteEndPoint);
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+                return null;
+            }
+            catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
+            {
+                // A late ICMP report about another datagram: keep waiting out the same deadline.
+            }
+            catch (SocketException)
+            {
+                return null;
+            }
         }
 
-        using var timer = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timer.CancelAfter(wait);
-        try
-        {
-            var r = await socket.ReceiveAsync(timer.Token);
-            return (r.Buffer, r.RemoteEndPoint);
-        }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested)
-        {
-            return null;
-        }
-        catch (SocketException)
-        {
-            return null;
-        }
+        return null;
     }
 
     /// <summary>The options this server accepts and the values it will use.</summary>

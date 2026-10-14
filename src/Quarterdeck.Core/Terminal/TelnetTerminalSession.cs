@@ -38,6 +38,8 @@ public sealed class TelnetTerminalSession : ITerminalSession
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
         _closing = false;
+        _state = Telnet.Data;
+        _decoder.Reset();
         _client = new TcpClient { NoDelay = true };
 
         await _client.ConnectAsync(_definition.Host, _definition.Port, cancellationToken)
@@ -89,6 +91,14 @@ public sealed class TelnetTerminalSession : ITerminalSession
         }
     }
 
+    // Parser state survives between reads: a command split across two TCP segments (IAC at
+    // the end of one read, the verb or option at the start of the next) must not leak into
+    // the screen or go unanswered.
+    private enum Telnet { Data, Iac, Option, Sub, SubIac }
+
+    private Telnet _state;
+    private byte _verb;
+
     /// <summary>
     /// Takes telnet negotiation out of the data stream and refuses every option, which is what
     /// a plain character terminal wants. A raw socket has no IAC bytes and passes through
@@ -100,48 +110,61 @@ public sealed class TelnetTerminalSession : ITerminalSession
 
         for (var i = 0; i < length; i++)
         {
-            if (source[i] != IAC)
+            var b = source[i];
+
+            switch (_state)
             {
-                target[kept++] = source[i];
-                continue;
-            }
-
-            if (i + 1 >= length)
-            {
-                break;
-            }
-
-            var command = source[++i];
-
-            switch (command)
-            {
-                case IAC:
-                    target[kept++] = IAC;      // escaped 0xFF is literal data
-                    break;
-
-                case DO:
-                case DONT:
-                case WILL:
-                case WONT:
-                    if (i + 1 < length)
+                case Telnet.Data:
+                    if (b == IAC)
                     {
-                        var option = source[++i];
-
-                        // Refuse everything: WONT in answer to DO, DONT in answer to WILL.
-                        var answer = command is DO or DONT ? WONT : DONT;
-                        await SendRawAsync(new[] { IAC, answer, option }, token).ConfigureAwait(false);
+                        _state = Telnet.Iac;
+                    }
+                    else
+                    {
+                        target[kept++] = b;
                     }
 
                     break;
 
-                case SB:
-                    // Skip to the end of the subnegotiation.
-                    while (i + 1 < length && !(source[i] == IAC && source[i + 1] == SE))
+                case Telnet.Iac:
+                    if (b == IAC)
                     {
-                        i++;
+                        target[kept++] = IAC;      // escaped 0xFF is literal data
+                        _state = Telnet.Data;
+                    }
+                    else if (b is DO or DONT or WILL or WONT)
+                    {
+                        _verb = b;
+                        _state = Telnet.Option;
+                    }
+                    else
+                    {
+                        _state = b == SB ? Telnet.Sub : Telnet.Data;   // other commands carry no option
                     }
 
-                    i++;
+                    break;
+
+                case Telnet.Option:
+                    // Refuse everything: WONT in answer to DO, DONT in answer to WILL. A DONT or
+                    // WONT is already the state we are in, and answering it would loop (RFC 854).
+                    if (_verb is DO or WILL)
+                    {
+                        await SendRawAsync(new[] { IAC, _verb == DO ? WONT : DONT, b }, token).ConfigureAwait(false);
+                    }
+
+                    _state = Telnet.Data;
+                    break;
+
+                case Telnet.Sub:
+                    if (b == IAC)
+                    {
+                        _state = Telnet.SubIac;
+                    }
+
+                    break;
+
+                case Telnet.SubIac:
+                    _state = b == SE ? Telnet.Data : Telnet.Sub;
                     break;
             }
         }

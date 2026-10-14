@@ -2,6 +2,7 @@ using Quarterdeck.Core.Automation;
 using Quarterdeck.Core.Logging;
 using Quarterdeck.Core.Model;
 using Quarterdeck.Core.Security;
+using Quarterdeck.Core.Security.KeePassXc;
 
 namespace Quarterdeck.Core.Terminal;
 
@@ -37,6 +38,8 @@ public sealed class SessionController : IAsyncDisposable
     private int _columns = 120;
     private int _rows = 30;
     private bool _userInitiatedClose;
+    private readonly object _closeGate = new();
+    private ITerminalSession? _closeHandled;
 
     public SessionController(
         SessionDefinition definition,
@@ -75,6 +78,9 @@ public sealed class SessionController : IAsyncDisposable
 
         try
         {
+            // Never leave a previous transport subscribed: its late events would land here.
+            await DetachTransportAsync().ConfigureAwait(false);
+
             _transport = Definition.Protocol switch
             {
                 SessionProtocol.Ssh => new SshTerminalSession(Definition, _vault, _promptForSecret),
@@ -89,6 +95,10 @@ public sealed class SessionController : IAsyncDisposable
 
             _logger ??= new SessionLogger(Definition);
 
+            // The login script listens from the first byte: a login: or Password: prompt sent
+            // during the connect would otherwise be gone before the script started.
+            _expect = Definition.AutoLogin.Count > 0 ? new ExpectEngine(_transport, _vault, Definition.Id) : null;
+
             await _transport.ConnectAsync(token).ConfigureAwait(false);
             await _transport.ResizeAsync(_columns, _rows).ConfigureAwait(false);
 
@@ -96,16 +106,21 @@ public sealed class SessionController : IAsyncDisposable
             Definition.LastConnected = DateTimeOffset.UtcNow;
             SetState(SessionState.Connected, $"Connected to {Describe()}.");
 
-            if (Definition.AutoLogin.Count > 0)
+            if (_expect is { } expect)
             {
-                _expect = new ExpectEngine(_transport, _vault, Definition.Id);
-                var stalled = await _expect.RunAsync(Definition.AutoLogin, token).ConfigureAwait(false);
-                if (stalled is not null)
+                // A script problem stops the script, never the connection: RunAsync reports
+                // bad patterns, missing secrets and failed sends as a stop.
+                var stopped = await expect.RunAsync(Definition.AutoLogin, token).ConfigureAwait(false);
+                if (stopped is not null)
                 {
-                    Emit($"\r\n[baudhoundterm] login script stopped: never saw \"{stalled.Expect}\".\r\n");
+                    Emit($"\r\n[baudhoundterm] login script stopped at step {stopped.Number}: {stopped.Reason.TrimEnd('.')}.\r\n");
                 }
 
-                _expect.Detach();
+                expect.Detach();
+                if (ReferenceEquals(_expect, expect))
+                {
+                    _expect = null;
+                }
             }
         }
         catch (OperationCanceledException)
@@ -140,6 +155,7 @@ public sealed class SessionController : IAsyncDisposable
         FileNotFoundException => true,
         NotSupportedException => true,
         InvalidOperationException => true,   // no credential available for this session
+        KeePassXcException => true,          // KeePassXC closed, locked, denied, or no entry: retrying re-prompts forever
         _ => false
     };
 
@@ -151,6 +167,26 @@ public sealed class SessionController : IAsyncDisposable
 
     private void OnTransportClosed(object? sender, TerminalClosedEventArgs e)
     {
+        // Only the current transport's first close counts: a replaced transport, or a second
+        // error event for the same drop, would start a second reconnect chain and a second
+        // live connection.
+        if (sender is not ITerminalSession closed)
+        {
+            return;
+        }
+
+        lock (_closeGate)
+        {
+            if (!ReferenceEquals(closed, _transport) || ReferenceEquals(closed, _closeHandled))
+            {
+                return;
+            }
+
+            _closeHandled = closed;
+        }
+
+        closed.Closed -= OnTransportClosed;
+
         if (e.WasExpected || _userInitiatedClose)
         {
             SetState(SessionState.Disconnected, e.Reason);
@@ -226,10 +262,13 @@ public sealed class SessionController : IAsyncDisposable
             return;
         }
 
-        _transport.DataReceived -= OnTransportData;
-        _transport.Closed -= OnTransportClosed;
-        await _transport.DisposeAsync().ConfigureAwait(false);
+        var transport = _transport;
         _transport = null;
+        _expect?.Detach();
+        _expect = null;
+        transport.DataReceived -= OnTransportData;
+        transport.Closed -= OnTransportClosed;
+        await transport.DisposeAsync().ConfigureAwait(false);
     }
 
     private string Describe() => Definition.Protocol switch

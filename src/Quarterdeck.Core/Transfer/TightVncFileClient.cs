@@ -48,6 +48,16 @@ public sealed class TightVncFileClient : IRemoteFiles
     private NetworkStream _stream = null!;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
+    // Cancelled by Dispose, so closing the window stops a transfer that holds the connection.
+    private readonly CancellationTokenSource _life = new();
+
+    // Set when a transfer dies mid-stream: the next bytes on the wire belong to it, so every
+    // later request would read garbage. The window has to open a fresh connection.
+    private string? _broken;
+
+    /// <summary>The server said no and the stream is still in step (it sent its reason).</summary>
+    private sealed class RefusedException(string message) : IOException(message);
+
     private TightVncFileClient()
     {
     }
@@ -176,8 +186,17 @@ public sealed class TightVncFileClient : IRemoteFiles
 
     public string Combine(string folder, string name) => folder == "/" ? "/" + name : folder.TrimEnd('/') + "/" + name;
 
+    private void ThrowIfBroken()
+    {
+        if (_broken is not null)
+        {
+            throw new IOException($"The file-transfer connection is out of step after an earlier failure ({_broken}). Close Files and open it again.");
+        }
+    }
+
     public async Task<List<RemoteEntry>> ListAsync(string path)
     {
+        ThrowIfBroken();
         var request = Concat(U32(FileListRequest), [0], Utf8(path));
         return await RequestAsync(request, FileListReply, async t =>
         {
@@ -207,38 +226,40 @@ public sealed class TightVncFileClient : IRemoteFiles
 
     public async Task DownloadAsync(string remotePath, string localPath, IProgress<TransferProgress>? progress = null)
     {
-        await _gate.WaitAsync();
+        ThrowIfBroken();
+        var token = _life.Token;
+        await _gate.WaitAsync(token);
+        var temp = localPath + ".part";
         try
         {
             // Size first: a listing must not be interleaved with a download in progress.
-            var total = await SizeOfAsync(remotePath);
-            await WriteAsync(Concat(U32(DownloadStartRequest), Utf8(remotePath), U64(0)), default);
-            await ExpectAsync(DownloadStartReply, default);
-            var temp = localPath + ".part";
+            var total = await SizeOfAsync(remotePath, token);
+            await WriteAsync(Concat(U32(DownloadStartRequest), Utf8(remotePath), U64(0)), token);
+            await ExpectAsync(DownloadStartReply, token);
             long done = 0;
 
             await using (var file = new FileStream(temp, FileMode.Create, FileAccess.Write))
             {
                 while (true)
                 {
-                    await WriteAsync(Concat(U32(DownloadDataRequest), [0], U32(Chunk)), default);
-                    var type = await ReadReplyTypeAsync(default);
+                    await WriteAsync(Concat(U32(DownloadDataRequest), [0], U32(Chunk)), token);
+                    var type = await ReadReplyTypeAsync(token);
 
                     if (type == DownloadDataReply)
                     {
-                        var data = await ReadCompressedAsync(default);
-                        await file.WriteAsync(data);
+                        var data = await ReadCompressedAsync(token);
+                        await file.WriteAsync(data, token);
                         done += data.Length;
                         progress?.Report(new TransferProgress(Path.GetFileName(remotePath), done, total));
                     }
                     else if (type == DownloadEndReply)
                     {
-                        await ReadAsync(1 + 8, default);   // file flags, modification time
+                        await ReadAsync(1 + 8, token);   // file flags, modification time
                         break;
                     }
                     else if (type == LastRequestFailed)
                     {
-                        throw new IOException(await ReadStringAsync(default));
+                        throw new RefusedException(await ReadStringAsync(token));
                     }
                     else
                     {
@@ -249,25 +270,59 @@ public sealed class TightVncFileClient : IRemoteFiles
 
             File.Move(temp, localPath, overwrite: true);
         }
+        catch (Exception ex)
+        {
+            if (ex is not RefusedException)
+            {
+                _broken = ex.Message;
+            }
+
+            TryDelete(temp);
+            throw;
+        }
         finally
         {
+            ReleaseGate();
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Left behind; it is plainly named .part.
+        }
+    }
+
+    /// <summary>Dispose may have run while a transfer held the gate.</summary>
+    private void ReleaseGate()
+    {
+        try
+        {
             _gate.Release();
+        }
+        catch (ObjectDisposedException)
+        {
         }
     }
 
     /// <summary>The listing already knows sizes; one lookup gives the download a total for its progress bar.</summary>
-    private async Task<long> SizeOfAsync(string remotePath)
+    private async Task<long> SizeOfAsync(string remotePath, CancellationToken token)
     {
         // The gate is held by the caller, so this reads directly instead of through RequestAsync.
         var name = remotePath[(remotePath.LastIndexOf('/') + 1)..];
-        await WriteAsync(Concat(U32(FileListRequest), [0], Utf8(Parent(remotePath))), default);
-        if (await ReadReplyTypeAsync(default) != FileListReply)
+        await WriteAsync(Concat(U32(FileListRequest), [0], Utf8(Parent(remotePath))), token);
+        if (await ReadReplyTypeAsync(token) != FileListReply)
         {
-            await ReadStringAsync(default);
+            await ReadStringAsync(token);
             return 0;
         }
 
-        var data = await ReadCompressedAsync(default);
+        var data = await ReadCompressedAsync(token);
         var count = BinaryPrimitives.ReadUInt32BigEndian(data);
         var at = 4;
         for (var i = 0; i < count; i++)
@@ -287,12 +342,14 @@ public sealed class TightVncFileClient : IRemoteFiles
 
     public async Task UploadAsync(string localPath, string remotePath, IProgress<TransferProgress>? progress = null)
     {
-        await _gate.WaitAsync();
+        ThrowIfBroken();
+        var token = _life.Token;
+        await _gate.WaitAsync(token);
         try
         {
             // Flag 1: replace a file of the same name, as SFTP upload does.
-            await WriteAsync(Concat(U32(UploadStartRequest), Utf8(remotePath), [1], U64(0)), default);
-            await ExpectAsync(UploadStartReply, default);
+            await WriteAsync(Concat(U32(UploadStartRequest), Utf8(remotePath), [1], U64(0)), token);
+            await ExpectAsync(UploadStartReply, token);
 
             var info = new FileInfo(localPath);
             var buffer = new byte[Chunk];
@@ -300,35 +357,48 @@ public sealed class TightVncFileClient : IRemoteFiles
             await using (var file = File.OpenRead(localPath))
             {
                 int read;
-                while ((read = await file.ReadAsync(buffer)) > 0)
+                while ((read = await file.ReadAsync(buffer, token)) > 0)
                 {
-                    await WriteAsync(Concat(U32(UploadDataRequest), [0], U32((uint)read), U32((uint)read), buffer[..read]), default);
-                    await ExpectAsync(UploadDataReply, default);
+                    await WriteAsync(Concat(U32(UploadDataRequest), [0], U32((uint)read), U32((uint)read), buffer[..read]), token);
+                    await ExpectAsync(UploadDataReply, token);
                     done += read;
                     progress?.Report(new TransferProgress(info.Name, done, info.Length));
                 }
             }
 
             var mtime = (ulong)new DateTimeOffset(info.LastWriteTimeUtc).ToUnixTimeMilliseconds();
-            await WriteAsync(Concat(U32(UploadEndRequest), [0, 0], U64(mtime)), default);
-            await ExpectAsync(UploadEndReply, default);
+            await WriteAsync(Concat(U32(UploadEndRequest), [0, 0], U64(mtime)), token);
+            await ExpectAsync(UploadEndReply, token);
+        }
+        catch (Exception ex) when (ex is not RefusedException)
+        {
+            _broken = ex.Message;
+            throw;
         }
         finally
         {
-            _gate.Release();
+            ReleaseGate();
         }
     }
 
     public Task CreateFolderAsync(string path) =>
-        RequestAsync(Concat(U32(MkdirRequest), Utf8(path)), MkdirReply, _ => Task.FromResult(true), CancellationToken.None);
+        ThrowIfBrokenThen(() => RequestAsync(Concat(U32(MkdirRequest), Utf8(path)), MkdirReply, _ => Task.FromResult(true), CancellationToken.None));
 
     public Task DeleteAsync(string path) =>
-        RequestAsync(Concat(U32(RemoveRequest), Utf8(path)), RemoveReply, _ => Task.FromResult(true), CancellationToken.None);
+        ThrowIfBrokenThen(() => RequestAsync(Concat(U32(RemoveRequest), Utf8(path)), RemoveReply, _ => Task.FromResult(true), CancellationToken.None));
+
+    private Task<T> ThrowIfBrokenThen<T>(Func<Task<T>> request)
+    {
+        ThrowIfBroken();
+        return request();
+    }
 
     // ---------- wire ----------
 
     private async Task<T> RequestAsync<T>(byte[] request, uint expect, Func<CancellationToken, Task<T>> readBody, CancellationToken token)
     {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _life.Token);
+        token = linked.Token;
         await _gate.WaitAsync(token);
         try
         {
@@ -336,9 +406,14 @@ public sealed class TightVncFileClient : IRemoteFiles
             await ExpectAsync(expect, token);
             return await readBody(token);
         }
+        catch (Exception ex) when (ex is not RefusedException)
+        {
+            _broken = ex.Message;
+            throw;
+        }
         finally
         {
-            _gate.Release();
+            ReleaseGate();
         }
     }
 
@@ -347,7 +422,7 @@ public sealed class TightVncFileClient : IRemoteFiles
         var type = await ReadReplyTypeAsync(token);
         if (type == LastRequestFailed)
         {
-            throw new IOException((await ReadStringAsync(token)).Trim());
+            throw new RefusedException((await ReadStringAsync(token)).Trim());
         }
 
         if (type != expect)
@@ -482,8 +557,10 @@ public sealed class TightVncFileClient : IRemoteFiles
 
     public void Dispose()
     {
+        // Cancel first, so a transfer in flight stops instead of failing on a disposed stream.
+        // The gate is not disposed: a transfer still unwinding has yet to release it.
+        _life.Cancel();
         _stream?.Dispose();
         _tcp.Dispose();
-        _gate.Dispose();
     }
 }

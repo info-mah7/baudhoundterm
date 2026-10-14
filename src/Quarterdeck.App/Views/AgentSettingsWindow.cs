@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
@@ -143,7 +144,12 @@ internal sealed class AgentSettingsWindow : Window
 
             if (ConfirmLeave())
             {
+                // A save inside ConfirmLeave re-selects the endpoint it saved; point the list
+                // back at the one now in the form.
                 Edit(ep);
+                _refreshing = true;
+                _list.SelectedItem = ep;
+                _refreshing = false;
             }
             else
             {
@@ -322,17 +328,36 @@ internal sealed class AgentSettingsWindow : Window
         ep.RiskyPatterns = _risky.Text.Trim().Length > 0 ? _risky.Text.Trim() : AgentEndpoint.DefaultRiskyPatterns;
         ep.NeverOnLocalShells = _noLocal.IsChecked == true;
 
-        if (_key.Password.Length > 0)
+        try
         {
-            _vault.Set(ep.Id, _key.Password, "apikey");
+            if (_key.Password.Length > 0)
+            {
+                _vault.Set(ep.Id, _key.Password, "apikey");
+            }
+
+            if (_default.IsChecked == true)
+            {
+                _config.DefaultEndpoint = ep.Id;
+            }
+
+            _config.Save();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
+        {
+            // Not written: a new endpoint stays a draft, so leaving still offers to save it.
+            if (added)
+            {
+                _config.Endpoints.Remove(ep);
+                if (_config.DefaultEndpoint == ep.Id)
+                {
+                    _config.DefaultEndpoint = _config.Endpoints.FirstOrDefault()?.Id;
+                }
+            }
+
+            Note("Not saved: " + ex.Message, Color.FromRgb(0xE0, 0x6C, 0x75));
+            return false;
         }
 
-        if (_default.IsChecked == true)
-        {
-            _config.DefaultEndpoint = ep.Id;
-        }
-
-        _config.Save();
         Refresh(ep);
         Note(added ? $"Added {ep.Name}." : $"Saved {ep.Name}.", Color.FromRgb(0x98, 0xC3, 0x79));
         return true;
@@ -350,7 +375,18 @@ internal sealed class AgentSettingsWindow : Window
         var key = _key.Password.Length > 0 ? _key.Password : IsNew ? null : _vault.Get(_editing.Id, "apikey");
 
         Note("Testing...");
-        var lines = await EndpointTest.RunAsync(probe, key);
+        List<EndpointCheck> lines;
+        try
+        {
+            lines = await EndpointTest.RunAsync(probe, key);
+        }
+        catch (Exception ex)
+        {
+            // An async button handler that throws takes the app down with it.
+            Note("✖ The test itself failed: " + ex.Message, Color.FromRgb(0xE0, 0x6C, 0x75));
+            return;
+        }
+
         Note(string.Join(Environment.NewLine, lines.Select(l => (l.Ok ? (l.Warning ? "! " : "✔ ") : "✖ ") + l.Text)),
             lines.All(l => l.Ok) ? Color.FromRgb(0x98, 0xC3, 0x79) : Color.FromRgb(0xE0, 0x6C, 0x75));
     }

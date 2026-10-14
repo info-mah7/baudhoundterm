@@ -42,69 +42,104 @@ public sealed class ExpectEngine
     }
 
     /// <summary>
-    /// Runs every step in order. Returns the step that timed out, or null when all steps ran.
-    /// A timeout is not an error by itself: a prompt that never appeared often just means
-    /// the far end did not need it (an already-trusted key, say).
+    /// Runs every step in order. Returns null when all steps ran, or the step that stopped the
+    /// script and why. A timeout is not an error by itself: a prompt that never appeared often
+    /// just means the far end did not need it (an already-trusted key, say). Problems with the
+    /// script itself (a bad pattern, a secret that is not saved, a failed send) also stop it
+    /// here rather than escaping, so they never cost the user a working connection.
     /// </summary>
-    public async Task<AutoLoginStep?> RunAsync(
+    public async Task<ExpectStop?> RunAsync(
         IReadOnlyList<AutoLoginStep> steps, CancellationToken cancellationToken = default)
     {
-        foreach (var step in steps)
+        for (var i = 0; i < steps.Count; i++)
         {
-            if (!string.IsNullOrEmpty(step.Expect))
+            var step = steps[i];
+            try
             {
-                var matched = await WaitForAsync(step, cancellationToken).ConfigureAwait(false);
-                if (!matched)
+                if (!string.IsNullOrEmpty(step.Expect))
                 {
-                    return step;
+                    var matched = await WaitForAsync(step, cancellationToken).ConfigureAwait(false);
+                    if (!matched)
+                    {
+                        return new ExpectStop(step, i + 1, $"never saw \"{step.Expect}\"");
+                    }
                 }
+
+                string payload;
+                if (step.IsSecret)
+                {
+                    // Sending an empty line at a password prompt is a failed login that counts
+                    // toward lockout; stop and say which secret is missing instead.
+                    var secret = _vault.Get(_sessionId, step.SecretKey);
+                    if (secret is null)
+                    {
+                        return new ExpectStop(step, i + 1, $"no saved secret \"{step.SecretKey}\" for this shortcut");
+                    }
+
+                    payload = secret;
+                }
+                else
+                {
+                    payload = step.Send;
+                }
+
+                if (step.AppendNewline)
+                {
+                    payload += "\n";
+                }
+
+                await _session.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
             }
-
-            var payload = step.IsSecret
-                ? _vault.Get(_sessionId, step.SecretKey) ?? string.Empty
-                : step.Send;
-
-            if (step.AppendNewline)
+            catch (OperationCanceledException)
             {
-                payload += "\n";
+                throw;
             }
-
-            await _session.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
-
-            // Clear the window so the echo of what we just sent cannot satisfy the next step.
-            lock (_gate)
+            catch (Exception ex) when (ex is ArgumentException or RegexMatchTimeoutException or IOException
+                                           or InvalidOperationException or ObjectDisposedException)
             {
-                _recent.Clear();
+                return new ExpectStop(step, i + 1, ex.Message);
             }
         }
 
         return null;
     }
 
+    /// <summary>
+    /// Waits for the step's prompt, then consumes the window up to the end of the match, so
+    /// the same prompt cannot satisfy the next step while anything after it is kept: a server
+    /// that prints the next prompt right away must not have it thrown out.
+    /// </summary>
     private async Task<bool> WaitForAsync(AutoLoginStep step, CancellationToken cancellationToken)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(step.TimeoutMs);
         var regex = step.IsRegex
-            ? new Regex(step.Expect, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+            ? new Regex(step.Expect, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1))
             : null;
 
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            string window;
             lock (_gate)
             {
-                window = _recent.ToString();
-            }
+                var window = _recent.ToString();
+                int end;
+                if (regex is not null)
+                {
+                    var m = regex.Match(window);
+                    end = m.Success ? m.Index + m.Length : -1;
+                }
+                else
+                {
+                    var at = window.IndexOf(step.Expect, StringComparison.OrdinalIgnoreCase);
+                    end = at < 0 ? -1 : at + step.Expect.Length;
+                }
 
-            var hit = regex is not null
-                ? regex.IsMatch(window)
-                : window.Contains(step.Expect, StringComparison.OrdinalIgnoreCase);
-
-            if (hit)
-            {
-                return true;
+                if (end >= 0)
+                {
+                    _recent.Remove(0, end);
+                    return true;
+                }
             }
 
             await Task.Delay(50, cancellationToken).ConfigureAwait(false);
@@ -115,3 +150,6 @@ public sealed class ExpectEngine
 
     public void Detach() => _session.DataReceived -= OnData;
 }
+
+/// <summary>Where a login script stopped: the step, its 1-based number, and why.</summary>
+public sealed record ExpectStop(AutoLoginStep Step, int Number, string Reason);

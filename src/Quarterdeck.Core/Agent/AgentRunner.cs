@@ -32,6 +32,10 @@ public sealed class AgentRunner
 {
     private const int MaxToolOutput = 6000;
 
+    // Roughly what fits a 32k-token context with room for the reply. Older goals go first,
+    // then the bodies of older tool results in the current goal.
+    private const int HistoryBudget = 90_000;
+
     private readonly AgentEndpoint _endpoint;
     private readonly string? _apiKey;
     private readonly ITerminalTarget _target;
@@ -39,6 +43,13 @@ public sealed class AgentRunner
     private readonly AgentLog _log;
     private readonly JsonArray _messages = new();
     private string _run = "";
+
+    // What the agent has typed on the current command line, so a command split across calls,
+    // or submitted later with send_key enter, is checked as one line. Unknown after a history
+    // recall: then the line that Enter would run is not ours to see.
+    private readonly StringBuilder _line = new();
+    private volatile bool _lineUnknown;   // also set from the UI thread
+    private JsonObject? _goalMessage;
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
 
@@ -71,7 +82,7 @@ public sealed class AgentRunner
 
             try
             {
-                if (Regex.IsMatch(command, line, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100)))
+                if (Regex.IsMatch(command, line, RegexOptions.IgnoreCase | RegexOptions.Singleline, TimeSpan.FromMilliseconds(100)))
                 {
                     return true;
                 }
@@ -158,6 +169,9 @@ public sealed class AgentRunner
         {
             _messages.RemoveAt(1);
         }
+
+        _line.Clear();
+        _lineUnknown = false;
     }
 
     /// <summary>Runs one goal. Follow-up goals continue the same conversation until <see cref="Reset"/>.</summary>
@@ -165,7 +179,8 @@ public sealed class AgentRunner
     {
         _run = Guid.NewGuid().ToString("N")[..8];
         Log("goal", text: goal);
-        _messages.Add(new JsonObject { ["role"] = "user", ["content"] = goal });
+        _goalMessage = new JsonObject { ["role"] = "user", ["content"] = goal };
+        _messages.Add(_goalMessage);
 
         var emptyReplies = 0;
 
@@ -174,11 +189,26 @@ public sealed class AgentRunner
             token.ThrowIfCancellationRequested();
             Emit("status", $"Thinking (step {step})...");
 
+            TrimHistory();
             var message = await CallModelAsync(token);
-            var content = message["content"]?.GetValue<string>() ?? "";
-            var calls = message["tool_calls"] as JsonArray;
+            var content = TextOf(message["content"]);
 
-            // Keep the assistant turn exactly as returned so tool results can answer its ids.
+            // Keep the assistant turn as returned so tool results can answer its ids; a call
+            // without an id gets one here, in the stored turn too, or the reply would not match.
+            var calls = (message["tool_calls"] as JsonArray)?.DeepClone() as JsonArray;
+            if (calls is not null)
+            {
+                foreach (var call in calls.OfType<JsonObject>())
+                {
+                    if (string.IsNullOrEmpty(call["id"]?.ToString()))
+                    {
+                        call["id"] = "call_" + Guid.NewGuid().ToString("N")[..12];
+                    }
+
+                    call["type"] ??= "function";
+                }
+            }
+
             var assistant = new JsonObject { ["role"] = "assistant", ["content"] = content };
             if (calls is { Count: > 0 })
             {
@@ -217,32 +247,55 @@ public sealed class AgentRunner
                 return answer;
             }
 
-            foreach (var call in calls)
+            // Every call gets a reply, even when the run is stopped part way: a tool call left
+            // unanswered makes the server reject the whole conversation on the next goal.
+            var answered = 0;
+            try
             {
-                token.ThrowIfCancellationRequested();
-
-                var id = call?["id"]?.GetValue<string>() ?? Guid.NewGuid().ToString("N");
-                var name = call?["function"]?["name"]?.GetValue<string>() ?? "";
-                var argText = call?["function"]?["arguments"]?.GetValue<string>() ?? "{}";
-
-                Log("tool_call", tool: name, arguments: argText);
-                string result;
-                try
+                foreach (var call in calls.OfType<JsonObject>())
                 {
-                    var args = JsonNode.Parse(string.IsNullOrWhiteSpace(argText) ? "{}" : argText) as JsonObject ?? new JsonObject();
-                    result = await ExecuteAsync(name, args, token);
+                    token.ThrowIfCancellationRequested();
+
+                    var id = call["id"]!.ToString();
+                    var name = call["function"]?["name"]?.ToString() ?? "";
+                    var argNode = call["function"]?["arguments"];
+                    var argText = argNode is JsonValue v && v.TryGetValue<string>(out var str) ? str : argNode?.ToJsonString() ?? "{}";
+
+                    Log("tool_call", tool: name, arguments: argText);
+                    string result;
+                    try
+                    {
+                        // Most servers send arguments as a JSON string; some send the object itself.
+                        var args = argNode is JsonObject obj
+                            ? (JsonObject)obj.DeepClone()
+                            : JsonNode.Parse(string.IsNullOrWhiteSpace(argText) ? "{}" : argText) as JsonObject ?? new JsonObject();
+                        result = await ExecuteAsync(name, args, token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        result = $"error: {ex.Message}";
+                    }
+
+                    Log("tool_result", tool: name, text: result);
+                    _messages.Add(new JsonObject { ["role"] = "tool", ["tool_call_id"] = id, ["content"] = result });
+                    answered++;
                 }
-                catch (OperationCanceledException)
+            }
+            catch (OperationCanceledException)
+            {
+                foreach (var call in calls.OfType<JsonObject>().Skip(answered))
                 {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    result = $"error: {ex.Message}";
+                    _messages.Add(new JsonObject
+                    {
+                        ["role"] = "tool", ["tool_call_id"] = call["id"]!.ToString(), ["content"] = "cancelled: the user stopped the run."
+                    });
                 }
 
-                Log("tool_result", tool: name, text: result);
-                _messages.Add(new JsonObject { ["role"] = "tool", ["tool_call_id"] = id, ["content"] = result });
+                throw;
             }
         }
 
@@ -292,8 +345,17 @@ public sealed class AgentRunner
             throw new HttpRequestException($"{url} answered {(int)response.StatusCode}: {Truncate(text, 400)}");
         }
 
-        var json = JsonNode.Parse(text);
-        return json?["choices"]?[0]?["message"] as JsonObject
+        JsonNode? json;
+        try
+        {
+            json = JsonNode.Parse(text);
+        }
+        catch (JsonException)
+        {
+            throw new InvalidDataException($"The server's reply was not JSON: {Truncate(text, 400)}");
+        }
+
+        return (json?["choices"] is JsonArray { Count: > 0 } choices ? choices[0]?["message"] : null) as JsonObject
                ?? throw new InvalidDataException("The server's reply had no choices[0].message.");
     }
 
@@ -310,26 +372,20 @@ public sealed class AgentRunner
 
             case "send_input":
             {
-                var text = args["text"]?.GetValue<string>() ?? "";
+                var text = Str(args, "text") ?? "";
                 var enter = !string.Equals(args["enter"]?.ToString(), "false", StringComparison.OrdinalIgnoreCase);
                 RequireConnected();
 
-                if (NeedsApproval(_endpoint, text))
+                var typed = enter ? text + "\r" : text;
+                if (await DeniedAsync(name, typed, token) is { } denied)
                 {
-                    Emit("action", "? " + text + "   (waiting for approval)");
-                    var allowed = Approve is not null && await Approve(text);
-                    Log(allowed ? "approved" : "denied", tool: name, text: text);
-                    if (!allowed)
-                    {
-                        Emit("action", "✖ denied");
-                        return "denied by the user: this command was not run. Do not retry it; " +
-                               "choose a safer approach or stop and explain what you wanted to do.";
-                    }
+                    return denied;
                 }
 
                 Emit("action", "$ " + text + (enter ? "" : "   (no Enter)"));
                 var mark = _target.Transcript.Mark;
-                await _target.SendAsync(enter ? text + "\r" : text);
+                await _target.SendAsync(typed);
+                Track(typed);
                 return await CollectAsync(mark, Int(args, "wait_seconds", 10), Str(args, "until"), token);
             }
 
@@ -338,9 +394,16 @@ public sealed class AgentRunner
                 var key = Str(args, "key") ?? "";
                 var seq = KeySequence(key) ?? throw new ArgumentException($"unknown key '{key}'");
                 RequireConnected();
+
+                if (key == "enter" && await DeniedAsync(name, seq, token) is { } denied)
+                {
+                    return denied;
+                }
+
                 Emit("action", $"key {key}");
                 var mark = _target.Transcript.Mark;
                 await _target.SendAsync(seq);
+                TrackKey(key);
                 return await CollectAsync(mark, 3, null, token);
             }
 
@@ -353,6 +416,191 @@ public sealed class AgentRunner
 
             default:
                 return $"error: no tool called '{name}'.";
+        }
+    }
+
+    /// <summary>
+    /// Asks for approval when what is about to be typed would submit a line that needs it.
+    /// The check sees the whole line: what was typed before (send_input with enter false) plus
+    /// this text, each line of multi-line text, and, in Risky mode, any control character
+    /// (backspace, Ctrl-U and the like can turn harmless text into a different command) or a
+    /// line recalled from history, whose content we cannot see. Returns the refusal, or null.
+    /// </summary>
+    private async Task<string?> DeniedAsync(string tool, string typed, CancellationToken token)
+    {
+        if (_endpoint.Approval == AgentApproval.Free)
+        {
+            return null;
+        }
+
+        var submitted = new List<string>();
+        var current = _line.ToString();
+        var unknown = _lineUnknown;
+        var editing = false;
+
+        foreach (var c in typed)
+        {
+            if (c is '\r' or '\n')
+            {
+                if (current.Length > 0 || unknown)
+                {
+                    submitted.Add(unknown ? current + " [line recalled from history]" : current);
+                }
+
+                current = "";
+                unknown = false;
+            }
+            else
+            {
+                editing |= char.IsControl(c) && c != '\t';
+                current += c;
+            }
+        }
+
+        bool ask;
+        string shown;
+        if (_endpoint.Approval == AgentApproval.Always)
+        {
+            ask = submitted.Count > 0;
+            shown = string.Join("\n", submitted);
+        }
+        else
+        {
+            var recalled = submitted.Any(l => l.EndsWith("[line recalled from history]", StringComparison.Ordinal));
+            ask = editing || recalled || submitted.Any(l => NeedsApproval(_endpoint, l)) || NeedsApproval(_endpoint, typed);
+            shown = submitted.Count > 0 ? string.Join("\n", submitted) : typed;
+            if (editing)
+            {
+                shown += "   [contains control characters]";
+            }
+        }
+
+        if (!ask)
+        {
+            return null;
+        }
+
+        Emit("action", "? " + shown + "   (waiting for approval)");
+        var allowed = Approve is not null && await Approve(shown);
+        Log(allowed ? "approved" : "denied", tool: tool, text: shown);
+
+        // Stopped while the question was open: the answer no longer counts.
+        token.ThrowIfCancellationRequested();
+
+        if (allowed)
+        {
+            return null;
+        }
+
+        Emit("action", "✖ denied");
+        return "denied by the user: this was not sent. Do not retry it; " +
+               "choose a safer approach or stop and explain what you wanted to do.";
+    }
+
+    /// <summary>Keeps <see cref="_line"/> in step with what was typed.</summary>
+    private void Track(string typed)
+    {
+        foreach (var c in typed)
+        {
+            switch (c)
+            {
+                case '\r' or '\n' or '\u0003':
+                    _line.Clear();
+                    _lineUnknown = false;
+                    break;
+                case '\b' or '\u007f':
+                    if (_line.Length > 0)
+                    {
+                        _line.Length--;
+                    }
+
+                    break;
+                case '\u0015':   // Ctrl-U
+                    _line.Clear();
+                    break;
+                default:
+                    _line.Append(c);
+                    break;
+            }
+        }
+    }
+
+    private void TrackKey(string key)
+    {
+        switch (key)
+        {
+            case "up" or "down":
+                _line.Clear();
+                _lineUnknown = true;
+                break;
+            case "enter" or "ctrl_c":
+                _line.Clear();
+                _lineUnknown = false;
+                break;
+            case "backspace":
+                Track("\u007f");
+                break;
+            case "space":
+                _line.Append(' ');
+                break;
+            default:
+                // Cursor moves, Tab completion, Esc and the like change the line in ways not
+                // tracked here, so what Enter submits next is unknown.
+                _lineUnknown = true;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The user typed into this terminal: the line the agent's next Enter submits now holds
+    /// text it never saw, so treat it as unknown.
+    /// </summary>
+    public void NoteOutsideInput() => _lineUnknown = true;
+
+    /// <summary>A message's text whether the server sent a string or a list of content parts.</summary>
+    private static string TextOf(JsonNode? node) => node switch
+    {
+        null => "",
+        JsonValue v when v.TryGetValue<string>(out var s) => s,
+        JsonArray parts => string.Concat(parts.Select(p => p?["text"]?.ToString() ?? "")),
+        _ => node.ToJsonString()
+    };
+
+    /// <summary>
+    /// Keeps the conversation inside <see cref="HistoryBudget"/>: whole earlier goals go first
+    /// (an assistant turn always leaves with its tool replies), then the bodies of all but the
+    /// last few tool results of the current goal. The system prompt and the goal stay.
+    /// </summary>
+    private void TrimHistory()
+    {
+        var trimmed = false;
+        while (_messages.ToJsonString().Length > HistoryBudget && _messages.Count > 2 && !ReferenceEquals(_messages[1], _goalMessage))
+        {
+            _messages.RemoveAt(1);
+            while (_messages.Count > 1 && _messages[1]?["role"]?.ToString() == "tool")
+            {
+                _messages.RemoveAt(1);
+            }
+
+            trimmed = true;
+        }
+
+        if (_messages.ToJsonString().Length > HistoryBudget)
+        {
+            var tools = _messages.OfType<JsonObject>().Where(m => m["role"]?.ToString() == "tool").ToList();
+            foreach (var m in tools.Take(Math.Max(0, tools.Count - 4)))
+            {
+                if (m["content"]?.ToString() is { Length: > 200 })
+                {
+                    m["content"] = "(older output trimmed to save context; read_terminal shows the screen now)";
+                    trimmed = true;
+                }
+            }
+        }
+
+        if (trimmed)
+        {
+            Log("history_trimmed");
         }
     }
 

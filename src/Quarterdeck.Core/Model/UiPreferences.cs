@@ -64,8 +64,6 @@ public sealed class UiPreferences
     {
         var file = path ?? DefaultPath;
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-        var tmp = file + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(this, JsonOptions));
-        File.Move(tmp, file, overwrite: true);
+        AtomicFile.Write(file, JsonSerializer.Serialize(this, JsonOptions));
     }
 }

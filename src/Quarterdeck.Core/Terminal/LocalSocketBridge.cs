@@ -59,12 +59,28 @@ public sealed class LocalSocketBridge : IAsyncDisposable
 
     private async Task AcceptAsync()
     {
-        try
+        while (!_life.IsCancellationRequested)
         {
-            while (!_life.IsCancellationRequested)
+            HttpListenerContext context;
+            try
             {
-                var context = await _listener.GetContextAsync().ConfigureAwait(false);
+                context = await _listener.GetContextAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is HttpListenerException or ObjectDisposedException or InvalidOperationException)
+            {
+                if (_life.IsCancellationRequested || !_listener.IsListening)
+                {
+                    return;   // listener stopped with the session
+                }
 
+                await Task.Delay(100).ConfigureAwait(false);
+                continue;
+            }
+
+            // One bad request (a viewer that aborts mid-handshake, say) must not end the loop:
+            // noVNC reconnects, and every later attempt would otherwise hang unanswered.
+            try
+            {
                 if (!context.Request.Url!.AbsolutePath.Trim('/').Equals(Token, StringComparison.Ordinal)
                     || !context.Request.IsWebSocketRequest)
                 {
@@ -84,23 +100,35 @@ public sealed class LocalSocketBridge : IAsyncDisposable
                 Note?.Invoke(this, $"Viewer attached (subprotocol {chosen ?? "none"}).");
                 _ = Task.Run(() => PumpAsync(ws.WebSocket));
             }
-        }
-        catch (Exception ex) when (ex is HttpListenerException or ObjectDisposedException)
-        {
-            // Listener stopped with the session.
+            catch (Exception ex) when (ex is WebSocketException or HttpListenerException or InvalidOperationException
+                                           or ObjectDisposedException or UriFormatException)
+            {
+                Note?.Invoke(this, $"A viewer connection failed: {ex.Message}");
+                try
+                {
+                    context.Response.Abort();
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+            }
         }
     }
 
     private async Task PumpAsync(WebSocket socket)
     {
         using var tcp = new TcpClient { NoDelay = true };
+        using var pump = CancellationTokenSource.CreateLinkedTokenSource(_life.Token);
+        var token = pump.Token;
 
         try
         {
-            await tcp.ConnectAsync(_host, _port, _life.Token).ConfigureAwait(false);
+            await tcp.ConnectAsync(_host, _port, token).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
+            socket.Abort();   // tell the page, or it waits on a socket nothing will answer
+            socket.Dispose();
             Closed?.Invoke(this, ex.Message);
             return;
         }
@@ -114,13 +142,13 @@ public sealed class LocalSocketBridge : IAsyncDisposable
             var buffer = new byte[64 * 1024];
             while (socket.State == WebSocketState.Open)
             {
-                var result = await socket.ReceiveAsync(buffer.AsMemory(), _life.Token).ConfigureAwait(false);
+                var result = await socket.ReceiveAsync(buffer.AsMemory(), token).ConfigureAwait(false);
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
                     break;
                 }
 
-                await stream.WriteAsync(buffer.AsMemory(0, result.Count), _life.Token).ConfigureAwait(false);
+                await stream.WriteAsync(buffer.AsMemory(0, result.Count), token).ConfigureAwait(false);
             }
         });
 
@@ -129,14 +157,14 @@ public sealed class LocalSocketBridge : IAsyncDisposable
             var buffer = new byte[64 * 1024];
             while (true)
             {
-                var read = await stream.ReadAsync(buffer.AsMemory(), _life.Token).ConfigureAwait(false);
+                var read = await stream.ReadAsync(buffer.AsMemory(), token).ConfigureAwait(false);
                 if (read == 0)
                 {
                     break;
                 }
 
                 await socket.SendAsync(buffer.AsMemory(0, read), WebSocketMessageType.Binary,
-                    true, _life.Token).ConfigureAwait(false);
+                    true, token).ConfigureAwait(false);
             }
         });
 
@@ -155,6 +183,40 @@ public sealed class LocalSocketBridge : IAsyncDisposable
         catch (Exception ex)
         {
             Closed?.Invoke(this, ex.Message);
+        }
+        finally
+        {
+            // End both halves: stop the other pump, and close the page's socket so noVNC shows
+            // the disconnect instead of a frozen last frame.
+            // The close frame goes first: cancelling a pending WebSocket receive aborts the socket.
+            await CloseOutputQuietlyAsync(socket).ConfigureAwait(false);
+            pump.Cancel();
+            try
+            {
+                await Task.WhenAll(toTcp, toWs).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Each half's own failure was reported (or was the cancel just above).
+            }
+
+            socket.Abort();
+            socket.Dispose();
+        }
+    }
+
+    private static async Task CloseOutputQuietlyAsync(WebSocket socket)
+    {
+        try
+        {
+            if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+            {
+                using var wait = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "target closed", wait.Token).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex) when (ex is WebSocketException or OperationCanceledException or ObjectDisposedException)
+        {
         }
     }
 

@@ -389,7 +389,10 @@ public partial class SessionEditorWindow : Window
         d.Commands = _commands.ToList();
 
         // A blank secret box means "leave the stored secret alone", so an edit never wipes it.
-        if (!string.IsNullOrEmpty(SecretBox.Password) && SecretPanel.Visibility == Visibility.Visible)
+        // SSH only: the box keeps its text when the protocol is switched, and VNC and RTSP keep
+        // their password in the same vault slot, which the stale SSH text used to overwrite.
+        if (d.Protocol == SessionProtocol.Ssh
+            && !string.IsNullOrEmpty(SecretBox.Password) && SecretPanel.Visibility == Visibility.Visible)
         {
             var key = d.AuthMethod == SshAuthMethod.PublicKey ? "passphrase" : "password";
             _vault.Set(d.Id, SecretBox.Password, key);

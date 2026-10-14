@@ -65,8 +65,19 @@ public static class EndpointTest
 
             if (response.IsSuccessStatusCode)
             {
-                var ids = (JsonNode.Parse(text)?["data"] as JsonArray)?
-                    .Select(m => m?["id"]?.ToString()).OfType<string>().ToList() ?? new();
+                List<string> ids;
+                try
+                {
+                    ids = (JsonNode.Parse(text)?["data"] as JsonArray)?
+                        .Select(m => m?["id"]?.ToString()).OfType<string>().ToList() ?? new();
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    // A proxy or a wrong URL answering with a web page.
+                    results.Add(new EndpointCheck(false, $"{uri.Host} answered /models with something that is not JSON: {Short(text)}"));
+                    return results;
+                }
+
                 results.Add(new EndpointCheck(true, $"Reached {uri.Host}: {ids.Count} models listed."));
 
                 if (ids.Count > 0 && !ids.Contains(endpoint.Model))
@@ -135,7 +146,23 @@ public static class EndpointTest
                 return results;
             }
 
-            var message = JsonNode.Parse(text)?["choices"]?[0]?["message"];
+            JsonNode? message;
+            try
+            {
+                message = JsonNode.Parse(text)?["choices"] is JsonArray { Count: > 0 } choices ? choices[0]?["message"] : null;
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                results.Add(new EndpointCheck(false, $"The reply was not JSON: {Short(text)}"));
+                return results;
+            }
+
+            if (message is null)
+            {
+                results.Add(new EndpointCheck(false, $"The reply had no choices[0].message: {Short(text)}"));
+                return results;
+            }
+
             var calls = message?["tool_calls"] as JsonArray;
             var content = message?["content"]?.ToString() ?? "";
 

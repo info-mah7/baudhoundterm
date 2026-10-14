@@ -291,5 +291,8 @@ internal sealed class AgentPanel : DockPanel
     /// <summary>Stop a running goal, e.g. when the tab is closed under it.</summary>
     public void Cancel() => _cts?.Cancel();
 
+    /// <summary>The user typed into the terminal; the agent's view of the current line is stale.</summary>
+    public void NoteUserInput() => _runner?.NoteOutsideInput();
+
     public void FocusGoal() => _goal.Focus();
 }

@@ -133,6 +133,12 @@ public sealed class ModemTransfer(IByteLink link)
             await CancelFarEndAsync();
             throw;
         }
+        catch (Exception ex) when (ex is IOException or TimeoutException)
+        {
+            // A failed transfer leaves the far end mid-protocol, its line still raw; abort it there too.
+            await CancelFarEndAsync(announce: false);
+            throw;
+        }
     }
 
     /// <summary>
@@ -330,6 +336,12 @@ public sealed class ModemTransfer(IByteLink link)
             await CancelFarEndAsync();
             throw;
         }
+        catch (Exception ex) when (ex is IOException or TimeoutException)
+        {
+            // A failed transfer leaves the far end mid-protocol, its line still raw; abort it there too.
+            await CancelFarEndAsync(announce: false);
+            throw;
+        }
     }
 
     /// <summary>One file. For YMODEM a null header (empty name) ends the batch: Header is null.</summary>
@@ -444,7 +456,15 @@ public sealed class ModemTransfer(IByteLink link)
                 if (expectHeader && expect == 0 && header is null)
                 {
                     var text = Encoding.ASCII.GetString(block.Payload);
-                    var name = text[..Math.Max(0, text.IndexOf('\0'))];
+                    var end = text.IndexOf('\0');
+                    if (end < 0)
+                    {
+                        // Not the empty end-of-batch block (that starts with NUL): a damaged or
+                        // overlong header, which must not pass for "no more files".
+                        throw new IOException("The YMODEM header has no end to its file name.");
+                    }
+
+                    var name = text[..end];
                     if (name.Length == 0)
                     {
                         await link.WriteAsync(new[] { Ack }, token);
@@ -470,7 +490,9 @@ public sealed class ModemTransfer(IByteLink link)
             }
             else if (block.Number == (byte)(expect - 1))
             {
-                await link.WriteAsync(new[] { Ack }, token);   // a repeat of one we have: our ACK was lost
+                // A repeat of one we have: our ACK was lost. A repeated YMODEM header also needs
+                // the C that asks for data, or the sender waits for it until it times out.
+                await link.WriteAsync(expectHeader && block.Number == 0 ? new[] { Ack, C } : new[] { Ack }, token);
             }
             else
             {
@@ -523,7 +545,7 @@ public sealed class ModemTransfer(IByteLink link)
 
     // ---------- helpers ----------
 
-    private async Task CancelFarEndAsync()
+    private async Task CancelFarEndAsync(bool announce = true)
     {
         try
         {
@@ -535,7 +557,10 @@ public sealed class ModemTransfer(IByteLink link)
             // The link may already be gone.
         }
 
-        Write("Cancelled.");
+        if (announce)
+        {
+            Write("Cancelled.");
+        }
     }
 
     public static ushort Crc16(ReadOnlySpan<byte> data)
