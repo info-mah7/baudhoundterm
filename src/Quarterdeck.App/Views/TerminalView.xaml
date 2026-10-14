@@ -23,6 +23,9 @@
         <!-- Shown while a file is being sent, so a long send can be stopped. -->
         <Button x:Name="StatusCancel" DockPanel.Dock="Right" Content="Cancel" Padding="8,0"
                 FontSize="11" Visibility="Collapsed" Click="OnStatusCancel"/>
+        <!-- Serial and telnet links: connection, TX and RX lamps, filled in by TerminalView.Lamps.cs. -->
+        <StackPanel x:Name="LinkLamps" DockPanel.Dock="Right" Orientation="Horizontal"
+                    VerticalAlignment="Center" Margin="8,0" Visibility="Collapsed"/>
         <TextBlock x:Name="StatusText" Foreground="#8B94A7" FontSize="11" Text="Disconnected."
                    VerticalAlignment="Center"/>
       </DockPanel>

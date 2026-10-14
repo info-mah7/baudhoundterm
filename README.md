@@ -44,6 +44,14 @@ for SSH, and a serial port for consoles, rendered by xterm.js.
 - **Auto-reconnect** with exponential backoff and an attempt cap.
 - **File transfer**: SFTP browser with upload and download, or SCP for hosts with no SFTP
   subsystem. Remote paths are shell-quoted.
+- **BaudHound**: the BaudHound button finds devices on the networks the PC is on (UDP broadcast,
+  firmware 1.4+; older firmware is found when the PC has joined the device's own AP) and opens
+  one in a telnet tab in line mode, with the device's `~` commands on the right-click menu. Save
+  it as a shortcut; saving again after a DHCP change moves the shortcut to the new address.
+- **Line mode** for telnet consoles that read whole lines and echo nothing: typing is echoed and
+  edited locally and each line goes out with CR LF.
+- **Link lamps** on serial and telnet tabs: connection state, TX and RX activity and byte counts
+  in the status bar, and a state dot on the tab that blinks with traffic.
 - **Terminal**: 24-bit colour, three themes, configurable font and scrollback, find in scrollback,
   clickable links, Ctrl+Shift+C/V and right-click copy-paste.
 

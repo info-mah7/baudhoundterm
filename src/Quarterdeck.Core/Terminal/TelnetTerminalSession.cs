@@ -20,6 +20,8 @@ public sealed class TelnetTerminalSession : ITerminalSession
     private const byte SE = 240;    // subnegotiation end
 
     private readonly SessionDefinition _definition;
+    private readonly LinkCounters? _counters;
+    private readonly LineEditor? _editor;
     private readonly Decoder _decoder = Encoding.UTF8.GetDecoder();
     private readonly char[] _chars = new char[64 * 1024];
 
@@ -28,7 +30,12 @@ public sealed class TelnetTerminalSession : ITerminalSession
     private CancellationTokenSource? _pump;
     private volatile bool _closing;
 
-    public TelnetTerminalSession(SessionDefinition definition) => _definition = definition;
+    public TelnetTerminalSession(SessionDefinition definition, LinkCounters? counters = null)
+    {
+        _definition = definition;
+        _counters = counters;
+        _editor = definition.LineMode ? new LineEditor() : null;
+    }
 
     public bool IsConnected => _client?.Connected == true;
 
@@ -40,6 +47,7 @@ public sealed class TelnetTerminalSession : ITerminalSession
         _closing = false;
         _state = Telnet.Data;
         _decoder.Reset();
+        _editor?.Reset();
         _client = new TcpClient { NoDelay = true };
 
         await _client.ConnectAsync(_definition.Host, _definition.Port, cancellationToken)
@@ -64,6 +72,8 @@ public sealed class TelnetTerminalSession : ITerminalSession
                 {
                     break;
                 }
+
+                _counters?.AddReceived(read);
 
                 var kept = await StripCommandsAsync(buffer, read, clean, token).ConfigureAwait(false);
                 if (kept == 0)
@@ -187,7 +197,23 @@ public sealed class TelnetTerminalSession : ITerminalSession
             return;
         }
 
+        if (_editor is not null)
+        {
+            // Line mode: the far end neither echoes nor edits, so both happen here.
+            (text, var echo) = _editor.Feed(text);
+            if (echo.Length > 0)
+            {
+                DataReceived?.Invoke(this, new TerminalDataEventArgs(echo));
+            }
+
+            if (text.Length == 0)
+            {
+                return;
+            }
+        }
+
         var bytes = Encoding.UTF8.GetBytes(text);
+        _counters?.AddSent(bytes.Length);
         await _stream.WriteAsync(bytes.AsMemory(), cancellationToken).ConfigureAwait(false);
         await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
     }

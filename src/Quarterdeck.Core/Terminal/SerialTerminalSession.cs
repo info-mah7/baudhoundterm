@@ -9,6 +9,7 @@ namespace Quarterdeck.Core.Terminal;
 public sealed class SerialTerminalSession : ITerminalSession
 {
     private readonly SessionDefinition _definition;
+    private readonly LinkCounters? _counters;
     private SerialPort? _port;
     private volatile bool _closing;
 
@@ -23,6 +24,7 @@ public sealed class SerialTerminalSession : ITerminalSession
         {
             var port = _port ?? throw new IOException("The serial port is closed.");
             port.Write(data.ToArray(), 0, data.Length);
+            _counters?.AddSent(data.Length);
             return Task.CompletedTask;
         });
         _raw = raw;
@@ -31,7 +33,11 @@ public sealed class SerialTerminalSession : ITerminalSession
 
     public void EndRaw() => _raw = null;
 
-    public SerialTerminalSession(SessionDefinition definition) => _definition = definition;
+    public SerialTerminalSession(SessionDefinition definition, LinkCounters? counters = null)
+    {
+        _definition = definition;
+        _counters = counters;
+    }
 
     public bool IsConnected => _port?.IsOpen == true;
 
@@ -85,6 +91,7 @@ public sealed class SerialTerminalSession : ITerminalSession
                 {
                     var buffer = new byte[count];
                     var read = port.Read(buffer, 0, count);
+                    _counters?.AddReceived(read);
                     raw.Push(buffer.AsSpan(0, read));
                 }
 
@@ -94,6 +101,7 @@ public sealed class SerialTerminalSession : ITerminalSession
             var text = port.ReadExisting();
             if (text.Length > 0)
             {
+                _counters?.AddReceived(port.Encoding.GetByteCount(text));
                 DataReceived?.Invoke(this, new TerminalDataEventArgs(text));
             }
         }
@@ -169,6 +177,7 @@ public sealed class SerialTerminalSession : ITerminalSession
             if (port?.IsOpen == true)
             {
                 port.Write(text);
+                _counters?.AddSent(port.Encoding.GetByteCount(text));
             }
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)

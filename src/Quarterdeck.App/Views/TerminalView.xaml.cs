@@ -30,6 +30,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         Definition = definition;
         _vault = vault;
 
+        BuildLamps();
         Loaded += OnLoaded;
     }
 
@@ -51,6 +52,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
     private void RaiseState(SessionState state, string? message)
     {
         _state = state;
+        ShowLinkState();
         StateChanged?.Invoke(this, new SessionStateEventArgs(state, message));
     }
 
@@ -948,6 +950,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         }
 
         _released = true;
+        _lampTimer?.Stop();
         if (Web.CoreWebView2 is { } core)
         {
             core.WebMessageReceived -= OnWebMessage;
