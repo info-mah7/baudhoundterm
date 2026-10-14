@@ -3,17 +3,6 @@ using System.Text.Json;
 namespace Quarterdeck.Core.Model;
 
 /// <summary>
-/// One tab to reopen. A saved shortcut is referenced by id; a quick connection or shell has no
-/// shortcut, so its definition travels whole (it holds no secrets: those live in the vault).
-/// </summary>
-public sealed class OpenTabRecord
-{
-    public Guid? SessionId { get; set; }
-    public SessionDefinition? Definition { get; set; }
-    public string Colour { get; set; } = "";
-}
-
-/// <summary>
 /// How the window looks, kept apart from the sessions so a view toggle never rewrites the
 /// session store. Lives in ui.json next to sessions.json.
 /// </summary>
@@ -27,14 +16,6 @@ public sealed class UiPreferences
 
     /// <summary>Sessions that share a host sit under one host row; off is a flat list.</summary>
     public bool GroupByHost { get; set; } = true;
-
-    /// <summary>Reopen last time's tabs at start (disconnected until asked).</summary>
-    public bool RestoreTabs { get; set; } = true;
-
-    /// <summary>The tabs open when the window last closed, in order.</summary>
-    public List<OpenTabRecord> OpenTabs { get; set; } = new();
-
-    public int SelectedTab { get; set; }
 
     // The TFTP server's last settings, so firmware day starts where it left off.
     public string TftpFolder { get; set; } = "";
