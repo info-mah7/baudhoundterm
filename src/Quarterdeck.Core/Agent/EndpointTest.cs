@@ -59,7 +59,9 @@ public static class EndpointTest
 
             if ((int)response.StatusCode is 401 or 403)
             {
-                results.Add(new EndpointCheck(false, $"Reached the server, but it refused the API key ({(int)response.StatusCode})."));
+                results.Add(new EndpointCheck(false, string.IsNullOrEmpty(apiKey)
+                    ? $"Reached the server, but it requires an API key and none was sent ({(int)response.StatusCode})."
+                    : $"Reached the server, but it refused the API key ({(int)response.StatusCode})."));
                 return results;
             }
 
@@ -139,6 +141,15 @@ public static class EndpointTest
             using var response = await http.SendAsync(Request(HttpMethod.Post, "/chat/completions", body), token);
             var text = await response.Content.ReadAsStringAsync(token);
             var seconds = clock.Elapsed.TotalSeconds;
+
+            if ((int)response.StatusCode is 401 or 403 && string.IsNullOrEmpty(apiKey))
+            {
+                // Some servers (NVIDIA NIM) list models without a key, so step 1 passes and
+                // only the completion shows the key is missing.
+                results.Add(new EndpointCheck(false,
+                    $"No API key was sent, and {uri.Host} requires one ({(int)response.StatusCode}). Paste the key into API key, then Save."));
+                return results;
+            }
 
             if (!response.IsSuccessStatusCode)
             {

@@ -208,7 +208,7 @@ internal sealed class AgentPanel : DockPanel
         var key = endpoint.Id + "|" + string.Join("|", skills.Select(s => s.Path));
         if (_runner is null || key != _runnerKey)
         {
-            _runner = new AgentRunner(endpoint, _vault.Get(endpoint.Id, "apikey"), _target, skills, _log);
+            _runner = new AgentRunner(endpoint, _vault.Get(endpoint.Id, "apikey")?.Trim(), _target, skills, _log);
             _runner.Event += e => Dispatcher.BeginInvoke(() => Show(e));
             _runner.Approve = command => Dispatcher.InvokeAsync(() => MessageBox.Show(
                 Window.GetWindow(this)!,
