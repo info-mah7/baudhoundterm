@@ -1939,12 +1939,27 @@ public partial class MainWindow : Window
     private void OnOpenLogs(object sender, RoutedEventArgs e) =>
         Process.Start(new ProcessStartInfo(AppPaths.DefaultLogDirectory) { UseShellExecute = true });
 
-    /// <summary>Assembly version, so a build can be identified from the title bar.</summary>
+    /// <summary>
+    /// The version for the title bar, so a build can be identified from it. A published build
+    /// carries its stamp ("0.8.0-dev.20261014.22", shown as "0.8.0 (build 20261014.22)"), the
+    /// same one as in its zip's name; a plain build shows the version alone.
+    /// </summary>
     private static string Version
     {
         get
         {
-            var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+            var info = assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion;
+
+            if (!string.IsNullOrEmpty(info))
+            {
+                info = info.Split('+')[0];   // the SDK appends "+<commit>"
+                var dev = info.IndexOf("-dev.", StringComparison.Ordinal);
+                return dev > 0 ? $"{info[..dev]} (build {info[(dev + 5)..]})" : info;
+            }
+
+            var v = assembly.GetName().Version;
             return v is null ? "" : $"{v.Major}.{v.Minor}.{v.Build}";
         }
     }

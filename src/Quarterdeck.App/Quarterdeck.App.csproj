@@ -8,7 +8,9 @@
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>BaudHoundTerm</AssemblyName>
-    <Version>0.7.2</Version>
+    <Version>0.8.0</Version>
+    <!-- The mah7 three-ring mark: exe, taskbar and title bar. -->
+    <ApplicationIcon>baudhoundterm.ico</ApplicationIcon>
     <RootNamespace>Quarterdeck.App</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
@@ -24,6 +26,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Resource Include="baudhoundterm.ico" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
     <!-- RTSP camera tabs. LibVLC and LibVLCSharp are LGPL-2.1-or-later, used as separate DLLs. -->
     <PackageReference Include="LibVLCSharp.WPF" Version="3.10.1" />
