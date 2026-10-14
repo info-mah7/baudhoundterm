@@ -36,6 +36,12 @@ internal sealed class AgentSettingsWindow : Window
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
         FontFamily = new FontFamily("Cascadia Mono, Consolas"), FontSize = 11
     };
+    private readonly TextBox _shotWidth = new() { ToolTip = "Screenshots of a remote desktop are scaled down to this width before they go to the model. Wider reads small text better and costs more time and context." };
+    private readonly CheckBox _confirm = new()
+    {
+        Content = "Check each click on a remote desktop first",
+        ToolTip = "Before a click, the model is shown a close-up with a crosshair on the point and asked what is there. If that is not what it meant to click, nothing is clicked."
+    };
     private readonly CheckBox _noLocal = new()
     {
         Content = "Never on local shells",
@@ -102,6 +108,8 @@ internal sealed class AgentSettingsWindow : Window
         Field(form, "Approval", _approval);
         Field(form, "Risky commands: one regex per line, case-insensitive", _risky);
         form.Children.Add(_noLocal);
+        Field(form, "Remote desktops (VNC): screenshot width in pixels. The model must accept images.", _shotWidth);
+        form.Children.Add(_confirm);
         form.Children.Add(_default);
 
         // The heading and the action row stay put; only the fields scroll.
@@ -176,7 +184,7 @@ internal sealed class AgentSettingsWindow : Window
 
     /// <summary>Everything the form holds, to tell whether it has unsaved edits.</summary>
     private string Snapshot() => string.Join("\u0001", _name.Text, _url.Text, _model.Text, _key.Password,
-        _temperature.Text, _steps.Text, _extra.Text, _default.IsChecked, _approval.SelectedIndex, _risky.Text, _noLocal.IsChecked);
+        _temperature.Text, _steps.Text, _extra.Text, _default.IsChecked, _approval.SelectedIndex, _risky.Text, _noLocal.IsChecked, _shotWidth.Text, _confirm.IsChecked);
 
     private bool Dirty => Snapshot() != _clean;
 
@@ -249,6 +257,8 @@ internal sealed class AgentSettingsWindow : Window
         _approval.SelectedIndex = (int)ep.Approval;
         _risky.Text = ep.RiskyPatterns;
         _noLocal.IsChecked = ep.NeverOnLocalShells;
+        _shotWidth.Text = ep.ScreenshotWidth.ToString(CultureInfo.InvariantCulture);
+        _confirm.IsChecked = ep.ConfirmClicks;
         _key.ToolTip = !isNew && _vault.Get(ep.Id, "apikey") is not null ? "A key is saved" : "No key saved";
         _clean = Snapshot();
         Hint();
@@ -327,6 +337,8 @@ internal sealed class AgentSettingsWindow : Window
         ep.Approval = (AgentApproval)Math.Max(0, _approval.SelectedIndex);
         ep.RiskyPatterns = _risky.Text.Trim().Length > 0 ? _risky.Text.Trim() : AgentEndpoint.DefaultRiskyPatterns;
         ep.NeverOnLocalShells = _noLocal.IsChecked == true;
+        ep.ScreenshotWidth = int.TryParse(_shotWidth.Text, out var sw) ? Math.Clamp(sw, 320, 2560) : 1280;
+        ep.ConfirmClicks = _confirm.IsChecked == true;
 
         try
         {
