@@ -5,6 +5,8 @@ using System.Windows.Controls;
 using Microsoft.Win32;
 using Quarterdeck.Core.Model;
 using Quarterdeck.Core.Security;
+using Quarterdeck.Core.Security.KeePassXc;
+using System.IO;
 
 namespace Quarterdeck.App.Views;
 
@@ -47,6 +49,10 @@ public partial class SessionEditorWindow : Window
         UserBox.Text = d.Username;
         AuthBox.SelectedIndex = (int)d.AuthMethod;
         KeyBox.Text = d.KeyPath;
+        PasswordSourceBox.SelectedIndex = (int)d.PasswordSource;
+        KeePassEntryBox.Text = d.KeePassEntry;
+        AgentFilterBox.Text = d.AgentKeyFilter;
+        UpdateAuthPanels();
 
         foreach (var port in System.IO.Ports.SerialPort.GetPortNames().OrderBy(p => p.Length))
         {
@@ -117,6 +123,72 @@ public partial class SessionEditorWindow : Window
         TelnetPanel.Visibility = protocol == SessionProtocol.Telnet ? Visibility.Visible : Visibility.Collapsed;
         VncPanel.Visibility = protocol == SessionProtocol.Vnc ? Visibility.Visible : Visibility.Collapsed;
         RtspPanel.Visibility = protocol == SessionProtocol.Rtsp ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnAuthChanged(object sender, SelectionChangedEventArgs e) => UpdateAuthPanels();
+
+    /// <summary>Shows only what the chosen login needs: a key file, an agent key, or a password and where it comes from.</summary>
+    private void UpdateAuthPanels()
+    {
+        if (SecretPanel is null || PasswordSourceBox is null)
+        {
+            return;
+        }
+
+        var auth = (SshAuthMethod)Math.Max(0, AuthBox.SelectedIndex);
+        var usesPassword = auth is SshAuthMethod.Password or SshAuthMethod.KeyboardInteractive;
+        var fromKeePass = usesPassword && PasswordSourceBox.SelectedIndex == (int)PasswordSource.KeePassXc;
+
+        KeyFilePanel.Visibility = auth == SshAuthMethod.PublicKey ? Visibility.Visible : Visibility.Collapsed;
+        AgentPanel.Visibility = auth == SshAuthMethod.Agent ? Visibility.Visible : Visibility.Collapsed;
+        PasswordSourcePanel.Visibility = usesPassword ? Visibility.Visible : Visibility.Collapsed;
+        KeePassPanel.Visibility = fromKeePass ? Visibility.Visible : Visibility.Collapsed;
+        SecretPanel.Visibility = auth == SshAuthMethod.PublicKey || (usesPassword && !fromKeePass) ? Visibility.Visible : Visibility.Collapsed;
+        SecretLabel.Text = auth == SshAuthMethod.PublicKey
+            ? "Key passphrase (stored with DPAPI, blank keeps the existing one)"
+            : "Password (stored with DPAPI, blank keeps the existing one; none saved means ask)";
+
+        AuthNote.Text = auth switch
+        {
+            SshAuthMethod.Agent => "Keys stay in the agent; BaudHoundTerm only asks it to sign. KeePassXC adds its keys to Pageant or the " +
+                                   "OpenSSH agent when the database unlocks (KeePassXC: Settings > SSH Agent).",
+            _ when fromKeePass => "Nothing is saved here. The user name may be left blank: it then comes from the entry. " +
+                                  "KeePassXC needs Browser Integration on; it asks once to allow BaudHoundTerm.",
+            _ => ""
+        };
+    }
+
+    private void OnListAgentKeys(object sender, RoutedEventArgs e)
+    {
+        var keys = Quarterdeck.Core.Security.Agent.SshAgentClient.ListIdentities(out var problems);
+        var lines = keys.Select(k => $"{k.Comment}  ({k.KeyType}, {k.Fingerprint}, from {k.Source})").ToList();
+        lines.AddRange(problems);
+        AuthNote.Text = lines.Count > 0
+            ? string.Join(Environment.NewLine, lines)
+            : "No agent is running. Start Pageant or the OpenSSH Authentication Agent service, then unlock KeePassXC.";
+    }
+
+    private async void OnTestKeePass(object sender, RoutedEventArgs e)
+    {
+        var button = (Button)sender;
+        button.IsEnabled = false;
+        AuthNote.Text = "Asking KeePassXC (it may want you to unlock it or allow access)...";
+        try
+        {
+            var port = int.TryParse(PortBox.Text, out var p) ? p : 22;
+            var login = await Task.Run(() => KeePassXcPasswords.LookupAsync(
+                _vault, KeePassEntryBox.Text, HostBox.Text.Trim(), port, UserBox.Text.Trim()));
+            AuthNote.Text = $"Found \"{login.Name}\", user {(login.Login.Length > 0 ? login.Login : "(none)")}, " +
+                            $"password of {login.Password.Length} characters. UUID {login.Uuid}.";
+        }
+        catch (Exception ex) when (ex is KeePassXcException or IOException or TimeoutException or InvalidOperationException)
+        {
+            AuthNote.Text = ex.Message;
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
     }
 
     /// <summary>Rebuild the port list on open: USB adapters appear and vanish.</summary>
@@ -246,6 +318,9 @@ public partial class SessionEditorWindow : Window
         d.Username = UserBox.Text.Trim();
         d.AuthMethod = (SshAuthMethod)Math.Max(0, AuthBox.SelectedIndex);
         d.KeyPath = KeyBox.Text.Trim();
+        d.PasswordSource = (PasswordSource)Math.Max(0, PasswordSourceBox.SelectedIndex);
+        d.KeePassEntry = KeePassEntryBox.Text.Trim();
+        d.AgentKeyFilter = AgentFilterBox.Text.Trim();
 
         d.SerialPort = SerialPortBox.Text.Trim();
         d.BaudRate = ParseInt(BaudBox.Text, 115200);
@@ -314,7 +389,7 @@ public partial class SessionEditorWindow : Window
         d.Commands = _commands.ToList();
 
         // A blank secret box means "leave the stored secret alone", so an edit never wipes it.
-        if (!string.IsNullOrEmpty(SecretBox.Password))
+        if (!string.IsNullOrEmpty(SecretBox.Password) && SecretPanel.Visibility == Visibility.Visible)
         {
             var key = d.AuthMethod == SshAuthMethod.PublicKey ? "passphrase" : "password";
             _vault.Set(d.Id, SecretBox.Password, key);

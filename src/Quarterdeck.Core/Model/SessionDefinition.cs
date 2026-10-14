@@ -26,6 +26,16 @@ public enum SshAuthMethod
     KeyboardInteractive
 }
 
+/// <summary>Where a password comes from at connect time.</summary>
+public enum PasswordSource
+{
+    /// <summary>The DPAPI vault, or a prompt when nothing is saved.</summary>
+    Saved,
+
+    /// <summary>Looked up in KeePassXC each time; never stored here.</summary>
+    KeePassXc
+}
+
 /// <summary>
 /// One saved connection. Secrets never live here; the vault holds them keyed by <see cref="Id"/>.
 /// </summary>
@@ -45,6 +55,15 @@ public sealed class SessionDefinition
     public string Username { get; set; } = "";
     public SshAuthMethod AuthMethod { get; set; } = SshAuthMethod.Password;
     public string KeyPath { get; set; } = "";
+
+    /// <summary>Password and keyboard-interactive logins: the vault, or KeePassXC.</summary>
+    public PasswordSource PasswordSource { get; set; } = PasswordSource.Saved;
+
+    /// <summary>KeePassXC entry: blank matches ssh://Host, or an entry UUID, or a URL.</summary>
+    public string KeePassEntry { get; set; } = "";
+
+    /// <summary>Agent login: offer only keys whose comment contains this, or with this SHA256 fingerprint.</summary>
+    public string AgentKeyFilter { get; set; } = "";
 
     /// <summary>Optional jump host, "user@host:port". Empty means direct.</summary>
     public string JumpHost { get; set; } = "";

@@ -50,19 +50,53 @@
               <TextBlock Text="Username"/>
               <TextBox x:Name="UserBox"/>
               <TextBlock Text="Authentication"/>
-              <ComboBox x:Name="AuthBox">
+              <ComboBox x:Name="AuthBox" SelectionChanged="OnAuthChanged">
                 <ComboBoxItem Content="Password"/>
-                <ComboBoxItem Content="Public key"/>
-                <ComboBoxItem Content="Agent"/>
+                <ComboBoxItem Content="Public key file"/>
+                <ComboBoxItem Content="SSH agent (KeePassXC, Pageant, OpenSSH agent)"/>
                 <ComboBoxItem Content="Keyboard interactive"/>
               </ComboBox>
-              <TextBlock Text="Private key file"/>
-              <DockPanel>
-                <Button DockPanel.Dock="Right" Content="Browse" Width="70" Margin="6,0,0,0" Click="OnBrowseKey"/>
-                <TextBox x:Name="KeyBox"/>
-              </DockPanel>
-              <TextBlock Text="Password / passphrase (stored with DPAPI, blank keeps the existing one)"/>
-              <PasswordBox x:Name="SecretBox" Padding="3"/>
+
+              <StackPanel x:Name="KeyFilePanel">
+                <TextBlock Text="Private key file"/>
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Content="Browse" Width="70" Margin="6,0,0,0" Click="OnBrowseKey"/>
+                  <TextBox x:Name="KeyBox"/>
+                </DockPanel>
+              </StackPanel>
+
+              <StackPanel x:Name="AgentPanel">
+                <TextBlock Text="Agent key (optional): part of its comment, or its SHA256 fingerprint. Blank offers every key."/>
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Content="List keys" Width="70" Margin="6,0,0,0" Click="OnListAgentKeys"
+                          ToolTip="Show the keys the running agents offer"/>
+                  <TextBox x:Name="AgentFilterBox"/>
+                </DockPanel>
+              </StackPanel>
+
+              <StackPanel x:Name="PasswordSourcePanel">
+                <TextBlock Text="Password from"/>
+                <ComboBox x:Name="PasswordSourceBox" SelectionChanged="OnAuthChanged">
+                  <ComboBoxItem Content="Saved here (DPAPI), or ask"/>
+                  <ComboBoxItem Content="KeePassXC, looked up at each connect"/>
+                </ComboBox>
+              </StackPanel>
+
+              <StackPanel x:Name="KeePassPanel">
+                <TextBlock Text="KeePassXC entry: blank finds entries with URL ssh://host; or paste the entry's UUID"/>
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Content="Test" Width="70" Margin="6,0,0,0" Click="OnTestKeePass"
+                          ToolTip="Look the entry up now (KeePassXC may ask you to allow it); the password is not shown"/>
+                  <TextBox x:Name="KeePassEntryBox"/>
+                </DockPanel>
+              </StackPanel>
+
+              <StackPanel x:Name="SecretPanel">
+                <TextBlock x:Name="SecretLabel" Text="Password (stored with DPAPI, blank keeps the existing one)"/>
+                <PasswordBox x:Name="SecretBox" Padding="3"/>
+              </StackPanel>
+
+              <TextBlock x:Name="AuthNote" TextWrapping="Wrap" Foreground="#8B94A7" Margin="0,6,0,0"/>
             </StackPanel>
 
             <StackPanel x:Name="SerialPanel" Visibility="Collapsed">

@@ -1,6 +1,8 @@
 using System.Text;
 using Quarterdeck.Core.Model;
 using Quarterdeck.Core.Security;
+using Quarterdeck.Core.Security.Agent;
+using Quarterdeck.Core.Security.KeePassXc;
 using Renci.SshNet;
 using Renci.SshNet.Common;
 
@@ -39,6 +41,9 @@ public sealed class SshTerminalSession : ITerminalSession
         _promptForSecret = promptForSecret;
     }
 
+    /// <summary>The user name the login used: the shortcut's, or the KeePassXC entry's when the shortcut has none.</summary>
+    public string Username { get; private set; } = "";
+
     public bool IsConnected => _client?.IsConnected == true && _stream is not null;
 
     /// <summary>Exposed so the transfer pane and port forwards can reuse the authenticated connection.</summary>
@@ -51,7 +56,11 @@ public sealed class SshTerminalSession : ITerminalSession
     {
         _closing = false;
         _established = false;
-        var info = BuildConnectionInfo();
+
+        // Off the UI thread: a KeePassXC lookup can wait minutes for the user to unlock or allow
+        // access, and agent calls are IPC. Prompts marshal to the UI themselves.
+        var info = await Task.Run(() => BuildConnectionInfoAsync(cancellationToken), cancellationToken)
+            .ConfigureAwait(false);
 
         _client = new SshClient(info);
         _client.KeepAliveInterval = TimeSpan.FromSeconds(30);
@@ -89,38 +98,67 @@ public sealed class SshTerminalSession : ITerminalSession
 
     private void OnStreamError(object? sender, ExceptionEventArgs e) => RaiseClosed(e.Exception.Message);
 
-    private ConnectionInfo BuildConnectionInfo()
+    private async Task<ConnectionInfo> BuildConnectionInfoAsync(CancellationToken token)
     {
         var methods = new List<AuthenticationMethod>();
+        var username = _definition.Username;
+        string? fetched = null;
+
+        if (_definition.PasswordSource == PasswordSource.KeePassXc
+            && _definition.AuthMethod is SshAuthMethod.Password or SshAuthMethod.KeyboardInteractive)
+        {
+            var login = await KeePassXcPasswords.LookupAsync(
+                _vault, _definition.KeePassEntry, _definition.Host, _definition.Port, username, token);
+            fetched = login.Password;
+            if (string.IsNullOrEmpty(username))
+            {
+                username = login.Login;
+            }
+        }
+
+        if (string.IsNullOrEmpty(username))
+        {
+            throw new InvalidOperationException($"{_definition.Name} has no user name.");
+        }
+
+        Username = username;
 
         switch (_definition.AuthMethod)
         {
             case SshAuthMethod.PublicKey:
-                methods.Add(new PrivateKeyAuthenticationMethod(_definition.Username, LoadKey()));
+                methods.Add(new PrivateKeyAuthenticationMethod(username, LoadKey()));
+                break;
+
+            case SshAuthMethod.Agent:
+                methods.Add(new PrivateKeyAuthenticationMethod(username, AgentKeySource.FromAgents(_definition.AgentKeyFilter)));
                 break;
 
             case SshAuthMethod.KeyboardInteractive:
-                var interactive = new KeyboardInteractiveAuthenticationMethod(_definition.Username);
+                var interactive = new KeyboardInteractiveAuthenticationMethod(username);
                 interactive.AuthenticationPrompt += (_, e) =>
                 {
                     foreach (var prompt in e.Prompts)
                     {
-                        prompt.Response = ResolveSecret(prompt.Request) ?? string.Empty;
+                        // KeePassXC holds one secret: give it to the password prompt, ask for the rest (an OTP, say).
+                        prompt.Response = (fetched is not null && IsPasswordPrompt(prompt.Request) ? fetched : ResolveSecret(prompt.Request))
+                                          ?? string.Empty;
                     }
                 };
                 methods.Add(interactive);
                 break;
 
             default:
-                var password = ResolveSecret("password")
+                var password = fetched ?? ResolveSecret("password")
                                ?? throw new InvalidOperationException(
                                    $"No password available for {_definition.Name}.");
-                methods.Add(new PasswordAuthenticationMethod(_definition.Username, password));
+                methods.Add(new PasswordAuthenticationMethod(username, password));
                 break;
         }
 
-        return new ConnectionInfo(_definition.Host, _definition.Port, _definition.Username, methods.ToArray());
+        return new ConnectionInfo(_definition.Host, _definition.Port, username, methods.ToArray());
     }
+
+    private static bool IsPasswordPrompt(string request) => request.Contains("pass", StringComparison.OrdinalIgnoreCase);
 
     private PrivateKeyFile LoadKey()
     {
@@ -137,7 +175,7 @@ public sealed class SshTerminalSession : ITerminalSession
 
     private string? ResolveSecret(string name)
     {
-        var key = name.Contains("pass", StringComparison.OrdinalIgnoreCase) ? "password" : name;
+        var key = IsPasswordPrompt(name) ? "password" : name;
         return _vault.Get(_definition.Id, key) ?? _promptForSecret?.Invoke(name);
     }
 

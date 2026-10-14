@@ -1094,6 +1094,9 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnKeePassXc(object sender, RoutedEventArgs e) =>
+        new KeePassXcWindow(_vault) { Owner = this }.ShowDialog();
+
     private void OnAgentSettings(object sender, RoutedEventArgs e) =>
         new AgentSettingsWindow(_vault) { Owner = this }.ShowDialog();
 

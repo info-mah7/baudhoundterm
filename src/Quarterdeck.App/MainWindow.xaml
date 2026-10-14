@@ -24,7 +24,9 @@
         <MenuItem Header="_Connect" Click="OnConnect"/>
         <MenuItem Header="_Properties..." Click="OnEdit"/>
         <MenuItem Header="_Delete shortcut" Click="OnDelete"/>
-        <Rectangle/>
+        <Separator/>
+        <MenuItem Header="Passwords and _keys (KeePassXC)..." Click="OnKeePassXc"/>
+        <Separator/>
         <MenuItem Header="E_xit" Click="OnExit"/>
       </MenuItem>
       <MenuItem Header="_Terminal">
