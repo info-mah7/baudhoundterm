@@ -61,6 +61,9 @@ public sealed class SessionController : IAsyncDisposable
 
     public string? LogPath => _logger?.CurrentPath;
 
+    /// <summary>Bytes in and out on serial and telnet links, across reconnects. For the activity lamps.</summary>
+    public LinkCounters Counters { get; } = new();
+
     public event EventHandler<TerminalDataEventArgs>? DataReceived;
     public event EventHandler<SessionStateEventArgs>? StateChanged;
 
@@ -84,9 +87,9 @@ public sealed class SessionController : IAsyncDisposable
             _transport = Definition.Protocol switch
             {
                 SessionProtocol.Ssh => new SshTerminalSession(Definition, _vault, _promptForSecret),
-                SessionProtocol.Serial => new SerialTerminalSession(Definition),
+                SessionProtocol.Serial => new SerialTerminalSession(Definition, Counters),
                 SessionProtocol.LocalShell => new ConPtyTerminalSession(Definition),
-                SessionProtocol.Telnet => new TelnetTerminalSession(Definition),
+                SessionProtocol.Telnet => new TelnetTerminalSession(Definition, Counters),
                 _ => throw new NotSupportedException($"Unknown protocol {Definition.Protocol}")
             };
 

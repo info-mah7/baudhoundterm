@@ -84,7 +84,7 @@
         <Button Click="OnFind" ToolTip="Find in scrollback (Ctrl+Shift+F)">Find</Button>
         <Button Click="OnClear" ToolTip="Clear the screen">Clear</Button>
         <Rectangle/>
-        <Button Click="OnBaudHound" ToolTip="Connect to a BaudHound wireless serial console over telnet">BaudHound</Button>
+        <Button Click="OnBaudHound" ToolTip="Find BaudHound wireless serial consoles on this PC's networks and open one">BaudHound</Button>
         <Rectangle/>
         <Button x:Name="SyncButton" Click="OnSyncSettings" ToolTip="Share shortcuts between PCs through a private git repository">Sync</Button>
       </WrapPanel>

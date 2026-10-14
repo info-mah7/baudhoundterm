@@ -75,6 +75,13 @@ public sealed class SessionDefinition
     public string Parity { get; set; } = "None";
     public string StopBits { get; set; } = "One";
 
+    // Telnet
+    /// <summary>
+    /// Edit and echo each line here and send it whole with CR LF, for consoles that read lines
+    /// and do not echo. BaudHound's telnet port is one.
+    /// </summary>
+    public bool LineMode { get; set; }
+
     // Local shell
     public string ShellCommand { get; set; } = "powershell.exe";
 
@@ -208,6 +215,23 @@ public sealed class CommandShortcut
     /// What a new session starts with. Destructive entries are marked Confirm so a stray
     /// click on a menu cannot reboot a machine.
     /// </summary>
+    /// <summary>
+    /// BaudHound's own commands. The device acts on lines starting with ~ and passes every
+    /// other line to the target, so these never reach the device under test.
+    /// </summary>
+    public static List<CommandShortcut> BaudHound() => new()
+    {
+        new CommandShortcut { Label = "Device info (~info)", Text = "~info" },
+        new CommandShortcut { Label = "Detect baud now (~baud)", Text = "~baud" },
+        new CommandShortcut { Label = "Auto-detect baud (~baud auto)", Text = "~baud auto" },
+        new CommandShortcut { Label = "Pin 115200 (~baud 115200)", Text = "~baud 115200" },
+        new CommandShortcut { Label = "Pin baud...", Text = "~baud ", AppendNewline = false },
+        new CommandShortcut { Label = "Wake probe on (~probe on)", Text = "~probe on" },
+        new CommandShortcut { Label = "Wake probe off (~probe off)", Text = "~probe off" },
+        new CommandShortcut { Label = "Swap RX/TX (~swap)", Text = "~swap" },
+        new CommandShortcut { Label = "LED test (~ledtest)", Text = "~ledtest" }
+    };
+
     public static List<CommandShortcut> Defaults() => new()
     {
         new CommandShortcut { Label = "btop", Text = "btop" },

@@ -962,6 +962,14 @@ public partial class MainWindow : Window
             panel.Children.Add(ColourStripe(colour, hollow: false));
         }
 
+        // Serial and telnet tabs carry a state dot that blinks with traffic. The view owns it, so
+        // it leaves the previous header (rebuilt on every rename) before joining this one.
+        if (view.TabLamp is { } lamp)
+        {
+            (lamp.Parent as Panel)?.Children.Remove(lamp);
+            panel.Children.Add(lamp);
+        }
+
         // Two tabs on one host differ only by protocol; the badge says which is which.
         panel.Children.Add(SessionPresentation.BadgeElement(definition));
 
@@ -1485,43 +1493,38 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Connect to a BaudHound wireless serial console. It serves the UART it is clipped to on
-    /// telnet port 23, at 192.168.4.1 on its own access point or at its LAN address once joined
-    /// to a network, so the address is asked rather than assumed.
+    /// Find and connect to a BaudHound wireless serial console. It serves the UART it is clipped
+    /// to on telnet port 23, at 192.168.4.1 on its own access point or at its LAN address once
+    /// joined to a network; firmware 1.4 and later also answer a discovery broadcast.
     /// </summary>
     private void OnBaudHound(object sender, RoutedEventArgs e)
     {
-        var dialog = new InputPromptWindow(
-            "BaudHound address",
-            "192.168.4.1",
-            "192.168.4.1 on the device's own AP, or its LAN IP from the Settings page. Port 23 unless given.")
-        {
-            Owner = this
-        };
+        new BaudHoundWindow(Connect, SaveBaudHound) { Owner = this }.ShowDialog();
+    }
 
-        if (dialog.ShowDialog() != true || dialog.Value.Length == 0)
+    /// <summary>
+    /// A device keeps its name (BaudHound-XXXX) but not its DHCP address, so saving one that is
+    /// already a shortcut moves that shortcut to the new address rather than adding a second.
+    /// </summary>
+    private void SaveBaudHound(SessionDefinition found)
+    {
+        var existing = _sessions.FirstOrDefault(s =>
+            s.Protocol == SessionProtocol.Telnet
+            && string.Equals(s.Name, found.Name, StringComparison.OrdinalIgnoreCase));
+
+        if (existing is null)
         {
-            return;
+            _sessions.Add(found);
+        }
+        else
+        {
+            existing.Host = found.Host;
+            existing.Port = found.Port;
+            existing.LineMode = true;
+            RefreshOpenTabsOf(existing);
         }
 
-        var address = dialog.Value.Trim();
-        var port = 23;
-        var mark = address.LastIndexOf(':');
-
-        if (mark > 0 && int.TryParse(address[(mark + 1)..], out var given))
-        {
-            port = given;
-            address = address[..mark];
-        }
-
-        Connect(new SessionDefinition
-        {
-            Name = $"BaudHound {address}",
-            Protocol = SessionProtocol.Telnet,
-            Host = address,
-            Port = port,
-            TabColor = "#e5c07b"
-        });
+        Save();
     }
 
     // ---------- quick shells ----------
