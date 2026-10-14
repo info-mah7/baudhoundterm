@@ -60,12 +60,18 @@ public sealed class SerialTerminalSession : ITerminalSession
         _port.ErrorReceived += OnError;
         _port.Open();
 
+        _closedRaised = 0;
+        var watched = _port;
+        _watchdog = new Timer(_ => Watch(watched), null, 1000, 1000);
+
         return Task.CompletedTask;
     }
 
     private void OnData(object sender, SerialDataReceivedEventArgs e)
     {
-        if (_port is null || !_port.IsOpen)
+        // Captured once: DisconnectAsync nulls the field from another thread.
+        var port = _port;
+        if (port is null || !port.IsOpen)
         {
             return;
         }
@@ -74,38 +80,100 @@ public sealed class SerialTerminalSession : ITerminalSession
         {
             if (_raw is { } raw)
             {
-                var count = _port.BytesToRead;
+                var count = port.BytesToRead;
                 if (count > 0)
                 {
                     var buffer = new byte[count];
-                    var read = _port.Read(buffer, 0, count);
+                    var read = port.Read(buffer, 0, count);
                     raw.Push(buffer.AsSpan(0, read));
                 }
 
                 return;
             }
 
-            var text = _port.ReadExisting();
+            var text = port.ReadExisting();
             if (text.Length > 0)
             {
                 DataReceived?.Invoke(this, new TerminalDataEventArgs(text));
             }
         }
-        catch (InvalidOperationException)
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or ObjectDisposedException)
         {
             // Port closed underneath us, for instance a USB adapter unplugged.
-            Closed?.Invoke(this, new TerminalClosedEventArgs("Serial port closed.", _closing));
+            RaiseClosed("Serial port closed.");
         }
     }
 
-    private void OnError(object sender, SerialErrorReceivedEventArgs e) =>
-        Closed?.Invoke(this, new TerminalClosedEventArgs($"Serial error: {e.EventType}", false));
+    private Timer? _watchdog;
+    private int _closedRaised;
+
+    /// <summary>
+    /// An unplugged USB adapter often raises no event at all and no more data arrives, so the
+    /// tab would sit "connected" forever. Check once a second that the port still exists.
+    /// </summary>
+    private void Watch(SerialPort port)
+    {
+        if (!ReferenceEquals(port, _port))
+        {
+            return;
+        }
+
+        bool present;
+        try
+        {
+            present = port.IsOpen && SerialPort.GetPortNames().Contains(port.PortName, StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            present = false;
+        }
+
+        if (!present)
+        {
+            RaiseClosed($"{port.PortName} is gone (adapter unplugged?).");
+        }
+    }
+
+    private void RaiseClosed(string reason)
+    {
+        if (Interlocked.Exchange(ref _closedRaised, 1) == 0)
+        {
+            _watchdog?.Dispose();
+            Closed?.Invoke(this, new TerminalClosedEventArgs(reason, _closing));
+        }
+    }
+
+    private long _lastErrorNotice;
+
+    /// <summary>
+    /// Frame, parity and overrun errors are line noise (a baud mismatch while a device boots,
+    /// say); the port is still open. Note them, at most once a second, and keep going.
+    /// </summary>
+    private void OnError(object sender, SerialErrorReceivedEventArgs e)
+    {
+        var now = Environment.TickCount64;
+        if (now - Interlocked.Read(ref _lastErrorNotice) < 1000)
+        {
+            return;
+        }
+
+        Interlocked.Exchange(ref _lastErrorNotice, now);
+        DataReceived?.Invoke(this, new TerminalDataEventArgs($"\r\n\u001b[2m[baudhoundterm] serial line error: {e.EventType}\u001b[0m\r\n"));
+    }
 
     public Task WriteAsync(string text, CancellationToken cancellationToken = default)
     {
-        if (_port?.IsOpen == true)
+        var port = _port;
+        try
         {
-            _port.Write(text);
+            if (port?.IsOpen == true)
+            {
+                port.Write(text);
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            RaiseClosed("Serial port closed: " + ex.Message);
         }
 
         return Task.CompletedTask;
@@ -117,6 +185,8 @@ public sealed class SerialTerminalSession : ITerminalSession
     public Task DisconnectAsync()
     {
         _closing = true;
+        _watchdog?.Dispose();
+        _watchdog = null;
 
         if (_port is not null)
         {

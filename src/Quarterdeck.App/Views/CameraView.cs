@@ -17,7 +17,7 @@ namespace Quarterdeck.App.Views;
 /// given and drives pan, tilt, zoom and presets when the camera has them. The controls sit
 /// beside the video, not over it: the video is a native window and would hide WPF drawn on top.
 /// </summary>
-internal sealed class CameraView : DockPanel
+internal sealed class CameraView : DockPanel, IDisposable
 {
     private static LibVLC? _libVlc;
 
@@ -35,6 +35,19 @@ internal sealed class CameraView : DockPanel
     private OnvifCamera? _camera;
     private Media? _media;
     private readonly TaskCompletionSource _surfaceReady = new();
+    private IntPtr _surface;
+
+    // PTZ requests go out one at a time, in order: two fire-and-forget POSTs let a quick
+    // click's Stop reach the camera before its Move, which then pans until the end stop.
+    private Task _ptzChain = Task.CompletedTask;
+    private bool _moving;
+
+    // Player calls (Stop, Play, Dispose) can block on the network; they run off the UI
+    // thread, one at a time.
+    private readonly object _playerLock = new();
+    private volatile bool _disposed;
+    private int _playGeneration;   // bumped by Stop: a PlayAsync still in ONVIF discovery then does not play
+    private Window? _window;
 
     public CameraView(SessionDefinition definition, CredentialVault vault, Action<SessionState, string?> report)
     {
@@ -65,10 +78,53 @@ internal sealed class CameraView : DockPanel
         // LibVLC opens a window of its own.
         _video.HandleReady += handle =>
         {
+            if (_disposed)
+            {
+                return;
+            }
+
+            var replaced = _surface != IntPtr.Zero && _surface != handle;
+            _surface = handle;
             _player.Hwnd = handle;
             _surfaceReady.TrySetResult();
+
+            // WPF normally parks the window while the tab is hidden, but if it was rebuilt the
+            // running player still draws into the old one: restart it on the new surface.
+            if (replaced && _media is not null && !_disposed)
+            {
+                var media = _media;
+                _ = Task.Run(() =>
+                {
+                    lock (_playerLock)
+                    {
+                        if (!_disposed && _player.IsPlaying)
+                        {
+                            _player.Stop();
+                            _player.Play(media);
+                        }
+                    }
+                });
+            }
+        };
+
+        // A held PTZ button must not keep the camera moving once nobody is holding it.
+        Unloaded += (_, _) => StopIfMoving();
+        Loaded += (_, _) =>
+        {
+            if (_window is not null)
+            {
+                _window.Deactivated -= OnWindowDeactivated;
+            }
+
+            _window = Window.GetWindow(this);
+            if (_window is not null && !_disposed)
+            {
+                _window.Deactivated += OnWindowDeactivated;
+            }
         };
     }
+
+    private void OnWindowDeactivated(object? sender, EventArgs e) => StopIfMoving();
 
     private string Describe() => $"rtsp://{_definition.Host}:{_definition.Port}{NormalisedPath()}";
 
@@ -86,15 +142,16 @@ internal sealed class CameraView : DockPanel
         {
             var b = new Button { Content = text, Width = 44, Height = 34, Margin = new Thickness(2), FontSize = 15 };
             // Moves while held, stops on release: how PTZ joysticks behave.
-            b.PreviewMouseLeftButtonDown += async (_, _) => await MoveAsync(pan, tilt, zoom);
-            b.PreviewMouseLeftButtonUp += async (_, _) => await StopMoveAsync();
-            b.MouseLeave += async (_, e) =>
+            b.PreviewMouseLeftButtonDown += (_, _) => _ = MoveAsync(pan, tilt, zoom);
+            b.PreviewMouseLeftButtonUp += (_, _) => StopIfMoving();
+            b.MouseLeave += (_, e) =>
             {
                 if (e.LeftButton == MouseButtonState.Pressed)
                 {
-                    await StopMoveAsync();
+                    StopIfMoving();
                 }
             };
+            b.LostMouseCapture += (_, _) => StopIfMoving();
             return b;
         }
 
@@ -104,7 +161,7 @@ internal sealed class CameraView : DockPanel
         grid.Add(new Border());
         grid.Add(Pad("◀", -0.5, 0, 0));
         var stop = new Button { Content = "■", Width = 44, Height = 34, Margin = new Thickness(2) };
-        stop.Click += async (_, _) => await StopMoveAsync();
+        stop.Click += (_, _) => _ = StopMoveAsync();
         grid.Add(stop);
         grid.Add(Pad("▶", 0.5, 0, 0));
         grid.Add(new Border());
@@ -146,6 +203,12 @@ internal sealed class CameraView : DockPanel
     public async Task PlayAsync()
     {
         await _surfaceReady.Task;
+        var generation = Interlocked.Increment(ref _playGeneration);
+        if (_disposed)
+        {
+            return;
+        }
+
         _report(SessionState.Connecting, $"Connecting to {Describe()}...");
         var password = _vault.Get(_definition.Id) ?? "";
         _onvif ??= new OnvifClient(_definition.Host, _definition.OnvifPort, _definition.Username, password);
@@ -169,6 +232,12 @@ internal sealed class CameraView : DockPanel
             url = Describe();
         }
 
+        // ONVIF discovery can take seconds; the tab may have closed or disconnected meanwhile.
+        if (_disposed || generation != Volatile.Read(ref _playGeneration))
+        {
+            return;
+        }
+
         _media?.Dispose();
         _media = new Media(_libVlc!, new Uri(url));
         // Credentials as options, never in the URL, so they do not land in logs or the title.
@@ -184,7 +253,17 @@ internal sealed class CameraView : DockPanel
         }
 
         _media.AddOption($":network-caching={(_definition.LowLatency ? 200 : 1000)}");
-        _player.Play(_media);
+        var media = _media;
+        await Task.Run(() =>
+        {
+            lock (_playerLock)
+            {
+                if (!_disposed && generation == Volatile.Read(ref _playGeneration))
+                {
+                    _player.Play(media);
+                }
+            }
+        });
 
         _ = Task.Run(SetUpPtzAsync);
     }
@@ -215,38 +294,80 @@ internal sealed class CameraView : DockPanel
         }
     }
 
-    private async Task MoveAsync(double pan, double tilt, double zoom)
+    /// <summary>Runs PTZ requests strictly in order. Call on the UI thread.</summary>
+    private Task Enqueue(Func<Task> request)
     {
-        if (_camera is null || _onvif is null)
-        {
-            return;
-        }
+        var previous = _ptzChain;
+        _ptzChain = Next();
+        return _ptzChain;
 
-        try
+        async Task Next()
         {
-            await _onvif.ContinuousMoveAsync(_camera, pan, tilt, zoom);
-        }
-        catch (Exception ex)
-        {
-            _ptzNote.Text = "Move failed: " + ex.Message;
+            try
+            {
+                await previous;
+            }
+            catch
+            {
+                // Each request reports its own failure.
+            }
+
+            await request();
         }
     }
 
-    private async Task StopMoveAsync()
+    private Task MoveAsync(double pan, double tilt, double zoom)
     {
-        if (_camera is null || _onvif is null)
+        if (_camera is not { } camera || _onvif is not { } onvif || _disposed)
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        try
+        _moving = true;
+        return Enqueue(async () =>
         {
-            await _onvif.StopAsync(_camera);
-        }
-        catch (Exception ex)
+            try
+            {
+                await onvif.ContinuousMoveAsync(camera, pan, tilt, zoom);
+            }
+            catch (Exception ex)
+            {
+                _ptzNote.Text = "Move failed: " + ex.Message;
+            }
+        });
+    }
+
+    /// <summary>Sends a stop only when a move was started; safe to call from any release path.</summary>
+    private void StopIfMoving()
+    {
+        if (_moving)
         {
-            _ptzNote.Text = "Stop failed: " + ex.Message;
+            _ = StopMoveAsync();
         }
+    }
+
+    private Task StopMoveAsync()
+    {
+        if (_camera is not { } camera || _onvif is not { } onvif)
+        {
+            return Task.CompletedTask;
+        }
+
+        _moving = false;
+        return Enqueue(async () =>
+        {
+            try
+            {
+                await onvif.StopAsync(camera);
+            }
+            catch (Exception ex)
+            {
+                if (!_disposed)
+                {
+                    _ptzNote.Text = "Stop failed: " + ex.Message;
+                }
+            }
+        });
     }
 
     private async Task GotoPresetAsync()
@@ -278,11 +399,65 @@ internal sealed class CameraView : DockPanel
             _player.TakeSnapshot(0, path, 0, 0) ? $"Snapshot saved: {path}" : "Snapshot failed: no picture yet.");
     }
 
-    public Task StopAsync() => Task.Run(() =>
+    public Task StopAsync()
     {
-        // Stop can block while the network side winds down; never on the UI thread.
-        _player.Stop();
-    });
+        Interlocked.Increment(ref _playGeneration);
+        StopIfMoving();
+        return Task.Run(() =>
+        {
+            // Stop can block while the network side winds down; never on the UI thread.
+            lock (_playerLock)
+            {
+                if (!_disposed)
+                {
+                    _player.Stop();
+                }
+            }
+        });
+    }
+
+    /// <summary>
+    /// Releases the player, the media and the ONVIF client: stop first, then dispose, off the
+    /// UI thread. Safe to call more than once, and after <see cref="StopAsync"/>.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        StopIfMoving();
+        var lastPtz = _ptzChain;
+        _disposed = true;
+
+        if (_window is not null)
+        {
+            _window.Deactivated -= OnWindowDeactivated;
+            _window = null;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await lastPtz.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch
+            {
+                // The camera did not answer; dispose anyway.
+            }
+
+            lock (_playerLock)
+            {
+                _player.Stop();
+                _media?.Dispose();
+                _player.Dispose();
+            }
+
+            _onvif?.Dispose();
+        });
+    }
 
     /// <summary>A tiny fixed grid of equal cells, filled left to right.</summary>
     private sealed class UniformGridLike(int columns)

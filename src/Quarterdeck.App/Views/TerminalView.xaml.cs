@@ -184,6 +184,21 @@ public partial class TerminalView : UserControl, ITerminalTarget
             scrollback = Definition.ScrollbackLines
         });
 
+        PostSettings();
+    }
+
+    /// <summary>
+    /// Sends the shortcut's command labels and highlight rules to the page. Called again after
+    /// every edit of the shortcut: the page runs a command by its index, so labels that lag the
+    /// definition would run a different command than the one clicked.
+    /// </summary>
+    private void PostSettings()
+    {
+        if (Definition.Protocol == SessionProtocol.Vnc)
+        {
+            return;
+        }
+
         Post(new { t = "commands", list = Definition.Commands.Select(c => new
         {
             label = string.IsNullOrWhiteSpace(c.Label) ? c.Text : c.Label
@@ -223,6 +238,17 @@ public partial class TerminalView : UserControl, ITerminalTarget
         Post(new { t = "focus" });
     });
 
+    // The page's grid size, kept so a connection made later (restored tab, Reconnect) starts at
+    // the right size; the page only reports it on load and on resize.
+    private int _cols;
+    private int _rows;
+
+    private void RememberSize(JsonElement root)
+    {
+        _cols = root.GetProperty("c").GetInt32();
+        _rows = root.GetProperty("r").GetInt32();
+    }
+
     private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
         using var doc = JsonDocument.Parse(e.TryGetWebMessageAsString());
@@ -251,7 +277,8 @@ public partial class TerminalView : UserControl, ITerminalTarget
                     break;
                 }
 
-                _ = _controller?.ResizeAsync(root.GetProperty("c").GetInt32(), root.GetProperty("r").GetInt32());
+                RememberSize(root);
+                _ = _controller?.ResizeAsync(_cols, _rows);
                 break;
 
             case "err":
@@ -267,7 +294,8 @@ public partial class TerminalView : UserControl, ITerminalTarget
                 break;
 
             case "size":
-                _ = _controller?.ResizeAsync(root.GetProperty("c").GetInt32(), root.GetProperty("r").GetInt32());
+                RememberSize(root);
+                _ = _controller?.ResizeAsync(_cols, _rows);
                 break;
 
             case "title":
@@ -397,6 +425,14 @@ public partial class TerminalView : UserControl, ITerminalTarget
     /// </summary>
     private async Task PasteImageAsync()
     {
+        // Serial and telnet have no file channel: typing a Windows temp path into a router
+        // console does nothing useful.
+        if (Definition.Protocol is not (SessionProtocol.Ssh or SessionProtocol.LocalShell))
+        {
+            SetStatus("Pasting an image as a file works in SSH and local shell tabs.");
+            return;
+        }
+
         if (!Clipboard.ContainsImage())
         {
             SetStatus("No image on the clipboard.");
@@ -495,13 +531,17 @@ public partial class TerminalView : UserControl, ITerminalTarget
     {
         if (!IsConnected)
         {
-            if (text.Contains('\r'))
+            // Only a real Enter reconnects. Pasted text containing line breaks used to start a
+            // reconnect too, and the paste itself was lost.
+            if (text == "\r")
             {
                 await ReconnectAsync();
             }
 
             return;
         }
+
+        _agent?.NoteUserInput();
 
         if (_controller is null)
         {
@@ -579,6 +619,11 @@ public partial class TerminalView : UserControl, ITerminalTarget
             }
         });
 
+        if (_cols > 0 && _rows > 0)
+        {
+            await controller.ResizeAsync(_cols, _rows);
+        }
+
         await controller.ConnectAsync();
     }
 
@@ -608,7 +653,8 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
     private void Post(object message)
     {
-        if (Web.CoreWebView2 is null)
+        // Output or agent events can still arrive after the tab closed and the WebView went.
+        if (_released || Web.CoreWebView2 is null)
         {
             return;
         }
@@ -620,7 +666,13 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
     public void ClearScreen() => Post(new { t = "clear" });
 
-    public void ApplyHighlights() => OnNavigated(null, null!);
+    /// <summary>Pushes edited commands, highlights, theme and font to an open tab without rebuilding the terminal.</summary>
+    public void ApplyHighlights()
+    {
+        PostSettings();
+        Post(new { t = "theme", d = Definition.Theme });
+        Post(new { t = "font", size = Definition.FontSize });
+    }
 
     public async Task DisconnectAsync()
     {
@@ -905,13 +957,55 @@ public partial class TerminalView : UserControl, ITerminalTarget
         FocusTerminal();
     }
 
-    /// <summary>The same tab, connected again: scrollback stays, the session starts over.</summary>
-    public async Task ReconnectAsync()
+    /// <summary>
+    /// Frees the tab's browser process and camera player once the tab is gone. Without it every
+    /// closed tab left its msedgewebview2 processes (and the user-data folder lock) behind.
+    /// </summary>
+    private bool _released;
+
+    public void Release()
     {
-        if (IsConnected)
+        if (_released)
         {
             return;
         }
+
+        _released = true;
+        if (Web.CoreWebView2 is { } core)
+        {
+            core.WebMessageReceived -= OnWebMessage;
+            core.NavigationCompleted -= OnNavigated;
+        }
+
+        Web.Dispose();
+        ((object?)_camera as IDisposable)?.Dispose();
+    }
+
+    /// <summary>The same tab, connected again: scrollback stays, the session starts over.</summary>
+    private bool _reconnecting;
+
+    public async Task ReconnectAsync()
+    {
+        // Enter pressed twice while the old controller was still being disposed started two
+        // connections, one of them orphaned.
+        if (IsConnected || _reconnecting)
+        {
+            return;
+        }
+
+        _reconnecting = true;
+        try
+        {
+            await ReconnectCoreAsync();
+        }
+        finally
+        {
+            _reconnecting = false;
+        }
+    }
+
+    private async Task ReconnectCoreAsync()
+    {
 
         // A session that failed on its own still holds a controller (or bridge); clear it first.
         if (_controller is not null)

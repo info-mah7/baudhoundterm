@@ -46,6 +46,11 @@ public sealed class FileTransferService : IRemoteFiles
     // A KeePassXC login fetched once serves both the SFTP and SCP connections of this service.
     private (string User, string Password)? _fetched;
 
+    // One connect at a time: the window lists a folder on open while the user may already be
+    // clicking Download, and two racing getters each disposed the other's half-built client
+    // and raised a second host-key or KeePassXC prompt.
+    private readonly object _connectGate = new();
+
     /// <summary>Runs on a pool thread (callers wrap it in Task.Run), so a KeePassXC wait blocks nothing visible.</summary>
     private ConnectionInfo BuildConnectionInfo()
     {
@@ -64,7 +69,38 @@ public sealed class FileTransferService : IRemoteFiles
         {
             method = new PrivateKeyAuthenticationMethod(username, AgentKeySource.FromAgents(_definition.AgentKeyFilter));
         }
-        else if (_definition.PasswordSource == PasswordSource.KeePassXc)
+        else
+        {
+            var password = ResolvePassword(ref username);
+
+            if (_definition.AuthMethod == SshAuthMethod.KeyboardInteractive)
+            {
+                // Servers that only allow keyboard-interactive refuse plain password auth, which
+                // is all transfers used to offer. Answer the password prompt; there is no one to
+                // ask for anything else (an OTP), so those get an empty reply and fail cleanly.
+                var interactive = new KeyboardInteractiveAuthenticationMethod(username);
+                interactive.AuthenticationPrompt += (_, e) =>
+                {
+                    foreach (var prompt in e.Prompts)
+                    {
+                        prompt.Response = prompt.Request.Contains("password", StringComparison.OrdinalIgnoreCase) ? password : string.Empty;
+                    }
+                };
+
+                return new ConnectionInfo(_definition.Host, _definition.Port, username,
+                    interactive, new PasswordAuthenticationMethod(username, password));
+            }
+
+            method = new PasswordAuthenticationMethod(username, password);
+        }
+
+        return new ConnectionInfo(_definition.Host, _definition.Port, username, method);
+    }
+
+    /// <summary>The password from KeePassXC (fetched once) or the vault; fills in the user name from the entry when the shortcut has none.</summary>
+    private string ResolvePassword(ref string username)
+    {
+        if (_definition.PasswordSource == PasswordSource.KeePassXc)
         {
             if (_fetched is null)
             {
@@ -74,17 +110,12 @@ public sealed class FileTransferService : IRemoteFiles
             }
 
             username = _fetched.Value.User;
-            method = new PasswordAuthenticationMethod(username, _fetched.Value.Password);
-        }
-        else
-        {
-            var password = _vault.Get(_definition.Id)
-                           ?? throw new InvalidOperationException(
-                               $"No stored password for {_definition.Name}; transfers need one.");
-            method = new PasswordAuthenticationMethod(username, password);
+            return _fetched.Value.Password;
         }
 
-        return new ConnectionInfo(_definition.Host, _definition.Port, username, method);
+        return _vault.Get(_definition.Id)
+               ?? throw new InvalidOperationException(
+                   $"No stored password for {_definition.Name}; transfers need one.");
     }
 
     public string Home => ".";
@@ -107,14 +138,17 @@ public sealed class FileTransferService : IRemoteFiles
     {
         get
         {
-            if (_sftp is null || !_sftp.IsConnected)
+            lock (_connectGate)
             {
-                _sftp?.Dispose();
-                _sftp = new SftpClient(BuildConnectionInfo());
-                KnownHosts.Connect(_sftp, _definition.Host, _definition.Port);
-            }
+                if (_sftp is null || !_sftp.IsConnected)
+                {
+                    _sftp?.Dispose();
+                    _sftp = new SftpClient(BuildConnectionInfo());
+                    KnownHosts.Connect(_sftp, _definition.Host, _definition.Port);
+                }
 
-            return _sftp;
+                return _sftp;
+            }
         }
     }
 
@@ -122,16 +156,19 @@ public sealed class FileTransferService : IRemoteFiles
     {
         get
         {
-            if (_scp is null || !_scp.IsConnected)
+            lock (_connectGate)
             {
-                _scp?.Dispose();
-                // Shell-quote remote paths: the plain constructor passes them to a remote
-                // shell unescaped, which turns a filename with a backtick into command execution.
-                _scp = new ScpClient(BuildConnectionInfo(), RemotePathTransformation.ShellQuote);
-                KnownHosts.Connect(_scp, _definition.Host, _definition.Port);
-            }
+                if (_scp is null || !_scp.IsConnected)
+                {
+                    _scp?.Dispose();
+                    // Shell-quote remote paths: the plain constructor passes them to a remote
+                    // shell unescaped, which turns a filename with a backtick into command execution.
+                    _scp = new ScpClient(BuildConnectionInfo(), RemotePathTransformation.ShellQuote);
+                    KnownHosts.Connect(_scp, _definition.Host, _definition.Port);
+                }
 
-            return _scp;
+                return _scp;
+            }
         }
     }
 

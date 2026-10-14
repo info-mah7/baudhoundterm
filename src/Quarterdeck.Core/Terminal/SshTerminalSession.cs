@@ -26,10 +26,18 @@ public sealed class SshTerminalSession : ITerminalSession
     // SSH.NET ALSO raises ErrorOccurred for it (a refused host key, say), and treating that as
     // a dropped connection started a reconnect, and a fresh password prompt, behind the error.
     private volatile bool _established;
+    private int _closedRaised;
 
     // Decoding state is per session: a UTF-8 sequence can straddle two DataReceived events.
     private readonly Decoder _decoder = Encoding.UTF8.GetDecoder();
     private readonly char[] _chars = new char[64 * 1024];
+    private readonly byte[] _bytes = new byte[32 * 1024];
+    private readonly object _readGate = new();
+
+    // Keystrokes go out in the order they were typed: one Task.Run per write let the pool
+    // reorder two quick writes ("ls" arriving as "sl").
+    private readonly object _writeGate = new();
+    private Task _writeChain = Task.CompletedTask;
 
     public SshTerminalSession(
         SessionDefinition definition,
@@ -56,6 +64,7 @@ public sealed class SshTerminalSession : ITerminalSession
     {
         _closing = false;
         _established = false;
+        _closedRaised = 0;
 
         // Off the UI thread: a KeePassXC lookup can wait minutes for the user to unlock or allow
         // access, and agent calls are IPC. Prompts marshal to the UI themselves.
@@ -85,14 +94,53 @@ public sealed class SshTerminalSession : ITerminalSession
         _stream.DataReceived += OnStreamData;
         _stream.ErrorOccurred += OnStreamError;
         _established = true;
+
+        // The banner and first prompt can land between CreateShellStream and the subscription
+        // above; ShellStream kept them in its buffer, so hand them over now.
+        Drain(_stream);
     }
 
+    /// <summary>
+    /// The event is only the doorbell. ShellStream also keeps every byte in its own read buffer
+    /// until something reads it, so taking the bytes from the event left that buffer growing for
+    /// the life of the session. Reading drains it, and also picks up anything that arrived
+    /// before the subscription.
+    /// </summary>
     private void OnStreamData(object? sender, ShellDataEventArgs e)
     {
-        var count = _decoder.GetChars(e.Data, 0, e.Data.Length, _chars, 0);
-        if (count > 0)
+        if (sender is ShellStream stream)
         {
-            DataReceived?.Invoke(this, new TerminalDataEventArgs(new string(_chars, 0, count)));
+            Drain(stream);
+        }
+    }
+
+    private void Drain(ShellStream stream)
+    {
+        lock (_readGate)
+        {
+            try
+            {
+                // Read blocks only when the buffer is empty, which DataAvailable rules out;
+                // this lock makes us its only reader.
+                while (stream.DataAvailable)
+                {
+                    var n = stream.Read(_bytes, 0, _bytes.Length);
+                    if (n <= 0)
+                    {
+                        break;
+                    }
+
+                    var count = _decoder.GetChars(_bytes, 0, n, _chars, 0);
+                    if (count > 0)
+                    {
+                        DataReceived?.Invoke(this, new TerminalDataEventArgs(new string(_chars, 0, count)));
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException or IOException)
+            {
+                // Closed while draining: nothing left to deliver.
+            }
         }
     }
 
@@ -158,7 +206,28 @@ public sealed class SshTerminalSession : ITerminalSession
         return new ConnectionInfo(_definition.Host, _definition.Port, username, methods.ToArray());
     }
 
-    private static bool IsPasswordPrompt(string request) => request.Contains("pass", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// A prompt for the account password, not for a one-time code: "Passcode", "OTP",
+    /// "Verification code" or a token must not be answered with the password, which would burn
+    /// a login attempt and hand the password to a prompt that did not ask for it.
+    /// </summary>
+    private static bool IsPasswordPrompt(string request)
+    {
+        if (!request.Contains("password", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        foreach (var otp in new[] { "passcode", "otp", "one-time", "one time", "verification", "token" })
+        {
+            if (request.Contains(otp, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     private PrivateKeyFile LoadKey()
     {
@@ -183,7 +252,9 @@ public sealed class SshTerminalSession : ITerminalSession
 
     private void RaiseClosed(string reason)
     {
-        if (!_established)
+        // A dropped link raises ErrorOccurred on both the client and the shell stream; report
+        // it once, or the controller starts two reconnects.
+        if (!_established || Interlocked.Exchange(ref _closedRaised, 1) == 1)
         {
             return;
         }
@@ -203,7 +274,17 @@ public sealed class SshTerminalSession : ITerminalSession
         // flushes in one call. The Stream overloads leave the bytes in ShellStream's outgoing
         // buffer, and FlushAsync is not overridden, so the default posts the blocking Flush to
         // the pool, where it contends with the channel. It blocks, so keep it off the UI thread.
-        return Task.Run(() => stream.Write(text), cancellationToken);
+        lock (_writeGate)
+        {
+            // No token on the continuation itself: a cancelled link would let the next write start
+            // while this one still runs. Each write checks its own token instead.
+            _writeChain = _writeChain.ContinueWith(_ =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                stream.Write(text);
+            }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+            return _writeChain;
+        }
     }
 
     public Task ResizeAsync(int columns, int rows)

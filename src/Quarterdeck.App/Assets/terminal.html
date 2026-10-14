@@ -83,6 +83,15 @@
   let highlights = [];
 
   function init(cfg) {
+    // Once per page. A second init used to stack a new xterm over the old one, whose input
+    // handler stayed live, and drop the scrollback.
+    if (term) {
+      term.options.theme = themes[cfg.theme] || themes["Quarterdeck Dark"];
+      term.options.fontSize = cfg.fontSize;
+      try { fit.fit(); } catch (e) {}
+      return;
+    }
+
     term = new Terminal({
       fontFamily: cfg.fontFamily + ', Consolas, monospace',
       fontSize: cfg.fontSize,
@@ -109,6 +118,8 @@
     term.onTitleChange(title => send({ t: 'title', d: title }));
 
     // Copy on Ctrl+Shift+C, paste on Ctrl+Shift+V and on right-click, like SecureCRT's defaults.
+    // Pastes go through term.paste: it turns CRLF into CR (Windows text otherwise sent an extra
+    // Enter per line) and wraps the text in bracketed-paste marks when the far end asks for them.
     term.attachCustomKeyEventHandler(ev => {
       if (ev.type !== 'keydown') return true;
 
@@ -125,7 +136,7 @@
       if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyV') {
         ev.preventDefault();
         navigator.clipboard.readText()
-          .then(t => t ? send({ t: 'in', d: t }) : send({ t: 'pasteimg' }))
+          .then(t => t ? term.paste(t) : send({ t: 'pasteimg' }))
           .catch(() => send({ t: 'pasteimg' }));
         return false;
       }
@@ -141,7 +152,7 @@
       if (ev.shiftKey) {
         const sel = term.getSelection();
         if (sel) { navigator.clipboard.writeText(sel); term.clearSelection(); }
-        else { navigator.clipboard.readText().then(t => t && send({ t: 'in', d: t })); }
+        else { navigator.clipboard.readText().then(t => t && term.paste(t)); }
         return;
       }
 
@@ -154,20 +165,54 @@
 
   // Highlight rules are applied to the incoming text, not to the rendered grid: xterm.js has no
   // public API for recolouring cells after the fact. A match split across two reads is missed.
+  // Only text between escape sequences is matched, so a rule cannot cut into an SGR or OSC
+  // sequence, and a match ends by restoring the default colour (and weight), not by resetting
+  // every attribute the far end had set.
+  const ESCAPES = /\u001b(?:\[[0-?]*[ -\/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g;
+
   function applyHighlights(text) {
-    if (!highlights.length) return text;
-    let out = text;
-    for (const h of highlights) {
-      if (!h.enabled || !h.pattern) continue;
-      try {
-        const flags = h.caseSensitive ? 'g' : 'gi';
-        const re = h.isRegex ? new RegExp(h.pattern, flags)
-                             : new RegExp(h.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
-        const sgr = (h.bold ? '\u001b[1m' : '') + '\u001b[38;2;' + hexToRgb(h.color) + 'm';
-        out = out.replace(re, m => sgr + m + '\u001b[0m');
-      } catch (e) { /* a bad user regex must not stop output */ }
+    const rules = highlights.filter(h => h.enabled && h.pattern && /^#[0-9a-fA-F]{6}$/.test(h.color || ''));
+    if (!rules.length) return text;
+
+    // An escape sequence cut off at the end of this read is left alone.
+    let tail = '';
+    const lastEsc = text.lastIndexOf('\u001b');
+    if (lastEsc >= 0) {
+      const rest = text.slice(lastEsc);
+      ESCAPES.lastIndex = 0;
+      const m = ESCAPES.exec(rest);
+      if (!m || m.index !== 0) { tail = rest; text = text.slice(0, lastEsc); }
     }
-    return out;
+
+    // Rule by rule, each over the plain text only, so a later rule cannot match inside the
+    // colour codes an earlier one inserted.
+    for (const h of rules) text = mapPlain(text, seg => highlightOne(seg, h));
+    return text + tail;
+  }
+
+  function mapPlain(text, fn) {
+    let out = '';
+    let pos = 0;
+    ESCAPES.lastIndex = 0;
+    for (let m; (m = ESCAPES.exec(text)) !== null; ) {
+      out += fn(text.slice(pos, m.index)) + m[0];
+      pos = ESCAPES.lastIndex;
+    }
+    return out + fn(text.slice(pos));
+  }
+
+  function highlightOne(text, h) {
+    if (!text) return text;
+    try {
+      const flags = h.caseSensitive ? 'g' : 'gi';
+      const re = h.isRegex ? new RegExp(h.pattern, flags)
+                           : new RegExp(h.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
+      const on = (h.bold ? '\u001b[1m' : '') + '\u001b[38;2;' + hexToRgb(h.color) + 'm';
+      const off = '\u001b[39m' + (h.bold ? '\u001b[22m' : '');
+      return text.replace(re, m => m ? on + m + off : m);
+    } catch (e) {
+      return text;   // a bad user regex must not stop output
+    }
   }
 
   function hexToRgb(hex) {
@@ -189,7 +234,7 @@
           navigator.clipboard.writeText(sel); term.clearSelection(); } },
       { label: 'Paste', hint: 'Ctrl+Shift+V', run: () => {
           navigator.clipboard.readText()
-            .then(t => t ? send({ t: 'in', d: t }) : send({ t: 'pasteimg' }))
+            .then(t => t ? term.paste(t) : send({ t: 'pasteimg' }))
             .catch(() => send({ t: 'pasteimg' })); } },
       { label: 'Paste image as file', run: () => send({ t: 'pasteimg' }) },
       { label: 'Clear screen', run: () => term.clear() }
@@ -264,7 +309,7 @@
       case 'focus':      term && term.focus(); break;
       case 'fit':        try { fit.fit(); } catch (e) {} break;
       case 'selectAll':  term && term.selectAll(); break;
-      case 'paste':      term && send({ t: 'in', d: m.d }); break;
+      case 'paste':      term && term.paste(m.d); break;
       case 'dump':       send({ t: 'dump', d: serialize.serialize() }); break;
     }
   });

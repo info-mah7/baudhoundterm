@@ -90,7 +90,7 @@ public sealed class OnvifClient : IDisposable
             builder.Port = _port;
         }
 
-        return builder.Uri.ToString();
+        return builder.Uri.AbsoluteUri;
     }
 
     public async Task<string> GetStreamUriAsync(OnvifCamera camera, CancellationToken token = default)
@@ -107,7 +107,7 @@ public sealed class OnvifClient : IDisposable
 
         // The stream address often names the camera's own idea of its IP; use the one we reached.
         return Uri.TryCreate(uri, UriKind.Absolute, out var u)
-            ? new UriBuilder(u) { Host = _host }.Uri.ToString()
+            ? new UriBuilder(u) { Host = _host }.Uri.AbsoluteUri   // ToString() would unescape %26, %3D...
             : uri;
     }
 

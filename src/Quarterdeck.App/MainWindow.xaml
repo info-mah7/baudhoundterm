@@ -102,17 +102,17 @@
           <ComboBoxItem Content="VNC"/>
         </ComboBox>
         <Button DockPanel.Dock="Right" Content="Connect" Width="90" Margin="8,0,2,0"
-                Click="OnQuickConnect" IsDefault="True"/>
+                Click="OnQuickConnect"/>
 
         <!-- Serial asks for a port and a speed rather than a syntax to memorise. -->
         <StackPanel x:Name="QuickSerialPanel" DockPanel.Dock="Left" Orientation="Horizontal"
                     Visibility="Collapsed" VerticalAlignment="Center" Margin="8,0,0,0">
           <TextBlock Text="Port" Foreground="#8B94A7" VerticalAlignment="Center" Margin="0,0,6,0"/>
-          <ComboBox x:Name="QuickSerialPort" Width="110" IsEditable="True"
+          <ComboBox x:Name="QuickSerialPort" Width="110" IsEditable="True" KeyDown="OnQuickAddressKey"
                     DropDownOpened="OnSerialPortsDropDown"
                     ToolTip="COM port. The list refreshes each time it is opened."/>
           <TextBlock Text="Baud" Foreground="#8B94A7" VerticalAlignment="Center" Margin="12,0,6,0"/>
-          <ComboBox x:Name="QuickBaud" Width="90" IsEditable="True" Text="115200"/>
+          <ComboBox x:Name="QuickBaud" Width="90" IsEditable="True" Text="115200" KeyDown="OnQuickAddressKey"/>
           <TextBlock Text="Framing" Foreground="#8B94A7" VerticalAlignment="Center" Margin="12,0,6,0"/>
           <ComboBox x:Name="QuickFraming" Width="80" SelectedIndex="0"
                     ToolTip="Data bits, parity, stop bits">

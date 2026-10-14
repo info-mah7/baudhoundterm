@@ -52,8 +52,7 @@ public sealed class SessionStore
             {
                 // A truncated or hand-broken file used to stop the app before its window
                 // existed. Keep the file (it may be repairable) and start empty, saying so.
-                var aside = _path + $".damaged-{DateTime.UtcNow:yyyyMMddHHmmss}";
-                File.Move(_path, aside);
+                var aside = SetAside(_path);
                 LoadProblem = $"sessions.json could not be read ({ex.Message}) and was moved to {aside}. " +
                               "The list starts empty; the old file is kept for repair.";
                 return new List<SessionDefinition>();
@@ -80,8 +79,45 @@ public sealed class SessionStore
                 return new List<string>();
             }
 
-            return JsonSerializer.Deserialize<List<string>>(json, JsonOptions) ?? new List<string>();
+            try
+            {
+                return JsonSerializer.Deserialize<List<string>>(json, JsonOptions) ?? new List<string>();
+            }
+            catch (JsonException ex)
+            {
+                // Same as sessions.json: a damaged file must not stop the window from opening.
+                var aside = SetAside(_foldersPath);
+                LoadProblem = (LoadProblem is null ? "" : LoadProblem + " ") +
+                              $"folders.json could not be read ({ex.Message}) and was moved to {aside}.";
+                return new List<string>();
+            }
         }
+    }
+
+    /// <summary>
+    /// Moves a damaged file aside, or copies it when it is locked, and never throws: failing
+    /// here would stop the window from opening, which is what setting it aside prevents.
+    /// </summary>
+    private static string SetAside(string path)
+    {
+        var aside = path + $".damaged-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid().ToString("N")[..6]}";
+        try
+        {
+            File.Move(path, aside);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            try
+            {
+                File.Copy(path, aside);
+            }
+            catch (Exception copyEx) when (copyEx is IOException or UnauthorizedAccessException)
+            {
+                return "(nowhere: it could not be copied either)";
+            }
+        }
+
+        return aside;
     }
 
     public void SaveFolders(IEnumerable<string> folders)
@@ -95,9 +131,7 @@ public sealed class SessionStore
                 .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            var temp = _foldersPath + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(clean, JsonOptions));
-            File.Move(temp, _foldersPath, overwrite: true);
+            AtomicFile.Write(_foldersPath, JsonSerializer.Serialize(clean, JsonOptions));
         }
     }
 
@@ -105,9 +139,47 @@ public sealed class SessionStore
     {
         lock (_gate)
         {
-            var temp = _path + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(sessions.ToList(), JsonOptions));
-            File.Move(temp, _path, overwrite: true);
+            AtomicFile.Write(_path, JsonSerializer.Serialize(sessions.ToList(), JsonOptions));
+        }
+    }
+}
+
+/// <summary>
+/// Replaces a file so that a crash or power loss leaves either the old or the new contents,
+/// never an empty file: the temp file is flushed to disk before it takes the target's place.
+/// The temp name is unique, because the elevated instance the Admin button starts writes the
+/// same files, and a shared ".tmp" let the two clobber each other mid-write.
+/// </summary>
+public static class AtomicFile
+{
+    public static void Write(string path, string contents)
+    {
+        var temp = $"{path}.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (var writer = new StreamWriter(stream))
+            {
+                writer.Write(contents);
+                writer.Flush();
+                stream.Flush(flushToDisk: true);
+            }
+
+            if (File.Exists(path))
+            {
+                File.Replace(temp, path, destinationBackupFileName: null);
+            }
+            else
+            {
+                File.Move(temp, path);
+            }
+        }
+        finally
+        {
+            if (File.Exists(temp))
+            {
+                File.Delete(temp);
+            }
         }
     }
 }

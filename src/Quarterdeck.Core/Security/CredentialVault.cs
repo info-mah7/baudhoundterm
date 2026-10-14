@@ -19,6 +19,10 @@ public sealed class CredentialVault
     private readonly object _gate = new();
     private Dictionary<string, string> _entries;
 
+    // Set when the file exists but could not be read (locked, no access). Writing would then
+    // replace an intact store with this session's few entries, so changes stay in memory.
+    private bool _readFailed;
+
     public CredentialVault(string? path = null)
     {
         _path = path ?? Path.Combine(Model.AppPaths.DataDirectory, "credentials.dat");
@@ -45,10 +49,11 @@ public sealed class CredentialVault
                     Convert.FromBase64String(encoded), Entropy, DataProtectionScope.CurrentUser);
                 return Encoding.UTF8.GetString(plain);
             }
-            catch (CryptographicException)
+            catch (Exception ex) when (ex is CryptographicException or FormatException)
             {
-                // Written by a different user or machine. Treat as absent rather than crashing,
-                // but do not silently delete it: the owner may still be able to read it.
+                // Written by a different user or machine, or a damaged entry. Treat as absent
+                // rather than failing the connect, but do not silently delete it: the owner may
+                // still be able to read it.
                 return null;
             }
         }
@@ -93,9 +98,22 @@ public sealed class CredentialVault
             return new Dictionary<string, string>(StringComparer.Ordinal);
         }
 
+        string json;
         try
         {
-            var json = File.ReadAllText(_path);
+            json = File.ReadAllText(_path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Locked or unreadable, but possibly intact: leave it alone and do not overwrite it.
+            _readFailed = true;
+            LoadProblem = $"The credential store {_path} could not be read ({ex.Message}). " +
+                          "Saved passwords are unavailable, and changes will not be saved until the app is restarted.";
+            return new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+
+        try
+        {
             return JsonSerializer.Deserialize<Dictionary<string, string>>(json)
                    ?? new Dictionary<string, string>(StringComparer.Ordinal);
         }
@@ -105,7 +123,18 @@ public sealed class CredentialVault
             // Thrown from the window's constructor, this used to end the app before it could
             // say anything. Set the file aside, start empty, and let the window report it.
             var quarantine = _path + $".corrupt-{DateTime.UtcNow:yyyyMMddHHmmss}";
-            File.Move(_path, quarantine);
+            try
+            {
+                File.Move(_path, quarantine);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _readFailed = true;
+                LoadProblem = $"The credential store {_path} is damaged and could not be set aside ({ex.Message}). " +
+                              "Changes will not be saved until it is moved or deleted.";
+                return new Dictionary<string, string>(StringComparer.Ordinal);
+            }
+
             LoadProblem = $"The credential store could not be read and was moved to {quarantine}. " +
                           "Saved passwords and keys must be entered again.";
             return new Dictionary<string, string>(StringComparer.Ordinal);
@@ -114,6 +143,11 @@ public sealed class CredentialVault
 
     private void Flush()
     {
+        if (_readFailed)
+        {
+            return;
+        }
+
         var temp = _path + ".tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(_entries));
         File.Move(temp, _path, overwrite: true);

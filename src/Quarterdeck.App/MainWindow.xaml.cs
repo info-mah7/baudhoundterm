@@ -508,7 +508,28 @@ public partial class MainWindow : Window
         var editor = new SessionEditorWindow(Selected, _vault) { Owner = this };
         if (editor.ShowDialog() == true)
         {
+            RefreshOpenTabsOf(Selected);
             Save();
+        }
+    }
+
+    /// <summary>
+    /// After a shortcut is edited: every open tab of it takes the new name, colour, badge,
+    /// highlights and command list. The page runs commands by index, so a stale list would
+    /// run a different command than the one clicked.
+    /// </summary>
+    private void RefreshOpenTabsOf(SessionDefinition definition)
+    {
+        foreach (var live in _live.Where(l => ReferenceEquals(l.Definition, definition) || l.Definition.Id == definition.Id))
+        {
+            live.Title = definition.Name;
+            if (definition.TabColor.Length > 0)
+            {
+                live.Colour = definition.TabColor;
+            }
+
+            RefreshTab(live);
+            live.View.ApplyHighlights();
         }
     }
 
@@ -578,9 +599,7 @@ public partial class MainWindow : Window
             var editor = new SessionEditorWindow(definition, _vault) { Owner = this };
             if (editor.ShowDialog() == true)
             {
-                live.Title = definition.Name;
-                RefreshTab(live);
-                view.ApplyHighlights();
+                RefreshOpenTabsOf(definition);
 
                 if (_sessions.Any(s => s.Id == definition.Id))
                 {
@@ -603,7 +622,14 @@ public partial class MainWindow : Window
         }
 
         await view.ConnectAsync();
-        Save();
+
+        // Records LastConnected. An elevated instance skips it: it loaded the list when it
+        // started, and writing that snapshot back would drop shortcuts the main window has
+        // added since.
+        if (!Elevation.IsCurrentProcessElevated)
+        {
+            Save();
+        }
     }
 
     // ---------- tabs across restarts ----------
@@ -835,7 +861,9 @@ public partial class MainWindow : Window
 
     private TreeViewItem WithLiveRows(TreeViewItem row, SessionDefinition session, HashSet<LiveTab> placed)
     {
-        foreach (var live in LiveFor(session))
+        // A quick connection matching several shortcuts goes under the first only: a second row
+        // replaced the first in _liveRows, and the orphaned one kept saying "connecting".
+        foreach (var live in LiveFor(session).Where(l => l.Definition.Id == session.Id || !placed.Contains(l)))
         {
             var child = new TreeViewItem { Header = LiveRowHeader(live), Tag = live };
             _liveRows[live] = child;
@@ -940,12 +968,7 @@ public partial class MainWindow : Window
             var editor = new SessionEditorWindow(definition, _vault) { Owner = this };
             if (editor.ShowDialog() == true)
             {
-                if (LiveFor(tab) is { } live)
-                {
-                    live.Title = definition.Name;
-                    RefreshTab(live);
-                }
-
+                RefreshOpenTabsOf(definition);
                 PersistIfSaved(definition);
             }
         };
@@ -1157,6 +1180,7 @@ public partial class MainWindow : Window
         }
 
         Tabs.Items.Remove(tab);
+        (tab.Content as TerminalView)?.Release();
 
         if (LiveFor(tab) is { } live)
         {
@@ -1391,6 +1415,8 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Enter)
         {
+            // Handled, or the Connect button (IsDefault) fired as well: two tabs per Enter.
+            e.Handled = true;
             OnQuickConnect(sender, e);
         }
     }

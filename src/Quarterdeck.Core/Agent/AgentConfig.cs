@@ -44,7 +44,7 @@ public sealed class AgentEndpoint
     public bool NeverOnLocalShells { get; set; }
 
     public const string DefaultRiskyPatterns = """
-        \brm\s+(-\w*[rf]|--recursive|--force)
+        \brm\s+(\S+\s+)*(-\w*[rf]|--recursive|--force)
         \b(reboot|shutdown|poweroff|halt)\b
         \bmkfs|\bfdisk\b|\bparted\b|\bwipefs\b
         \bdd\s+.*\bof=

@@ -18,6 +18,13 @@ public sealed class ConPtyTerminalSession : ITerminalSession
     private FileStream? _writer;
     private FileStream? _reader;
     private ConPty.PROCESS_INFORMATION _process;
+
+    // The exit waiter owns the process handles and closes them once the wait returns:
+    // closing them under a thread still waiting on them let a reused handle value stand in
+    // for an unrelated object. Each connection has a generation, so a waiter left over from
+    // an earlier connection never reports this one closed.
+    private readonly object _processLock = new();
+    private int _generation;
     private CancellationTokenSource? _pump;
     private volatile bool _closing;
 
@@ -58,9 +65,17 @@ public sealed class ConPtyTerminalSession : ITerminalSession
 
         StartChild();
 
+        int generation;
+        ConPty.PROCESS_INFORMATION process;
+        lock (_processLock)
+        {
+            generation = ++_generation;
+            process = _process;
+        }
+
         _pump = new CancellationTokenSource();
         _ = Task.Run(() => PumpAsync(_pump.Token), _pump.Token);
-        _ = Task.Run(WaitForExitAsync);
+        _ = Task.Run(() => WaitForExitAsync(process, generation));
 
         return Task.CompletedTask;
     }
@@ -146,14 +161,34 @@ public sealed class ConPtyTerminalSession : ITerminalSession
         }
     }
 
-    private async Task WaitForExitAsync()
+    private async Task WaitForExitAsync(ConPty.PROCESS_INFORMATION process, int generation)
     {
-        if (_process.hProcess == IntPtr.Zero)
+        if (process.hProcess == IntPtr.Zero)
         {
             return;
         }
 
-        await Task.Run(() => ConPty.WaitForSingleObject(_process.hProcess, 0xFFFFFFFF)).ConfigureAwait(false);
+        await Task.Run(() => ConPty.WaitForSingleObject(process.hProcess, 0xFFFFFFFF)).ConfigureAwait(false);
+
+        bool current;
+        lock (_processLock)
+        {
+            if (_process.hProcess == process.hProcess)
+            {
+                _process = default;
+            }
+
+            current = generation == _generation;
+        }
+
+        ConPty.CloseHandle(process.hThread);
+        ConPty.CloseHandle(process.hProcess);
+
+        if (!current)
+        {
+            return;
+        }
+
         // A shell that exits on its own ("exit", Ctrl+D) was asked to by the user. Reporting it
         // as unexpected made the reconnect policy start another one, for ever, elevated in an
         // Admin tab. The tab offers Reconnect instead.
@@ -186,12 +221,13 @@ public sealed class ConPtyTerminalSession : ITerminalSession
     {
         _closing = true;
 
-        if (_process.hProcess != IntPtr.Zero)
+        // Only end the process here; its exit waiter closes the handles.
+        lock (_processLock)
         {
-            ConPty.TerminateProcess(_process.hProcess, 0);
-            ConPty.CloseHandle(_process.hThread);
-            ConPty.CloseHandle(_process.hProcess);
-            _process = default;
+            if (_process.hProcess != IntPtr.Zero)
+            {
+                ConPty.TerminateProcess(_process.hProcess, 0);
+            }
         }
 
         // Before Windows 11 24H2, ClosePseudoConsole waits until its output pipe is drained.
