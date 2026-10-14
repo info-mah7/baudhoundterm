@@ -57,6 +57,43 @@ public sealed class GitRunner(string gitPath)
         }.FirstOrDefault(File.Exists);
     }
 
+    private bool? _hasCredentialManager;
+
+    /// <summary>Whether this git has Git Credential Manager (Git for Windows ships it). Asked once.</summary>
+    public bool HasCredentialManager
+    {
+        get
+        {
+            if (_hasCredentialManager is { } known)
+            {
+                return known;
+            }
+
+            try
+            {
+                var start = new ProcessStartInfo(GitPath)
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                start.ArgumentList.Add("credential-manager");
+                start.ArgumentList.Add("--version");
+                using var process = Process.Start(start)!;
+                process.StandardOutput.ReadToEnd();
+                process.StandardError.ReadToEnd();
+                _hasCredentialManager = process.WaitForExit(15000) && process.ExitCode == 0;
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+            {
+                _hasCredentialManager = false;
+            }
+
+            return _hasCredentialManager.Value;
+        }
+    }
+
     public Task<GitResult> RunAsync(string workDir, CancellationToken token, params string[] args) =>
         RunAsync(workDir, TimeSpan.FromMinutes(2), token, args);
 
@@ -80,6 +117,19 @@ public sealed class GitRunner(string gitPath)
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8
         };
+
+        // Sign-in goes straight to Git Credential Manager when it is installed. A Git for Windows
+        // set up with the "helper selector" otherwise pops a chooser (no helper, wincred twice,
+        // manager) in front of the user on every new sign-in; only "manager" works for GitHub's
+        // browser login anyway. A caller that sets its own helper (the public-repository
+        // probe, which must have none) is left alone.
+        if (!args.Any(a => a.StartsWith("credential.helper", StringComparison.Ordinal)) && HasCredentialManager)
+        {
+            start.ArgumentList.Add("-c");
+            start.ArgumentList.Add("credential.helper=");          // drop whatever is configured
+            start.ArgumentList.Add("-c");
+            start.ArgumentList.Add("credential.helper=manager");
+        }
 
         foreach (var a in args)
         {
