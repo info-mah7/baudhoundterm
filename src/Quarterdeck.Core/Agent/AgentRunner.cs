@@ -342,7 +342,10 @@ public sealed class AgentRunner
         if (!response.IsSuccessStatusCode)
         {
             Log("http_error", text: $"{(int)response.StatusCode}: {Truncate(text, 2000)}");
-            throw new HttpRequestException($"{url} answered {(int)response.StatusCode}: {Truncate(text, 400)}");
+            var noKey = (int)response.StatusCode is 401 or 403 && string.IsNullOrEmpty(_apiKey)
+                ? " No API key is saved for this endpoint; add one in Agent endpoints."
+                : "";
+            throw new HttpRequestException($"{url} answered {(int)response.StatusCode}: {Truncate(text, 400)}{noKey}");
         }
 
         JsonNode? json;
