@@ -74,6 +74,7 @@ public partial class SessionEditorWindow : Window
         TelnetHostBox.Text = d.Host;
         TelnetPortBox.Text = d.Port.ToString(CultureInfo.InvariantCulture);
         TelnetLineModeBox.IsChecked = d.LineMode;
+        TelnetTlsBox.IsChecked = d.UseTls;
         VncHostBox.Text = d.Host;
         VncPortBox.Text = d.Port.ToString(CultureInfo.InvariantCulture);
         VncViewOnlyBox.IsChecked = d.ViewOnly;
@@ -337,6 +338,7 @@ public partial class SessionEditorWindow : Window
             d.Host = TelnetHostBox.Text.Trim();
             d.Port = ParseInt(TelnetPortBox.Text, 23);
             d.LineMode = TelnetLineModeBox.IsChecked == true;
+            d.UseTls = TelnetTlsBox.IsChecked == true;
         }
 
         if (d.Protocol == SessionProtocol.Vnc)
