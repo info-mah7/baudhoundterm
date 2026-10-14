@@ -212,7 +212,11 @@
                      AllowsTransparency="True" Focusable="False" PopupAnimation="None">
                 <Border Background="#1C2230" BorderBrush="#3A4459" BorderThickness="1" Padding="0,2"
                         MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
-                  <ItemsPresenter/>
+                  <!-- Without a ScrollViewer a long list (80 models) runs off the screen. -->
+                  <ScrollViewer MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/>
+                  </ScrollViewer>
                 </Border>
               </Popup>
             </Grid>

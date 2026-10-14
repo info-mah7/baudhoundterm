@@ -330,9 +330,9 @@ internal sealed class AgentSettingsWindow : Window
 
         try
         {
-            if (_key.Password.Length > 0)
+            if (_key.Password.Trim().Length > 0)
             {
-                _vault.Set(ep.Id, _key.Password, "apikey");
+                _vault.Set(ep.Id, _key.Password.Trim(), "apikey");
             }
 
             if (_default.IsChecked == true)
@@ -372,7 +372,7 @@ internal sealed class AgentSettingsWindow : Window
             Model = _model.Text.Trim(),
             ExtraJson = _extra.Text.Trim()
         };
-        var key = _key.Password.Length > 0 ? _key.Password : IsNew ? null : _vault.Get(_editing.Id, "apikey");
+        var key = FormKey();
 
         Note("Testing...");
         List<EndpointCheck> lines;
@@ -391,6 +391,13 @@ internal sealed class AgentSettingsWindow : Window
             lines.All(l => l.Ok) ? Color.FromRgb(0x98, 0xC3, 0x79) : Color.FromRgb(0xE0, 0x6C, 0x75));
     }
 
+    /// <summary>The key typed in the form, else the saved one. Pasted keys often carry a trailing space or newline.</summary>
+    private string? FormKey()
+    {
+        var typed = _key.Password.Trim();
+        return typed.Length > 0 ? typed : IsNew ? null : _vault.Get(_editing.Id, "apikey")?.Trim();
+    }
+
     private async Task FetchModelsAsync()
     {
         var url = _url.Text.Trim().TrimEnd('/') + "/models";
@@ -398,7 +405,7 @@ internal sealed class AgentSettingsWindow : Window
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            var key = _key.Password.Length > 0 ? _key.Password : IsNew ? null : _vault.Get(_editing.Id, "apikey");
+            var key = FormKey();
             if (!string.IsNullOrEmpty(key))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
