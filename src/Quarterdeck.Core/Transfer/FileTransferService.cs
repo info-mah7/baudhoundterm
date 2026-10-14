@@ -1,5 +1,7 @@
 using Quarterdeck.Core.Model;
 using Quarterdeck.Core.Security;
+using Quarterdeck.Core.Security.Agent;
+using Quarterdeck.Core.Security.KeePassXc;
 using Renci.SshNet;
 using Renci.SshNet.Sftp;
 
@@ -41,9 +43,14 @@ public sealed class FileTransferService : IRemoteFiles
         _vault = vault;
     }
 
+    // A KeePassXC login fetched once serves both the SFTP and SCP connections of this service.
+    private (string User, string Password)? _fetched;
+
+    /// <summary>Runs on a pool thread (callers wrap it in Task.Run), so a KeePassXC wait blocks nothing visible.</summary>
     private ConnectionInfo BuildConnectionInfo()
     {
         AuthenticationMethod method;
+        var username = _definition.Username;
 
         if (_definition.AuthMethod == SshAuthMethod.PublicKey)
         {
@@ -51,17 +58,33 @@ public sealed class FileTransferService : IRemoteFiles
             var key = string.IsNullOrEmpty(passphrase)
                 ? new PrivateKeyFile(_definition.KeyPath)
                 : new PrivateKeyFile(_definition.KeyPath, passphrase);
-            method = new PrivateKeyAuthenticationMethod(_definition.Username, key);
+            method = new PrivateKeyAuthenticationMethod(username, key);
+        }
+        else if (_definition.AuthMethod == SshAuthMethod.Agent)
+        {
+            method = new PrivateKeyAuthenticationMethod(username, AgentKeySource.FromAgents(_definition.AgentKeyFilter));
+        }
+        else if (_definition.PasswordSource == PasswordSource.KeePassXc)
+        {
+            if (_fetched is null)
+            {
+                var login = KeePassXcPasswords.LookupAsync(_vault, _definition.KeePassEntry, _definition.Host,
+                    _definition.Port, username).GetAwaiter().GetResult();
+                _fetched = (string.IsNullOrEmpty(username) ? login.Login : username, login.Password);
+            }
+
+            username = _fetched.Value.User;
+            method = new PasswordAuthenticationMethod(username, _fetched.Value.Password);
         }
         else
         {
             var password = _vault.Get(_definition.Id)
                            ?? throw new InvalidOperationException(
                                $"No stored password for {_definition.Name}; transfers need one.");
-            method = new PasswordAuthenticationMethod(_definition.Username, password);
+            method = new PasswordAuthenticationMethod(username, password);
         }
 
-        return new ConnectionInfo(_definition.Host, _definition.Port, _definition.Username, method);
+        return new ConnectionInfo(_definition.Host, _definition.Port, username, method);
     }
 
     public string Home => ".";

@@ -234,7 +234,10 @@ public sealed class SessionController : IAsyncDisposable
 
     private string Describe() => Definition.Protocol switch
     {
-        SessionProtocol.Ssh => $"{Definition.Username}@{Definition.Host}:{Definition.Port}",
+        // The user name may come from KeePassXC at connect time, so ask the session for it.
+        SessionProtocol.Ssh => ((_transport as SshTerminalSession)?.Username ?? Definition.Username) is { Length: > 0 } user
+            ? $"{user}@{Definition.Host}:{Definition.Port}"
+            : $"{Definition.Host}:{Definition.Port}",
         SessionProtocol.Serial => $"{Definition.SerialPort} @ {Definition.BaudRate}",
         SessionProtocol.Telnet => $"{Definition.Host}:{Definition.Port}",
         _ => Definition.ShellCommand
