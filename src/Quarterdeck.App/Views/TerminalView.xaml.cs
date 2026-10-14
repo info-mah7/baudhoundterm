@@ -269,11 +269,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
                 if (Definition.Protocol == SessionProtocol.Vnc)
                 {
-                    if (_autoConnect)
-                    {
-                        StartVnc();
-                    }
-
+                    StartVnc();
                     break;
                 }
 
@@ -704,25 +700,6 @@ public partial class TerminalView : UserControl, ITerminalTarget
         if (was && Definition.Protocol != SessionProtocol.Vnc)
         {
             Write("\r\n[baudhoundterm] Disconnected. Press Enter or Reconnect to connect again.\r\n");
-        }
-    }
-
-    private bool _autoConnect = true;
-
-    /// <summary>
-    /// A tab brought back from last time: open, its page loaded, but not connected until the
-    /// user presses Enter or Reconnect. Reconnecting everything at start would mean a burst of
-    /// password prompts and connections nobody asked for yet.
-    /// </summary>
-    public void MarkRestored()
-    {
-        _autoConnect = false;
-        RaiseState(SessionState.Disconnected, "Restored from last time.");
-        StatusText.Text = "Restored from last time. Press Enter or Reconnect to connect.";
-
-        if (Definition.Protocol is not (SessionProtocol.Vnc or SessionProtocol.Rtsp))
-        {
-            Write("[baudhoundterm] Restored from last time. Press Enter or Reconnect to connect.\r\n");
         }
     }
 

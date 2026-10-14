@@ -194,7 +194,12 @@ public sealed class SessionController : IAsyncDisposable
         }
 
         Emit($"\r\n[baudhoundterm] {e.Reason}\r\n");
-        _ = ScheduleReconnectAsync(e.Reason, _life?.Token ?? CancellationToken.None);
+
+        // Not on this thread: SSH.NET raises the drop on its own receive thread, and the
+        // reconnect starts by disposing that client, which waits for the receive thread to
+        // finish. Run inline, it waited for itself and the tab sat at "Reconnecting" forever.
+        var token = _life?.Token ?? CancellationToken.None;
+        _ = Task.Run(() => ScheduleReconnectAsync(e.Reason, token));
     }
 
     private async Task ScheduleReconnectAsync(string? reason, CancellationToken token)
