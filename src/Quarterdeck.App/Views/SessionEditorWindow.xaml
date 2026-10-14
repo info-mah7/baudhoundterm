@@ -132,9 +132,11 @@
               <TextBox x:Name="TelnetHostBox"/>
               <TextBlock Text="Port"/>
               <TextBox x:Name="TelnetPortBox"/>
+              <CheckBox x:Name="TelnetTlsBox" Content="TLS (telnets): encrypt, and pin the certificate on first use"
+                        ToolTip="BaudHound firmware 1.4 and later serve this on port 992. The certificate is self-signed, so you are asked once to trust it, as with an SSH host key."/>
               <CheckBox x:Name="TelnetLineModeBox" Content="Line mode: echo and edit here, send whole lines"
                         ToolTip="For consoles that read whole lines and do not echo what you type, such as BaudHound. Leave it off for routers, switches and anything with its own prompt editing."/>
-              <TextBlock Text="A BaudHound serves its UART on port 23 and wants line mode. So do most console servers, without line mode."
+              <TextBlock Text="A BaudHound serves its UART on port 23, or with TLS on 992, and wants line mode. Most console servers use 23 without line mode."
                          Foreground="#5C6370" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel>
 

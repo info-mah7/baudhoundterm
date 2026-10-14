@@ -72,7 +72,7 @@ internal sealed class BaudHoundWindow : Window
         actions.Children.Add(_web);
         root.Children.Add(actions);
 
-        root.Children.Add(new TextBlock { Text = "Or connect to an address (port 23 unless given):", Margin = new Thickness(0, 14, 0, 2) });
+        root.Children.Add(new TextBlock { Text = "Or connect to an address (port 23 unless given; :992 for TLS):", Margin = new Thickness(0, 14, 0, 2) });
         var manual = new DockPanel();
         var go = Btn("Connect", ConnectTyped);
         go.Margin = new Thickness(6, 0, 0, 0);
@@ -145,7 +145,12 @@ internal sealed class BaudHoundWindow : Window
         var panel = new StackPanel();
         var title = new StackPanel { Orientation = Orientation.Horizontal };
         title.Children.Add(new TextBlock { Text = d.Name, FontWeight = FontWeights.SemiBold, Foreground = Accent });
-        title.Children.Add(new TextBlock { Text = "   " + d.Address + (d.TelnetPort != 23 ? $":{d.TelnetPort}" : "") });
+        title.Children.Add(new TextBlock { Text = "   " + d.Address + (d.TlsPort > 0 ? $"  TLS :{d.TlsPort}" : $"  telnet :{d.TelnetPort}") });
+        if (d.Locked)
+        {
+            title.Children.Add(new TextBlock { Text = "   in use: a TLS session is open", Foreground = Bad });
+        }
+
         panel.Children.Add(title);
 
         var speed = d.Baud == 0
@@ -162,6 +167,12 @@ internal sealed class BaudHoundWindow : Window
             Foreground = Muted,
             FontSize = 11
         });
+
+        if (d.TlsFingerprint.Length > 0)
+        {
+            panel.Children.Add(new TextBlock { Text = "certificate " + d.TlsFingerprint, Foreground = Muted, FontSize = 11 });
+        }
+
         return panel;
     }
 
@@ -173,15 +184,27 @@ internal sealed class BaudHoundWindow : Window
         _web.IsEnabled = any;
     }
 
+    /// <summary>TLS whenever the device has it: plain telnet shows the line to anyone on the network.</summary>
+    private static Quarterdeck.Core.Model.SessionDefinition SessionFor(BaudHoundDevice d) =>
+        d.TlsPort > 0
+            ? BaudHoundSessions.Create(d.Name, d.Address, d.TlsPort, tls: true)
+            : BaudHoundSessions.Create(d.Name, d.Address, d.TelnetPort);
+
     private void Open(BaudHoundDevice device)
     {
-        _connect(BaudHoundSessions.Create(device.Name, device.Address, device.TelnetPort));
+        if (device.Locked)
+        {
+            Status($"{device.Name} has a TLS session open and accepts no other connection until it ends.", Bad);
+            return;
+        }
+
+        _connect(SessionFor(device));
         Close();
     }
 
     private void Keep(BaudHoundDevice device)
     {
-        _save(BaudHoundSessions.Create(device.Name, device.Address, device.TelnetPort));
+        _save(SessionFor(device));
         Status($"Saved {device.Name} in the BaudHound folder.", Good);
     }
 
@@ -213,7 +236,8 @@ internal sealed class BaudHoundWindow : Window
             address = address[..mark];
         }
 
-        _connect(BaudHoundSessions.Create($"BaudHound {address}", address, port));
+        // 992 is telnets: BaudHound's TLS console.
+        _connect(BaudHoundSessions.Create($"BaudHound {address}", address, port, tls: port == 992));
         Close();
     }
 

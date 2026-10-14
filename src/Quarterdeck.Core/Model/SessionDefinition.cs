@@ -82,6 +82,9 @@ public sealed class SessionDefinition
     /// </summary>
     public bool LineMode { get; set; }
 
+    /// <summary>Telnet inside TLS (telnets). The certificate is pinned on first use, like an SSH host key.</summary>
+    public bool UseTls { get; set; }
+
     // Local shell
     public string ShellCommand { get; set; } = "powershell.exe";
 

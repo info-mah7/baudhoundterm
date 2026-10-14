@@ -65,16 +65,21 @@ public partial class MainWindow : Window
 
     private bool AskHostKey(HostKeyQuestion q)
     {
-        var text = q.Changed
-            ? $"WARNING: the host key for {q.Host}:{q.Port} has CHANGED.\n\n" +
-              $"Trusted before:  SHA256:{q.PreviousFingerprint}\nPresented now:   SHA256:{q.Fingerprint} ({q.Algorithm})\n\n" +
-              "Either the server was reinstalled or re-keyed, or something is intercepting the connection " +
-              "and would receive your password. Only accept if you know the server changed.\n\nTrust the new key?"
-            : $"First connection to {q.Host}:{q.Port}.\n\nHost key ({q.Algorithm}):\nSHA256:{q.Fingerprint}\n\n" +
-              "If you can, compare this with the server's own fingerprint (ssh-keygen -lf on the host key). " +
-              "Trust it and remember it for next time?";
+        var tls = q.Algorithm.StartsWith("TLS", StringComparison.Ordinal);
+        var what = tls ? "TLS certificate" : "host key";
+        var check = tls
+            ? "If you can, compare it with the TLS line on the device's Settings page (BaudHound) or its own fingerprint."
+            : "If you can, compare this with the server's own fingerprint (ssh-keygen -lf on the host key).";
 
-        return MessageBox.Show(this, text, "BaudHoundTerm: SSH host key", MessageBoxButton.YesNo,
+        var text = q.Changed
+            ? $"WARNING: the {what} for {q.Host}:{q.Port} has CHANGED.\n\n" +
+              $"Trusted before:  SHA256:{q.PreviousFingerprint}\nPresented now:   SHA256:{q.Fingerprint} ({q.Algorithm})\n\n" +
+              "Either the device or server was reset or re-keyed, or something is intercepting the connection " +
+              "and would see everything typed. Only accept if you know it changed.\n\nTrust the new one?"
+            : $"First connection to {q.Host}:{q.Port}.\n\n{(tls ? "TLS certificate" : $"Host key ({q.Algorithm})")}:\nSHA256:{q.Fingerprint}\n\n" +
+              check + " Trust it and remember it for next time?";
+
+        return MessageBox.Show(this, text, tls ? "BaudHoundTerm: TLS certificate" : "BaudHoundTerm: SSH host key", MessageBoxButton.YesNo,
                    q.Changed ? MessageBoxImage.Warning : MessageBoxImage.Question,
                    q.Changed ? MessageBoxResult.No : MessageBoxResult.Yes) == MessageBoxResult.Yes;
     }
@@ -1520,6 +1525,7 @@ public partial class MainWindow : Window
         {
             existing.Host = found.Host;
             existing.Port = found.Port;
+            existing.UseTls = found.UseTls;
             existing.LineMode = true;
             RefreshOpenTabsOf(existing);
         }

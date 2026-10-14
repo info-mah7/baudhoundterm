@@ -46,8 +46,11 @@ for SSH, and a serial port for consoles, rendered by xterm.js.
   subsystem. Remote paths are shell-quoted.
 - **BaudHound**: the BaudHound button finds devices on the networks the PC is on (UDP broadcast,
   firmware 1.4+; older firmware is found when the PC has joined the device's own AP) and opens
-  one in a telnet tab in line mode, with the device's `~` commands on the right-click menu. Save
+  one over TLS (port 992, certificate pinned on first use) when the device has it, in line mode, with the device's `~` commands on the right-click menu. Save
   it as a shortcut; saving again after a DHCP change moves the shortcut to the new address.
+- **Telnet over TLS** (telnets) for devices with self-signed certificates: the certificate's
+  SHA-256 is pinned on first use in the same store as SSH host keys, and a change is refused
+  unless you accept it.
 - **Line mode** for telnet consoles that read whole lines and echo nothing: typing is echoed and
   edited locally and each line goes out with CR LF.
 - **Link lamps** on serial and telnet tabs: connection state, TX and RX activity and byte counts

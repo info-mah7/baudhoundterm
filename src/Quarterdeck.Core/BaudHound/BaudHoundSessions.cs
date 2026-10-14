@@ -9,11 +9,12 @@ public static class BaudHoundSessions
 
     /// <summary>
     /// Telnet in line mode, because the device reads whole lines and echoes nothing, with its
-    /// ~ commands on the right-click menu. Reconnect stays on: the device drops telnet clients
-    /// whenever it reboots or rejoins Wi-Fi.
+    /// ~ commands on the right-click menu. Over TLS when the device offers it (firmware 1.4+).
+    /// Reconnect stays on: the device drops clients whenever it reboots or rejoins Wi-Fi.
     /// </summary>
-    public static SessionDefinition Create(string name, string host, int port = 23) => new()
+    public static SessionDefinition Create(string name, string host, int port = 23, bool tls = false) => new()
     {
+        UseTls = tls,
         Name = name,
         Folder = Folder,
         Protocol = SessionProtocol.Telnet,
