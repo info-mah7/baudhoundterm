@@ -9,7 +9,7 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>BaudHoundTerm</AssemblyName>
     <Version>0.8.0</Version>
-    <!-- The mah7 three-ring mark: exe, taskbar and title bar. -->
+    <!-- The mah7 eagle: exe, taskbar and title bar. -->
     <ApplicationIcon>baudhoundterm.ico</ApplicationIcon>
     <RootNamespace>Quarterdeck.App</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
