@@ -28,7 +28,7 @@ public sealed class SessionStateEventArgs(SessionState state, string? message) :
 public sealed class SessionController : IAsyncDisposable
 {
     private readonly CredentialVault _vault;
-    private readonly Func<string, string?>? _promptForSecret;
+    private readonly Func<string, string, string?>? _promptForSecret;
 
     private ITerminalSession? _transport;
     private SessionLogger? _logger;
@@ -44,7 +44,7 @@ public sealed class SessionController : IAsyncDisposable
     public SessionController(
         SessionDefinition definition,
         CredentialVault vault,
-        Func<string, string?>? promptForSecret = null)
+        Func<string, string, string?>? promptForSecret = null)
     {
         Definition = definition;
         _vault = vault;
@@ -100,7 +100,7 @@ public sealed class SessionController : IAsyncDisposable
 
             // The login script listens from the first byte: a login: or Password: prompt sent
             // during the connect would otherwise be gone before the script started.
-            _expect = Definition.AutoLogin.Count > 0 ? new ExpectEngine(_transport, _vault, Definition.Id) : null;
+            _expect = Definition.AutoLogin.Count > 0 ? new ExpectEngine(_transport, _vault, Definition.Id, _promptForSecret) : null;
 
             await _transport.ConnectAsync(token).ConfigureAwait(false);
             await _transport.ResizeAsync(_columns, _rows).ConfigureAwait(false);

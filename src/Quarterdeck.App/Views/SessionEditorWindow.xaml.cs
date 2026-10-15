@@ -42,10 +42,12 @@ public partial class SessionEditorWindow : Window
 
         NameBox.Text = d.Name;
         FolderBox.Text = d.Folder;
+        TagsBox.Text = string.Join(", ", d.Tags);
         ProtocolBox.SelectedIndex = (int)d.Protocol;
 
         HostBox.Text = d.Host;
-        PortBox.Text = d.Port.ToString(CultureInfo.InvariantCulture);
+        // Host and port are shared fields; a protocol's box shows its own default until it is the one in use.
+        PortBox.Text = (d.Protocol == SessionProtocol.Ssh ? d.Port : 22).ToString(CultureInfo.InvariantCulture);
         UserBox.Text = d.Username;
         AuthBox.SelectedIndex = (int)d.AuthMethod;
         KeyBox.Text = d.KeyPath;
@@ -72,11 +74,11 @@ public partial class SessionEditorWindow : Window
         StopBitsBox.Text = d.StopBits;
         ShellBox.Text = d.ShellCommand;
         TelnetHostBox.Text = d.Host;
-        TelnetPortBox.Text = d.Port.ToString(CultureInfo.InvariantCulture);
+        TelnetPortBox.Text = (d.Protocol == SessionProtocol.Telnet ? d.Port : 23).ToString(CultureInfo.InvariantCulture);
         TelnetLineModeBox.IsChecked = d.LineMode;
         TelnetTlsBox.IsChecked = d.UseTls;
         VncHostBox.Text = d.Host;
-        VncPortBox.Text = d.Port.ToString(CultureInfo.InvariantCulture);
+        VncPortBox.Text = (d.Protocol == SessionProtocol.Vnc ? d.Port : 5900).ToString(CultureInfo.InvariantCulture);
         VncViewOnlyBox.IsChecked = d.ViewOnly;
         RtspHostBox.Text = d.Host;
         RtspPortBox.Text = (d.Protocol == SessionProtocol.Rtsp ? d.Port : 554).ToString(CultureInfo.InvariantCulture);
@@ -313,6 +315,8 @@ public partial class SessionEditorWindow : Window
             ? (fallback.Length > 0 ? fallback : "Untitled")
             : NameBox.Text.Trim();
         d.Folder = FolderBox.Text.Trim().Trim('/');
+        d.Tags = TagsBox.Text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         d.Protocol = (SessionProtocol)Math.Max(0, ProtocolBox.SelectedIndex);
 
         d.Host = HostBox.Text.Trim();

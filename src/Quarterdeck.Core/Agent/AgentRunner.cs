@@ -141,7 +141,7 @@ public sealed partial class AgentRunner
     {
         var sb = new StringBuilder();
         sb.AppendLine($"You operate one live terminal session: {_target.Describe}.");
-        sb.AppendLine("Everything you send is typed into it for real and runs at once; nobody approves it first.");
+        sb.AppendLine("Everything you send is typed into it for real and runs at once. Some commands may need the user's approval first; a refused one was not sent.");
         sb.AppendLine("Work in small steps: read the terminal, send a command, read what it printed, decide the next step.");
         sb.AppendLine("Tools: read_terminal shows recent output; send_input types text (Enter by default) and returns what " +
                       "the command printed; send_key presses a special key (ctrl_c to interrupt); wait watches for more output.");

@@ -915,7 +915,15 @@ public partial class MainWindow : Window
         };
         menu.Items.Add(properties);
 
-        if (definition.Protocol is not (SessionProtocol.Vnc or SessionProtocol.Rtsp))
+        if (definition.Protocol == SessionProtocol.Vnc)
+        {
+            var cad = new MenuItem { Header = "Send Ctrl+Alt+_Del", ToolTip = "Ctrl+Alt+Del on the remote desktop, which Windows keeps for itself if you press it here" };
+            cad.Click += (_, _) => (tab.Content as TerminalView)?.SendCtrlAltDel();
+            menu.Items.Add(new Separator());
+            menu.Items.Add(cad);
+        }
+
+        if (definition.Protocol != SessionProtocol.Rtsp)
         {
             var agent = new MenuItem { Header = "_Agent on this tab" };
             agent.Click += (_, _) =>
@@ -1405,12 +1413,21 @@ public partial class MainWindow : Window
                     rest = rest[..colon];
                 }
 
+                // user@host: the user name fills the prompt. The last @ splits, so a user name may contain one.
+                var givenUser = Environment.UserName;
+                var at = rest.LastIndexOf('@');
+                if (at > 0)
+                {
+                    givenUser = rest[..at];
+                    rest = rest[(at + 1)..];
+                }
+
                 definition.Host = rest;
 
-                // The address box takes a server, nothing else. Who is connecting is asked here,
-                // once, before a tab exists: a cancelled prompt should not leave one behind.
+                // Who is connecting is asked here, once, before a tab exists: a cancelled prompt
+                // should not leave one behind.
                 var credentials = new CredentialPromptWindow(
-                    $"{definition.Host}:{definition.Port}", Environment.UserName) { Owner = this };
+                    $"{definition.Host}:{definition.Port}", givenUser) { Owner = this };
 
                 if (credentials.ShowDialog() != true)
                 {

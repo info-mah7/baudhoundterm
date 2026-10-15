@@ -239,7 +239,6 @@ public sealed class CommandShortcut
     {
         new CommandShortcut { Label = "btop", Text = "btop" },
         new CommandShortcut { Label = "nvitop", Text = "nvitop" },
-        new CommandShortcut { Label = "Claude (bypass permissions)", Text = "claude --permission-mode bypassPermissions" },
         new CommandShortcut { Label = "Disk usage", Text = "df -h" },
         new CommandShortcut { Label = "Follow syslog", Text = "sudo journalctl -f" },
         new CommandShortcut { Label = "Reboot", Text = "sudo reboot", Confirm = true }
