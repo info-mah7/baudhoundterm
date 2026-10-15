@@ -43,6 +43,8 @@ and press Enter or **Connect**.
 | Local shell | A command line, e.g. `powershell.exe`. |
 | Serial | The address box changes to **Port**, **Baud** and **Framing** (`8-N-1`, `7-E-1`, `7-O-1`, `8-N-2`). The port list refreshes each time you open it. |
 
+Quick connect signs in to SSH with a password only. For a key or the SSH agent, save a shortcut.
+
 ### Shortcuts
 
 A shortcut is a saved connection. Create one with **New** on the toolbar, **Shortcut > New
@@ -91,7 +93,11 @@ The properties window has seven tabs. **Save** keeps the changes.
   - **SSH agent (KeePassXC, Pageant, OpenSSH agent)**. The key stays in the agent, which only
     signs. **Agent key** narrows which key is offered: part of its comment or its `SHA256:`
     fingerprint. **List keys** shows what the agents hold.
-  - **Keyboard interactive**, with the same password sources as Password.
+  - **Keyboard interactive**, for servers that ask questions during login, such as a one-time
+    code. Answered like a password, with the same sources.
+
+  The most secure choice is **SSH agent** with your keys kept in KeePassXC: no password or key
+  file is stored in BaudHoundTerm at all (see [section 7](#ssh-agent)).
 
 **Serial**: **Port**, **Baud rate**, **Data bits**, **Parity**, **Stop bits**. Defaults are COM1,
 115200, 8, None, One.
