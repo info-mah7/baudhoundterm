@@ -60,6 +60,8 @@ public partial class TerminalView : UserControl, ITerminalTarget
     private readonly TaskCompletionSource _cameraReady = new();
     private RdpView? _rdp;
     private readonly TaskCompletionSource _rdpReady = new();
+    private SqlView? _sql;
+    private readonly TaskCompletionSource _sqlReady = new();
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -90,6 +92,19 @@ public partial class TerminalView : UserControl, ITerminalTarget
             }, PromptForSecret);
             ((Grid)Web.Parent).Children.Add(_rdp);
             _rdpReady.TrySetResult();
+            return;
+        }
+
+        if (Definition.Protocol == SessionProtocol.Sql)
+        {
+            Web.Visibility = Visibility.Collapsed;
+            _sql = new SqlView(Definition, _vault, (state, message) =>
+            {
+                StatusText.Text = message ?? state.ToString();
+                RaiseState(state, message);
+            }, PromptForSecret);
+            ((Grid)Web.Parent).Children.Add(_sql);
+            _sqlReady.TrySetResult();
             return;
         }
 
@@ -610,6 +625,13 @@ public partial class TerminalView : UserControl, ITerminalTarget
             return;
         }
 
+        if (Definition.Protocol == SessionProtocol.Sql)
+        {
+            await _sqlReady.Task;
+            await _sql!.ConnectAsync();
+            return;
+        }
+
         // A VNC session is driven entirely by the page: the bridge starts once the document
         // is loaded, so there is no controller and no pty to build here.
         if (Definition.Protocol == SessionProtocol.Vnc)
@@ -723,6 +745,12 @@ public partial class TerminalView : UserControl, ITerminalTarget
         if (_rdp is not null)
         {
             await _rdp.DisconnectAsync();
+            return;
+        }
+
+        if (_sql is not null)
+        {
+            await _sql.DisconnectAsync();
             return;
         }
 
@@ -956,7 +984,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
     /// Terminals get the text agent, VNC the screen agent (TerminalView.Screen.cs). A camera
     /// has nothing to act on.
     /// </summary>
-    public bool CanAttachAgent => Definition.Protocol is not (SessionProtocol.Rtsp or SessionProtocol.Rdp);
+    public bool CanAttachAgent => Definition.Protocol is not (SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Sql);
 
     public void AttachAgent()
     {
@@ -1013,6 +1041,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         Web.Dispose();
         ((object?)_camera as IDisposable)?.Dispose();
         _rdp?.Dispose();
+        _sql?.Dispose();
     }
 
     /// <summary>The same tab, connected again: scrollback stays, the session starts over.</summary>
@@ -1056,7 +1085,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
         RaiseState(SessionState.Connecting, null);
 
-        if (Definition.Protocol is SessionProtocol.Rtsp or SessionProtocol.Rdp)
+        if (Definition.Protocol is SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Sql)
         {
             await ConnectAsync();
             return;
