@@ -143,6 +143,12 @@ audited it. Satisfy yourself that it is fit for what you point it at, and assume
 blank and type it when asked at each connect, look it up in KeePassXC, or log in with an SSH key
 or agent. A saved password is only as safe as your Windows account (see DPAPI below).
 
+**The AI agent sends your session to its model provider.** Everything the agent works with goes
+to the endpoint you configure: your goals, the terminal output it reads, screenshots of VNC
+desktops, and your skills. That includes anything on screen at the time, such as hostnames,
+configuration and secrets. If the endpoint is a cloud service, that provider receives it under its
+own terms. For sensitive systems, use a model you host yourself, or do not attach the agent.
+
 ### Verifying a build
 
 Binaries are unsigned, so Windows SmartScreen reports an unknown publisher on every launch.
