@@ -137,6 +137,10 @@ CONDITIONS OF ANY KIND, either express or implied, as stated in the Apache-2.0 l
 released under. It handles credentials and opens sessions to production equipment. Nobody has
 audited it. Satisfy yourself that it is fit for what you point it at, and assume it is not.
 
+**Do not save passwords in your connection profiles.** For the best security, leave the password
+blank and type it when asked at each connect, look it up in KeePassXC, or log in with an SSH key
+or agent. A saved password is only as safe as your Windows account (see DPAPI below).
+
 ### Verifying a build
 
 Binaries are unsigned, so Windows SmartScreen reports an unknown publisher on every launch.
