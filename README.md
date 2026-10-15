@@ -1,9 +1,9 @@
 # BaudHoundTerm
 
-Multi protocol terminal and session manager for Windows 11: saved sessions in
-folders, an encrypted credential store, session logging, scripted logins, auto-reconnect, and
-SFTP/SCP transfer. SSH, telnet, serial and local shells. One self-contained executable, no
-runtime to install.
+Agentic, multi-protocol terminal and session manager for Windows 11: saved sessions in folders,
+an encrypted credential store, session logging, scripted logins, auto-reconnect, SFTP/SCP
+transfer, and an AI agent that can work in any tab. SSH, telnet, serial, local shells, VNC and
+cameras. One self-contained executable, no runtime to install.
 
 It is also the desktop console for [BaudHound](https://github.com/info-mah7/BaudHound),
 the pocket ESP32-S3 wireless serial tap: BaudHound puts a UART on the network over telnet, and
