@@ -152,15 +152,15 @@ from commit `80f0d2d` (tag `v0.8.0-dev.29`):
 
 The unpacked `BaudHoundTerm.exe` is SHA-1 `b90328b1581bd99382ff8f84ca538379e38eb19f`.
 
-Release 0.7.2, `baudhoundterm-0.7.2-win-x64.zip`, 59,402,284 bytes, built from commit `e00ad55`
+Release 0.7.2, `baudhoundterm-0.7.2-win-x64.zip`, 59,402,228 bytes, built from commit `e00ad55`
 (tag `v0.7.2`):
 
 | Algorithm | Digest |
 |---|---|
-| SHA-1 | `b5ff15492e4647fda75ea9fa76a484b2c086a21d` |
-| SHA-256 | `d1f93dc06970a535fb3511556490349a16b0c1886f04ba4e892cf4f51b22be88` |
+| SHA-1 | `8ef01235f45869df0898a469fc307213d013b63d` |
+| SHA-256 | `c007c34581980c98402b35b808c4ee2fdbe2833187ecc224ae7c4b6abe6c9ce4` |
 
-The unpacked `BaudHoundTerm.exe` is SHA-1 `822bc59fa1483ad41cde7304d185bde891fa7e7f`.
+The unpacked `BaudHoundTerm.exe` is SHA-1 `8f7ab0f0bc7b6174c0588442dc7f3f2bd7debfad`.
 
 Check a download with `Get-FileHash -Algorithm SHA1 <file>` in PowerShell, or `sha1sum` on Linux.
 
