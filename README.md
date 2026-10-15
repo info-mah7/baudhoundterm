@@ -20,6 +20,8 @@ matching lines, waiting for a password prompt and answering it, searching the sc
 the stream. So Quarterdeck hosts the terminal itself: a ConPTY for local shells, SSH.NET channels
 for SSH, and a serial port for consoles, rendered by xterm.js.
 
+The [manual](docs/MANUAL.md) explains how to use it.
+
 ## Features
 
 - **Sessions** in a folder tree, filterable by name, host or tag; clone any session with its
