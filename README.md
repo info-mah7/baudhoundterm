@@ -142,7 +142,18 @@ audited it. Satisfy yourself that it is fit for what you point it at, and assume
 Binaries are unsigned, so Windows SmartScreen reports an unknown publisher on every launch.
 Until there is a code-signing certificate, the checksum is the only integrity check there is.
 
-Release 0.7.2, `baudhoundterm-0.7.2-win-x64.zip`, 59,402,284 bytes, built from commit `9902001`:
+Build 0.8.0-dev.29, `baudhoundterm-0.8.0-dev.20261014.29-win-x64.zip`, 75,113,921 bytes, built
+from commit `80f0d2d` (tag `v0.8.0-dev.29`):
+
+| Algorithm | Digest |
+|---|---|
+| SHA-1 | `16e99865baa953257e8294be3ad2fbe607c5cde9` |
+| SHA-256 | `61be88a386956a4aca440397faed722fd6e037f0e089c75ac4ccf3e65a65c8ce` |
+
+The unpacked `BaudHoundTerm.exe` is SHA-1 `b90328b1581bd99382ff8f84ca538379e38eb19f`.
+
+Release 0.7.2, `baudhoundterm-0.7.2-win-x64.zip`, 59,402,284 bytes, built from commit `e00ad55`
+(tag `v0.7.2`):
 
 | Algorithm | Digest |
 |---|---|
