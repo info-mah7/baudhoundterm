@@ -21,11 +21,16 @@ public sealed class ExpectEngine
     /// <summary>Only the tail is matched against; a long scrollback would make every step quadratic.</summary>
     private const int WindowSize = 8192;
 
-    public ExpectEngine(ITerminalSession session, CredentialVault vault, Guid sessionId)
+    private readonly Func<string, string, string?>? _prompt;
+
+    /// <param name="prompt">Asks the user for a secret that is not saved: (question, vault key).</param>
+    public ExpectEngine(ITerminalSession session, CredentialVault vault, Guid sessionId,
+                        Func<string, string, string?>? prompt = null)
     {
         _session = session;
         _vault = vault;
         _sessionId = sessionId;
+        _prompt = prompt;
         _session.DataReceived += OnData;
     }
 
@@ -70,10 +75,12 @@ public sealed class ExpectEngine
                 {
                     // Sending an empty line at a password prompt is a failed login that counts
                     // toward lockout; stop and say which secret is missing instead.
-                    var secret = _vault.Get(_sessionId, step.SecretKey);
-                    if (secret is null)
+                    // Not saved (the safer choice): ask, as an SSH login would.
+                    var secret = _vault.Get(_sessionId, step.SecretKey)
+                                 ?? _prompt?.Invoke($"Auto-login step {i + 1} wants the {step.SecretKey}", step.SecretKey);
+                    if (string.IsNullOrEmpty(secret))
                     {
-                        return new ExpectStop(step, i + 1, $"no saved secret \"{step.SecretKey}\" for this shortcut");
+                        return new ExpectStop(step, i + 1, $"no {step.SecretKey} saved or given for this shortcut");
                     }
 
                     payload = secret;

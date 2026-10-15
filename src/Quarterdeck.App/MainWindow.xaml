@@ -128,7 +128,7 @@
 
         <TextBox x:Name="QuickAddress" Margin="8,0,0,0" Padding="4,3" VerticalAlignment="Center"
                  KeyDown="OnQuickAddressKey"
-                 ToolTip="SSH or Telnet: host, or host:port. Serial: COM3@115200. Local shell: a command line. The SSH username is asked when you connect."/>
+                 ToolTip="SSH: host, host:port or user@host:port (the user name is asked when not given). Telnet: host or host:port. VNC: host, host:port or host:1. Local shell: a command line. Serial has its own fields."/>
       </DockPanel>
     </Border>
 

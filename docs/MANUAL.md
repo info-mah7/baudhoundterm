@@ -1,7 +1,7 @@
 # BaudHoundTerm manual
 
 BaudHoundTerm keeps your connections as shortcuts and opens each one in a tab: SSH, telnet,
-serial, local shells, VNC desktops and RTSP cameras. This manual covers build 0.8.0-dev.29.
+serial, local shells, VNC desktops and RTSP cameras. This manual covers build 0.8.0-dev.30.
 
 - [1. Install and first start](#1-install-and-first-start)
 - [2. Connecting](#2-connecting)
@@ -36,7 +36,7 @@ and press Enter or **Connect**.
 
 | Protocol | What to type |
 |---|---|
-| SSH | `host` or `host:port`. You are asked for the user name and password. |
+| SSH | `host`, `host:port` or `user@host:port`. You are asked for the password, and for the user name if you gave none. |
 | Telnet | `host` or `host:port` (23 if no port). |
 | VNC | `host`, `host:port`, or `host:1` for display 1 (port 5901). |
 | Local shell | A command line, e.g. `powershell.exe`. |
@@ -77,7 +77,8 @@ The properties window has seven tabs. **Save** keeps the changes.
 
 ### Connection
 
-**Name**, **Folder** and **Protocol**, then the fields for that protocol.
+**Name**, **Folder**, **Tags** (comma-separated words the filter matches, such as `lab, edge`) and
+**Protocol**, then the fields for that protocol.
 
 **SSH**
 
@@ -96,7 +97,7 @@ The properties window has seven tabs. **Save** keeps the changes.
 
 **Telnet**
 
-- **Host**, **Port**. A new shortcut's port box shows 22: set it to 23, or 992 for TLS.
+- **Host**, **Port** (23; 992 for TLS).
 - **TLS (telnets)**: encrypts the connection and pins the server's certificate on first use (see
   [section 7](#trusting-servers)).
 - **Line mode**: for consoles that take whole lines and do not echo, such as BaudHound. Typing is
@@ -106,7 +107,7 @@ The properties window has seven tabs. **Save** keeps the changes.
 
 **Local shell**: the **Command line** to run (`powershell.exe`).
 
-**VNC**: **Host**, **Port** (a new shortcut shows 22: set it to 5900), **Password**, and **View only,
+**VNC**: **Host**, **Port** (5900), **Password**, and **View only,
 send no input**. Classic VNC passwords are weak; use VNC only on a network you trust.
 
 **RTSP camera**: **Camera host**, **RTSP port** (554), **Stream path** (blank asks the camera over
@@ -122,13 +123,13 @@ for pan, tilt, zoom and stream lookup.
 
 Entries for the terminal's right-click menu. **Enter** runs the command rather than just typing
 it; **Confirm** asks first, for anything that reboots or deletes. **Restore defaults** adds back
-any missing default entries. Review the defaults before you use them: they include `sudo reboot`
-and a `claude --permission-mode bypassPermissions` entry that you may want to remove.
+any missing default entries. Review the defaults before you use them; **Reboot** (`sudo reboot`) is
+marked Confirm.
 
 ### Logging
 
 **Log this session to a file** writes a transcript. The folder defaults to
-`%APPDATA%\BaudHoundTerm\logs` (the field's label still says `Quarterdeck`). The file name
+`%APPDATA%\BaudHoundTerm\logs`. The file name
 pattern takes `%NAME%`, `%HOST%`, `%Y%`, `%M%`, `%D%`, `%H%`, `%m%` and `%S%`. You can add a
 timestamp to each line, strip colour codes (on by default), and start a new file at a set size
 (64 MB). Logging works on SSH, serial, telnet and local shell tabs. Transcripts are plain text:
@@ -137,7 +138,8 @@ anything shown on screen ends up in them.
 ### Auto-login
 
 Steps that wait for text (**Expect**) and then send a reply (**Send**). Tick **Secret** to send the
-shortcut's saved password instead of the text, and **Regex** to match a regular expression. Each
+shortcut's password instead of the text: if none is saved, you are asked for it at that step, so
+auto-login works without saving passwords. Tick **Regex** to match a regular expression. Each
 step has a timeout. If a step fails, the terminal says which one and why. The steps run again
 after every reconnect.
 
@@ -189,7 +191,9 @@ green means there is no link.
 ### VNC tabs
 
 The remote desktop scales to fit the tab. A password-protected server needs the password in the
-shortcut's properties. With **View only** set, nothing you or the agent do is sent to it.
+shortcut's properties. Right-click the tab > **Send Ctrl+Alt+Del** to send that key combination,
+which Windows otherwise keeps for itself. With **View only** set, nothing you or the agent do is
+sent to it.
 
 ### Camera tabs
 
@@ -243,7 +247,8 @@ settings page.
 ### Do not save passwords
 
 For the best security, do not save passwords in shortcuts. Leave the password blank and type it
-when asked, look it up in KeePassXC, or use an SSH key or agent. Saved secrets are encrypted with
+when asked, look it up in KeePassXC, or use an SSH key or agent. The password prompt has a
+**Remember** box: leave it unticked. Saved secrets are encrypted with
 Windows DPAPI for your account: safe from other accounts and other PCs, not from programs running
 as you.
 
@@ -313,9 +318,6 @@ On a VNC tab the agent checks each click before it happens: it names what is und
 must match what it meant to click, or nothing is clicked. Clicks on things like Delete or Shut
 down, and keys such as Win+R, Ctrl+Alt+Del and Alt+F4, need approval under *Ask before risky
 commands*. A view-only VNC tab can be looked at but not driven.
-
-The panel's greeting says "It acts without asking". That is only true under *Run freely*; the
-default asks before risky commands.
 
 ### Skills
 
