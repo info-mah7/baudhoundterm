@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <!-- Windows Forms only to host the Remote Desktop ActiveX control (RdpView). -->
+    <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>BaudHoundTerm</AssemblyName>
     <Version>0.8.0</Version>
@@ -24,6 +26,12 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>none</DebugType>
   </PropertyGroup>
+
+  <!-- Keep WinForms and GDI+ names out of every file: they clash with WPF's (Button, Color, Brush...). -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
 
   <ItemGroup>
     <Resource Include="baudhoundterm.ico" />
