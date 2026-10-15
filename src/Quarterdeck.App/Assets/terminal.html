@@ -117,7 +117,7 @@
     term.onResize(({ cols, rows }) => send({ t: 'size', c: cols, r: rows }));
     term.onTitleChange(title => send({ t: 'title', d: title }));
 
-    // Copy on Ctrl+Shift+C, paste on Ctrl+Shift+V and on right-click, like SecureCRT's defaults.
+    // Copy on Ctrl+Shift+C, paste on Ctrl+Shift+V and on right-click, as most Windows terminals do.
     // Pastes go through term.paste: it turns CRLF into CR (Windows text otherwise sent an extra
     // Enter per line) and wraps the text in bracketed-paste marks when the far end asks for them.
     term.attachCustomKeyEventHandler(ev => {
