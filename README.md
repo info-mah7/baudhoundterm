@@ -168,7 +168,8 @@ from commit `80f0d2d` (tag `v0.8.0-dev.29`):
 
 The unpacked `BaudHoundTerm.exe` is SHA-1 `b90328b1581bd99382ff8f84ca538379e38eb19f`.
 
-Check a download with `Get-FileHash -Algorithm SHA1 <file>` in PowerShell, or `sha1sum` on Linux.
+Each release also carries a `SHA256SUMS` file. Check a download with `sha256sum -c SHA256SUMS` on
+Linux, or `Get-FileHash -Algorithm SHA256 <file>` in PowerShell and compare with the table.
 
 SHA-1 is published because it was asked for, and it is adequate for spotting a truncated or
 corrupted download. It is **not** adequate against a deliberate substitution: chosen-prefix

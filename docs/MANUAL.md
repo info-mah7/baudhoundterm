@@ -17,9 +17,10 @@ serial, local shells, VNC desktops and RTSP cameras. This manual covers build 0.
 
 ## 1. Install and first start
 
-1. Download the zip from the [releases page](https://github.com/info-mah7/baudhoundterm/releases)
-   and check its SHA-256 against the release notes:
-   `Get-FileHash -Algorithm SHA256 <file>` in PowerShell.
+1. Download the zip and `SHA256SUMS` from the
+   [releases page](https://github.com/info-mah7/baudhoundterm/releases). Builds are not code-signed
+   yet, so check the zip before running it: `Get-FileHash -Algorithm SHA256 <file>` in PowerShell
+   must print the hash in `SHA256SUMS` (or run `sha256sum -c SHA256SUMS` on Linux).
 2. Extract the whole archive. `BaudHoundTerm.exe` needs the `Assets` and `libvlc` folders next to it.
 3. Run `BaudHoundTerm.exe`. The build is unsigned, so Windows SmartScreen reports an unknown
    publisher: choose **More info**, then **Run anyway**.
