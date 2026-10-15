@@ -82,6 +82,16 @@ public partial class SessionEditorWindow : Window
         VncViewOnlyBox.IsChecked = d.ViewOnly;
         RtspHostBox.Text = d.Host;
         RtspPortBox.Text = (d.Protocol == SessionProtocol.Rtsp ? d.Port : 554).ToString(CultureInfo.InvariantCulture);
+        RdpHostBox.Text = d.Host;
+        RdpPortBox.Text = (d.Protocol == SessionProtocol.Rdp ? d.Port : 3389).ToString(CultureInfo.InvariantCulture);
+        RdpUserBox.Text = d.Username;
+        RdpDomainBox.Text = d.RdpDomain;
+        RdpPasswordSourceBox.SelectedIndex = d.PasswordSource == PasswordSource.KeePassXc ? 1 : 0;
+        RdpKeePassEntryBox.Text = d.KeePassEntry;
+        RdpGatewayBox.Text = d.RdpGateway;
+        RdpClipboardBox.IsChecked = d.RdpClipboard;
+        RdpDrivesBox.IsChecked = d.RdpDrives;
+        RdpAdminBox.IsChecked = d.RdpAdmin;
         RtspPathBox.Text = d.RtspPath;
         RtspUserBox.Text = d.Username;
         RtspTcpBox.IsChecked = d.RtspTcp;
@@ -127,6 +137,7 @@ public partial class SessionEditorWindow : Window
         TelnetPanel.Visibility = protocol == SessionProtocol.Telnet ? Visibility.Visible : Visibility.Collapsed;
         VncPanel.Visibility = protocol == SessionProtocol.Vnc ? Visibility.Visible : Visibility.Collapsed;
         RtspPanel.Visibility = protocol == SessionProtocol.Rtsp ? Visibility.Visible : Visibility.Collapsed;
+        RdpPanel.Visibility = protocol == SessionProtocol.Rdp ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnAuthChanged(object sender, SelectionChangedEventArgs e) => UpdateAuthPanels();
@@ -308,6 +319,7 @@ public partial class SessionEditorWindow : Window
             SessionProtocol.Telnet => TelnetHostBox.Text,
             SessionProtocol.Vnc => VncHostBox.Text,
             SessionProtocol.Rtsp => RtspHostBox.Text,
+            SessionProtocol.Rdp => RdpHostBox.Text,
             SessionProtocol.Serial => SerialPortBox.Text,
             _ => "Local shell"
         }).Trim();
@@ -354,6 +366,25 @@ public partial class SessionEditorWindow : Window
             if (!string.IsNullOrEmpty(VncSecretBox.Password))
             {
                 _vault.Set(d.Id, VncSecretBox.Password);
+            }
+        }
+
+        if (d.Protocol == SessionProtocol.Rdp)
+        {
+            d.Host = RdpHostBox.Text.Trim();
+            d.Port = ParseInt(RdpPortBox.Text, 3389);
+            d.Username = RdpUserBox.Text.Trim();
+            d.RdpDomain = RdpDomainBox.Text.Trim();
+            d.PasswordSource = RdpPasswordSourceBox.SelectedIndex == 1 ? PasswordSource.KeePassXc : PasswordSource.Saved;
+            d.KeePassEntry = RdpKeePassEntryBox.Text.Trim();
+            d.RdpGateway = RdpGatewayBox.Text.Trim();
+            d.RdpClipboard = RdpClipboardBox.IsChecked == true;
+            d.RdpDrives = RdpDrivesBox.IsChecked == true;
+            d.RdpAdmin = RdpAdminBox.IsChecked == true;
+
+            if (!string.IsNullOrEmpty(RdpSecretBox.Password))
+            {
+                _vault.Set(d.Id, RdpSecretBox.Password);
             }
         }
 

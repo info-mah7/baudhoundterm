@@ -98,11 +98,12 @@
         <ComboBox x:Name="QuickProtocol" DockPanel.Dock="Left" Width="110" SelectedIndex="0"
                   VerticalAlignment="Center" ToolTip="Protocol"
                   SelectionChanged="OnQuickProtocolChanged">
-          <ComboBoxItem Content="SSH"/>
-          <ComboBoxItem Content="Serial"/>
-          <ComboBoxItem Content="Local shell"/>
-          <ComboBoxItem Content="Telnet"/>
-          <ComboBoxItem Content="VNC"/>
+          <ComboBoxItem Content="SSH" Tag="Ssh"/>
+          <ComboBoxItem Content="Serial" Tag="Serial"/>
+          <ComboBoxItem Content="Local shell" Tag="LocalShell"/>
+          <ComboBoxItem Content="Telnet" Tag="Telnet"/>
+          <ComboBoxItem Content="VNC" Tag="Vnc"/>
+          <ComboBoxItem Content="RDP" Tag="Rdp"/>
         </ComboBox>
         <Button DockPanel.Dock="Right" Content="Connect" Width="90" Margin="8,0,2,0"
                 Click="OnQuickConnect"/>
@@ -128,7 +129,7 @@
 
         <TextBox x:Name="QuickAddress" Margin="8,0,0,0" Padding="4,3" VerticalAlignment="Center"
                  KeyDown="OnQuickAddressKey"
-                 ToolTip="SSH: host, host:port or user@host:port (the user name is asked when not given). Telnet: host or host:port. VNC: host, host:port or host:1. Local shell: a command line. Serial has its own fields."/>
+                 ToolTip="SSH and RDP: host, host:port or user@host:port (the user name is asked when not given). Telnet: host or host:port. VNC: host, host:port or host:1. Local shell: a command line. Serial has its own fields."/>
       </DockPanel>
     </Border>
 

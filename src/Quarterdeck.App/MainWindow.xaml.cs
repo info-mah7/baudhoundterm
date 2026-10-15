@@ -316,6 +316,7 @@ public partial class MainWindow : Window
             {
                 SessionProtocol.Vnc => 5900,
                 SessionProtocol.Rtsp => 554,
+                SessionProtocol.Rdp => 3389,
                 SessionProtocol.Telnet => 23,
                 _ => 22
             },
@@ -923,7 +924,7 @@ public partial class MainWindow : Window
             menu.Items.Add(cad);
         }
 
-        if (definition.Protocol != SessionProtocol.Rtsp)
+        if (definition.Protocol is not (SessionProtocol.Rtsp or SessionProtocol.Rdp))
         {
             var agent = new MenuItem { Header = "_Agent on this tab" };
             agent.Click += (_, _) =>
@@ -1156,6 +1157,15 @@ public partial class MainWindow : Window
     };
 
     /// <summary>Serial needs a port and a speed, not a string to memorise.</summary>
+    /// <summary>
+    /// The quick-connect protocol, read from the item's Tag: the list is not in enum order (it
+    /// has RDP but no camera), so its position cannot be cast.
+    /// </summary>
+    private SessionProtocol QuickProtocolValue =>
+        QuickProtocol.SelectedItem is ComboBoxItem { Tag: string name } && Enum.TryParse<SessionProtocol>(name, out var p)
+            ? p
+            : SessionProtocol.Ssh;
+
     private void OnQuickProtocolChanged(object sender, SelectionChangedEventArgs e)
     {
         if (QuickSerialPanel is null)
@@ -1163,7 +1173,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var serial = (SessionProtocol)Math.Max(0, QuickProtocol.SelectedIndex) == SessionProtocol.Serial;
+        var serial = QuickProtocolValue == SessionProtocol.Serial;
         QuickSerialPanel.Visibility = serial ? Visibility.Visible : Visibility.Collapsed;
         QuickAddress.Visibility = serial ? Visibility.Collapsed : Visibility.Visible;
 
@@ -1277,7 +1287,7 @@ public partial class MainWindow : Window
         MenuItem AddProtocolMenu()
         {
             var add = new MenuItem { Header = "_Add protocol for this host" };
-            foreach (var (label, protocol) in new[] { ("SSH...", "Ssh"), ("VNC...", "Vnc"), ("Telnet...", "Telnet"), ("RTSP camera...", "Rtsp") })
+            foreach (var (label, protocol) in new[] { ("SSH...", "Ssh"), ("RDP...", "Rdp"), ("VNC...", "Vnc"), ("Telnet...", "Telnet"), ("RTSP camera...", "Rtsp") })
             {
                 var item = new MenuItem { Header = label, Tag = protocol };
                 item.Click += OnAddProtocol;
@@ -1384,7 +1394,7 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnQuickConnect(object sender, RoutedEventArgs e)
     {
-        var protocol = (SessionProtocol)Math.Max(0, QuickProtocol.SelectedIndex);
+        var protocol = QuickProtocolValue;
 
         if (protocol == SessionProtocol.Serial)
         {
@@ -1455,6 +1465,28 @@ public partial class MainWindow : Window
 
                 definition.Host = target;
                 definition.Name = $"{definition.Host}:{definition.Port}";
+                break;
+
+            case SessionProtocol.Rdp:
+                var desk = address;
+                var mark3 = desk.LastIndexOf(':');
+                definition.Port = 3389;
+                if (mark3 > 0 && int.TryParse(desk[(mark3 + 1)..], out var rdpPort))
+                {
+                    definition.Port = rdpPort;
+                    desk = desk[..mark3];
+                }
+
+                // user@host: the user name is used; without one, the tab asks.
+                var at3 = desk.LastIndexOf('@');
+                if (at3 > 0)
+                {
+                    definition.Username = desk[..at3];
+                    desk = desk[(at3 + 1)..];
+                }
+
+                definition.Host = desk;
+                definition.Name = definition.Port == 3389 ? definition.Host : $"{definition.Host}:{definition.Port}";
                 break;
 
             case SessionProtocol.Vnc:
@@ -1737,7 +1769,7 @@ public partial class MainWindow : Window
                 : "Needs a VNC tab",
             async () => await OpenVncFilesAsync(view!.Definition)));
 
-        var terminal = view is not null && protocol is not (SessionProtocol.Vnc or SessionProtocol.Rtsp);
+        var terminal = view is not null && protocol is not (SessionProtocol.Vnc or SessionProtocol.Rtsp or SessionProtocol.Rdp);
         items.Add(Item("Send _text file...", terminal && view!.IsConnected && !view.IsSending,
             !terminal ? "Needs a terminal tab"
             : !view!.IsConnected ? "Connect the tab first"

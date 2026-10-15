@@ -42,6 +42,7 @@
               <ComboBoxItem Content="Telnet"/>
               <ComboBoxItem Content="VNC"/>
               <ComboBoxItem Content="RTSP camera"/>
+              <ComboBoxItem Content="RDP (Windows Remote Desktop)"/>
             </ComboBox>
 
             <StackPanel x:Name="SshPanel">
@@ -151,6 +152,33 @@
               <PasswordBox x:Name="VncSecretBox" Padding="3"/>
               <CheckBox x:Name="VncViewOnlyBox" Content="View only, send no input"/>
               <TextBlock Text="Classic VNC auth is weak by design. Fine on a trusted network, not across one."
+                         Foreground="#5C6370" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <StackPanel x:Name="RdpPanel" Visibility="Collapsed">
+              <TextBlock Text="Host"/>
+              <TextBox x:Name="RdpHostBox"/>
+              <TextBlock Text="Port"/>
+              <TextBox x:Name="RdpPortBox"/>
+              <TextBlock Text="Username (blank: asked when you connect)"/>
+              <TextBox x:Name="RdpUserBox"/>
+              <TextBlock Text="Domain (optional)"/>
+              <TextBox x:Name="RdpDomainBox"/>
+              <TextBlock Text="Password from"/>
+              <ComboBox x:Name="RdpPasswordSourceBox">
+                <ComboBoxItem Content="Saved here (DPAPI), or ask"/>
+                <ComboBoxItem Content="KeePassXC, looked up at each connect"/>
+              </ComboBox>
+              <TextBlock Text="KeePassXC entry: blank finds entries with URL rdp://host; or paste the entry's UUID"/>
+              <TextBox x:Name="RdpKeePassEntryBox"/>
+              <TextBlock Text="Password (stored with DPAPI, blank keeps the existing one; none saved means ask)"/>
+              <PasswordBox x:Name="RdpSecretBox" Padding="3"/>
+              <TextBlock Text="Remote Desktop Gateway (optional)"/>
+              <TextBox x:Name="RdpGatewayBox"/>
+              <CheckBox x:Name="RdpClipboardBox" Content="Share the clipboard"/>
+              <CheckBox x:Name="RdpDrivesBox" Content="Share this PC's drives (the server can read them)"/>
+              <CheckBox x:Name="RdpAdminBox" Content="Admin session (like mstsc /admin)"/>
+              <TextBlock Text="Uses Windows' own Remote Desktop client. The remote desktop follows the tab's size."
                          Foreground="#5C6370" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel>
 

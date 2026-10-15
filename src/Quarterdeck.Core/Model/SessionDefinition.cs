@@ -15,7 +15,13 @@ public enum SessionProtocol
     Vnc,
 
     /// <summary>An IP camera's RTSP stream, played by LibVLC; ONVIF for PTZ and stream lookup.</summary>
-    Rtsp
+    Rtsp,
+
+    /// <summary>
+    /// A Windows desktop over RDP, drawn by Windows' own Remote Desktop control (mstscax.dll).
+    /// Last on purpose: shortcuts store the protocol as its number.
+    /// </summary>
+    Rdp
 }
 
 public enum SshAuthMethod
@@ -90,6 +96,22 @@ public sealed class SessionDefinition
 
     /// <summary>VNC only: watch without sending input.</summary>
     public bool ViewOnly { get; set; }
+
+    // RDP: Host, Port (3389), Username and the password source are shared fields.
+    /// <summary>Windows domain for the login. Blank for a local account or user@domain in Username.</summary>
+    public string RdpDomain { get; set; } = "";
+
+    /// <summary>Remote Desktop Gateway host, for servers behind one. Blank connects directly.</summary>
+    public string RdpGateway { get; set; } = "";
+
+    /// <summary>Copy and paste between this PC and the remote desktop.</summary>
+    public bool RdpClipboard { get; set; } = true;
+
+    /// <summary>This PC's drives appear on the remote desktop. Off by default: the server can then read them.</summary>
+    public bool RdpDrives { get; set; }
+
+    /// <summary>Connect to the server's console/admin session (mstsc /admin).</summary>
+    public bool RdpAdmin { get; set; }
 
     // RTSP camera: Host, Port (554) and Username are shared fields; the password is in the vault.
     /// <summary>Stream path after host:port, e.g. /Streaming/Channels/101. Blank asks the camera over ONVIF.</summary>
