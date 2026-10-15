@@ -1,0 +1,391 @@
+# BaudHoundTerm manual
+
+BaudHoundTerm keeps your connections as shortcuts and opens each one in a tab: SSH, telnet,
+serial, local shells, VNC desktops and RTSP cameras. This manual covers build 0.8.0-dev.29.
+
+- [1. Install and first start](#1-install-and-first-start)
+- [2. Connecting](#2-connecting)
+- [3. Shortcut properties](#3-shortcut-properties)
+- [4. Working in a tab](#4-working-in-a-tab)
+- [5. Moving files](#5-moving-files)
+- [6. BaudHound devices](#6-baudhound-devices)
+- [7. Passwords, keys and KeePassXC](#7-passwords-keys-and-keepassxc)
+- [8. The AI agent](#8-the-ai-agent)
+- [9. Sync between PCs](#9-sync-between-pcs)
+- [10. Where things are stored](#10-where-things-are-stored)
+- [11. Keyboard shortcuts](#11-keyboard-shortcuts)
+
+## 1. Install and first start
+
+1. Download the zip from the [releases page](https://github.com/info-mah7/baudhoundterm/releases)
+   and check its SHA-256 against the release notes:
+   `Get-FileHash -Algorithm SHA256 <file>` in PowerShell.
+2. Extract the whole archive. `BaudHoundTerm.exe` needs the `Assets` and `libvlc` folders next to it.
+3. Run `BaudHoundTerm.exe`. The build is unsigned, so Windows SmartScreen reports an unknown
+   publisher: choose **More info**, then **Run anyway**.
+
+It needs WebView2, which Windows 11 already has. The app starts with no tabs open. The title bar
+shows the version and build number.
+
+## 2. Connecting
+
+### Quick connect
+
+The **Quick connect** bar opens a tab without saving anything. Pick a protocol, type an address
+and press Enter or **Connect**.
+
+| Protocol | What to type |
+|---|---|
+| SSH | `host` or `host:port`. You are asked for the user name and password. |
+| Telnet | `host` or `host:port` (23 if no port). |
+| VNC | `host`, `host:port`, or `host:1` for display 1 (port 5901). |
+| Local shell | A command line, e.g. `powershell.exe`. |
+| Serial | The address box changes to **Port**, **Baud** and **Framing** (`8-N-1`, `7-E-1`, `7-O-1`, `8-N-2`). The port list refreshes each time you open it. |
+
+### Shortcuts
+
+A shortcut is a saved connection. Create one with **New** on the toolbar, **Shortcut > New
+shortcut...**, the **+** above the list, or Ctrl+Shift+T.
+
+- **Connect:** double-click it, select it and press **Connect**, or right-click > **Connect**.
+- **Edit:** select it and press **Open**, or right-click > **Properties...**. (**Open** opens the
+  properties; it does not connect.)
+- **Folders:** right-click empty space or a folder > **New folder...**. Use `/` to nest, e.g.
+  `Customers/Acme/Edge`. Right-click a shortcut > **Move to folder...** to move it; a blank name
+  moves it to the top level. Deleting a folder moves its shortcuts to the top level.
+- **More protocols for one host:** right-click a network shortcut > **Add protocol for this host**
+  makes an SSH, VNC, telnet or camera shortcut for the same machine.
+- **Filter:** the box above the list matches name, host or tag. Protocol words narrow it:
+  `ssh`, `vnc`, `telnet`, `serial`, `local`, `cam`. For example `vnc lab` shows VNC shortcuts
+  whose name or host contains "lab".
+- **Group by host** (the 🖥 button): shortcuts in one folder that share a host sit under one row.
+  Right-click that row > **Connect** to choose which one.
+
+Open connections appear under their shortcut with their state, and clicking one brings its tab
+forward. Tabs with no shortcut in view, such as quick connections, are listed under
+**⚡ Open, not in the list above**.
+
+### Local shells
+
+**Shell ▾** opens Windows PowerShell, Command Prompt or PowerShell 7 in a tab without saving a
+shortcut. The **(administrator)** entries need BaudHoundTerm itself to be elevated: if it is not,
+it offers to start a second, elevated copy through UAC and open the shell there.
+
+## 3. Shortcut properties
+
+The properties window has seven tabs. **Save** keeps the changes.
+
+### Connection
+
+**Name**, **Folder** and **Protocol**, then the fields for that protocol.
+
+**SSH**
+
+- **Host**, **Port** (22), **Username**.
+- **Authentication:**
+  - **Password**. **Password from** is either *Saved here (DPAPI), or ask* or *KeePassXC, looked
+    up at each connect*.
+  - **Public key file**, with an optional key passphrase.
+  - **SSH agent (KeePassXC, Pageant, OpenSSH agent)**. The key stays in the agent, which only
+    signs. **Agent key** narrows which key is offered: part of its comment or its `SHA256:`
+    fingerprint. **List keys** shows what the agents hold.
+  - **Keyboard interactive**, with the same password sources as Password.
+
+**Serial**: **Port**, **Baud rate**, **Data bits**, **Parity**, **Stop bits**. Defaults are COM1,
+115200, 8, None, One.
+
+**Telnet**
+
+- **Host**, **Port**. A new shortcut's port box shows 22: set it to 23, or 992 for TLS.
+- **TLS (telnets)**: encrypts the connection and pins the server's certificate on first use (see
+  [section 7](#trusting-servers)).
+- **Line mode**: for consoles that take whole lines and do not echo, such as BaudHound. Typing is
+  shown and edited locally (Backspace, Ctrl+U erases the line, Ctrl+C abandons it) and each line
+  is sent when you press Enter. Leave it off for routers, switches and anything with its own line
+  editing.
+
+**Local shell**: the **Command line** to run (`powershell.exe`).
+
+**VNC**: **Host**, **Port** (a new shortcut shows 22: set it to 5900), **Password**, and **View only,
+send no input**. Classic VNC passwords are weak; use VNC only on a network you trust.
+
+**RTSP camera**: **Camera host**, **RTSP port** (554), **Stream path** (blank asks the camera over
+ONVIF), **Username**, **Password**, **RTP over TCP**, **Low latency**, and the **ONVIF port** used
+for pan, tilt, zoom and stream lookup.
+
+### Terminal
+
+**Theme** (Quarterdeck Dark, Solarized Light, Campbell), **Font family**, **Font size**,
+**Scrollback lines**, and **Tab colour** (hex like `#e06c75` or a colour name).
+
+### Commands
+
+Entries for the terminal's right-click menu. **Enter** runs the command rather than just typing
+it; **Confirm** asks first, for anything that reboots or deletes. **Restore defaults** adds back
+any missing default entries. Review the defaults before you use them: they include `sudo reboot`
+and a `claude --permission-mode bypassPermissions` entry that you may want to remove.
+
+### Logging
+
+**Log this session to a file** writes a transcript. The folder defaults to
+`%APPDATA%\BaudHoundTerm\logs` (the field's label still says `Quarterdeck`). The file name
+pattern takes `%NAME%`, `%HOST%`, `%Y%`, `%M%`, `%D%`, `%H%`, `%m%` and `%S%`. You can add a
+timestamp to each line, strip colour codes (on by default), and start a new file at a set size
+(64 MB). Logging works on SSH, serial, telnet and local shell tabs. Transcripts are plain text:
+anything shown on screen ends up in them.
+
+### Auto-login
+
+Steps that wait for text (**Expect**) and then send a reply (**Send**). Tick **Secret** to send the
+shortcut's saved password instead of the text, and **Regex** to match a regular expression. Each
+step has a timeout. If a step fails, the terminal says which one and why. The steps run again
+after every reconnect.
+
+### Highlight
+
+Colours matching output as it arrives: **Pattern**, **Colour** (`#rrggbb`), **Regex**, **Bold**,
+**On**. A match split across two pieces of output is missed.
+
+### Reconnect
+
+Reconnects automatically when a connection drops: up to **Maximum attempts** (10, 0 means keep
+trying), starting after **First delay** and growing by **Backoff factor** up to **Maximum delay**.
+A rejected password or key is never retried.
+
+## 4. Working in a tab
+
+### Terminal tabs
+
+| Do | How |
+|---|---|
+| Copy | Select, then Ctrl+Shift+C, or Shift+right-click |
+| Paste | Ctrl+Shift+V, or Shift+right-click with nothing selected |
+| Find in scrollback | Ctrl+Shift+F or **Find**; Enter for the next match, Escape to close |
+| Clear the screen | **Clear**, or right-click > **Clear screen** |
+| Reconnect a dropped tab | Press Enter in it, or **Reconnect** on the toolbar |
+| Run a saved command | Right-click > the command's name |
+
+Links in the output are clickable. **Paste image as file** (right-click) puts an image from the
+clipboard on the far end and types its path: on SSH it is uploaded to `/tmp`, in a local shell it
+is a temporary file. Other tab types do not support it.
+
+**Disconnect** leaves the tab and its scrollback open; **Close** disconnects and closes it.
+
+### Tab strip
+
+- **Colour:** right-click a tab to pick a colour, which is saved on the shortcut. When two tabs
+  open to the same machine, they get different colours automatically.
+- **State dot** (serial and telnet tabs): grey disconnected, amber connecting, green connected,
+  red failed. It blinks with traffic.
+- **Bot icon:** attaches or detaches the AI agent (section 8).
+
+### Link lamps
+
+Serial and telnet tabs show lamps at the bottom right: the connection state, **TX** (sent to the
+device) and **RX** (received from it), which flash with traffic, and the byte counts. A silent
+serial line with a green lamp and no RX means the device is not talking; a lamp that is not
+green means there is no link.
+
+### VNC tabs
+
+The remote desktop scales to fit the tab. A password-protected server needs the password in the
+shortcut's properties. With **View only** set, nothing you or the agent do is sent to it.
+
+### Camera tabs
+
+Video on the left; on the right, a pan, tilt and zoom pad (arrows move while held), presets,
+**Snapshot** (a PNG in `Pictures\BaudHoundTerm`) and **Mute**. The pad is greyed out when the
+camera reports no PTZ over ONVIF.
+
+## 5. Moving files
+
+**Files ▾** (or the **Files** menu) lists what the active tab supports; the rest is greyed out with
+the reason in its tooltip.
+
+| Item | Tab | Notes |
+|---|---|---|
+| **Browse and transfer (SFTP)...** | SSH | A file browser with **Download** and **Upload**. Tick **Use SCP** for hosts with no SFTP, such as most network gear. |
+| **Browse and transfer (TightVNC)...** | VNC | Needs TightVNC Server on the far end. |
+| **Send text file...** | Any terminal | Types a text file in, paced so the far end keeps up. **Cancel** in the status line stops it. |
+| **Send binary file** | Serial | YMODEM, XMODEM-1K or XMODEM. Start the receive on the device first (U-Boot `loady` / `loadx`, Linux `rb` / `rx`). |
+| **Receive binary file** | Serial | YMODEM or XMODEM. Pick a folder, then start the send on the device (`sb` / `sx`). |
+| **TFTP server (firmware)...** | Any | Serves a folder (`%USERPROFILE%\tftp` by default) on port 69 while the window is open. Uploads are off unless you allow them, and never overwrite. Double-click a file to copy a `tftp://` address. Windows may ask once to allow it through the firewall. |
+
+## 6. BaudHound devices
+
+[BaudHound](https://github.com/info-mah7/BaudHound) is a pocket ESP32-S3 serial console: clip it to
+a device's UART and reach that UART over Wi-Fi.
+
+1. Make sure the PC is on the same network as the BaudHound: either the network the device joined,
+   or the device's own Wi-Fi, `BaudHound-XXXX`.
+2. Press **BaudHound** on the toolbar. The window searches for about two seconds.
+3. Pick the device and press **Connect**, or double-click it.
+
+Each result shows the device's address, firmware, baud rate, the network it joined, and its
+certificate fingerprint. **Save shortcut** adds it to the **BaudHound** folder; saving it again
+after its address changed updates the existing shortcut. **Web page** opens the device's own
+settings page.
+
+- **Encrypted when possible.** Firmware 1.4 and later serve the console with TLS on port 992, and
+  BaudHoundTerm uses it. Compare the certificate fingerprint with the TLS line on the device's
+  Settings page the first time.
+- **One session at a time.** While a TLS session is open, the device refuses other connections and
+  pauses its web console. The window marks such a device **in use**.
+- **Device commands** are on the tab's right-click menu: device info, detect or pin the baud rate,
+  the wake probe, swap RX/TX, and an LED test. Lines starting with `~` go to the BaudHound itself;
+  everything else goes to the device it is clipped to.
+- **Not found?** Firmware older than 1.4 is only found when the PC is on the device's own Wi-Fi.
+  Windows can also block the replies on a network marked Public. You can type the address
+  instead: `192.168.4.1` on the device's own Wi-Fi, `:992` for TLS.
+
+## 7. Passwords, keys and KeePassXC
+
+### Do not save passwords
+
+For the best security, do not save passwords in shortcuts. Leave the password blank and type it
+when asked, look it up in KeePassXC, or use an SSH key or agent. Saved secrets are encrypted with
+Windows DPAPI for your account: safe from other accounts and other PCs, not from programs running
+as you.
+
+### KeePassXC
+
+1. In KeePassXC: **Settings > Browser Integration > Enable**.
+2. In BaudHoundTerm: **Shortcut > Passwords and keys (KeePassXC)...**, then **Pair with open
+   database**. KeePassXC asks you to name and allow the connection. (Pairing also happens by itself
+   on the first lookup.)
+3. Give each KeePassXC entry the URL `ssh://host`, or `ssh://host:port` for a port other than 22.
+4. In the shortcut, set **Password from** to *KeePassXC*. Leave **KeePassXC entry** blank to match
+   by URL, or paste the entry's UUID. **Test** looks it up without showing the password.
+
+If the shortcut has no user name, it comes from the entry. Nothing from KeePassXC is stored by
+BaudHoundTerm.
+
+### SSH agent
+
+BaudHoundTerm asks both Pageant and the Windows OpenSSH agent for keys. To use KeePassXC's keys,
+enable **Settings > SSH Agent** in KeePassXC, choose Pageant or OpenSSH, and tick **Add key to
+agent when database is opened** on the entry. The Windows agent is the service **OpenSSH
+Authentication Agent**. **Refresh** in the Passwords and keys window lists the keys on offer.
+
+### Trusting servers
+
+The first SSH connection to a host, and the first TLS connection to a telnet server, show the
+server's `SHA256:` fingerprint and ask whether to trust it. Compare it with the server's own
+(`ssh-keygen -lf` on its host key, or the TLS line on a BaudHound's Settings page) before you say
+yes. Later connections check it silently. If it ever changes, you get a warning with No as the
+default: accept only if you know the server was reinstalled or reset.
+
+## 8. The AI agent
+
+The agent works in one tab for you, through any OpenAI-compatible endpoint: vLLM, llama.cpp,
+Ollama, OpenRouter or OpenAI. On a terminal it types commands and reads the output. On a VNC tab
+it sees screenshots and clicks and types.
+
+### Set up an endpoint
+
+**Terminal > Agent endpoints and skills...**, then **New**:
+
+- **Name**, **Base URL** (up to `/v1`), **Model** (**Fetch models** asks the server), **API key**.
+- **Temperature** and **Max steps per goal**.
+- **Extra request JSON**: merged into every request. For Qwen models on vLLM,
+  `{"chat_template_kwargs":{"enable_thinking":false}}` keeps replies fast.
+- **Approval**: *Run freely*, *Ask before risky commands* (the default; the patterns are listed
+  below it and you can edit them), or *Ask before every command*.
+- **Never on local shells**: a local shell runs as you, and you can read the credential vault.
+- **Remote desktops**: the screenshot width, and **Check each click on a remote desktop first**.
+
+**Test connection** checks that the server answers, the key works, the model calls tools, and
+whether it reads pictures. Terminals need tool calling; VNC tabs also need pictures.
+
+### Use it
+
+Attach it with the bot icon on a tab, **Terminal > Agent on this tab**, or Ctrl+Shift+A. The panel
+opens on the right of the tab.
+
+1. Pick the endpoint and tick the skills to use.
+2. Type the goal and press Enter (Shift+Enter for a new line).
+3. Follow its steps in the panel. **Stop** ends the run; **New** starts a fresh conversation.
+
+When an action needs approval, a box shows exactly what it wants to run and in which tab, with No
+as the default. A refused action is not retried.
+
+On a VNC tab the agent checks each click before it happens: it names what is under the point and
+must match what it meant to click, or nothing is clicked. Clicks on things like Delete or Shut
+down, and keys such as Win+R, Ctrl+Alt+Del and Alt+F4, need approval under *Ask before risky
+commands*. A view-only VNC tab can be looked at but not driven.
+
+The panel's greeting says "It acts without asking". That is only true under *Run freely*; the
+default asks before risky commands.
+
+### Skills
+
+Skills are notes the agent reads with every goal, such as house rules or how a device works. Each
+is a `.md` file in `%APPDATA%\BaudHoundTerm\skills\` (**Skills folder** in the endpoints window).
+An optional header sets where it applies:
+
+```
+---
+name: Cisco console
+description: How to work on the lab switches
+protocols: serial, ssh
+---
+Always run "terminal length 0" first. Never write memory without asking.
+```
+
+`protocols` takes `ssh`, `serial`, `telnet`, `local` and `vnc`. Without it, the skill applies
+everywhere.
+
+### Logs
+
+Every goal, model reply, action, approval and result is written to
+`%APPDATA%\BaudHoundTerm\agent-logs\`, one file per day. **Log** in the panel opens the folder.
+
+## 9. Sync between PCs
+
+Keeps shortcuts, folders, agent endpoints, skills and trusted host keys the same on several PCs
+through a private git repository. Passwords, keys, KeePassXC pairings, serial port names and key
+file paths never leave the PC.
+
+1. Install [Git for Windows](https://git-scm.com/download/win).
+2. Create an **empty private** repository, on GitHub or your own server.
+3. **Sync** on the toolbar (or **Shortcut > Sync between PCs (git)...**): enter the repository
+   address, a branch and this PC's name, then **Connect**. A browser may open to sign in.
+
+With **Sync automatically**, it syncs at start, a few seconds after each change, and every five
+minutes. The **Sync** button shows ✓ after a good sync and ! after a failed one; its tooltip says
+what happened.
+
+- A public repository is refused: it is checked before connecting and before every push.
+- Anything that looks like a password or key stops the commit.
+- A shortcut changed on two PCs keeps both versions, the other one named `(conflict, PC)`.
+- **Stop syncing** disconnects this PC; nothing is deleted anywhere.
+
+## 10. Where things are stored
+
+Everything is in `%APPDATA%\BaudHoundTerm\`:
+
+| File | Holds |
+|---|---|
+| `sessions.json`, `folders.json` | Shortcuts and folders, without secrets |
+| `credentials.dat` | Saved passwords, passphrases, API keys and KeePassXC pairings, encrypted with DPAPI |
+| `known_hosts.json` | Trusted SSH host keys and TLS certificates |
+| `agent.json` | Agent endpoints, without keys |
+| `skills\`, `agent-logs\` | Agent skills and logs |
+| `logs\` | Session transcripts |
+| `sync.json`, `sync\` | Sync settings and the sync repository's copy |
+| `ui.json` | Window preferences |
+| `crash.log` | Errors the app could not handle |
+
+Camera snapshots go to `Pictures\BaudHoundTerm`. **Help > Open log folder** opens the transcripts.
+
+## 11. Keyboard shortcuts
+
+| Keys | Action |
+|---|---|
+| Ctrl+Shift+T | New shortcut |
+| Ctrl+Shift+F | Find in scrollback |
+| Ctrl+Shift+A | Attach or detach the agent |
+| Ctrl+Shift+C / Ctrl+Shift+V | Copy / paste in a terminal |
+| Shift+right-click | Copy the selection, or paste when nothing is selected |
+| Enter (in a dropped tab) | Reconnect |
+| Enter / Shift+Enter (agent goal box) | Run / new line |
