@@ -6,7 +6,7 @@ transfer, and an AI agent that can work in any tab. SSH, telnet, serial, local s
 cameras. One self-contained executable, no runtime to install.
 
 It is also the desktop console for [BaudHound](https://github.com/info-mah7/BaudHound),
-the pocket ESP32-S3 wireless serial tap: BaudHound puts a UART on the network over telnet, and
+the pocket ESP32-S3 wireless serial tap: BaudHound puts a UART on the network over ssl, and
 BaudHoundTerm gives that connection saved sessions, logging, highlight rules and reconnect.
 
 Apache-2.0.
