@@ -148,6 +148,16 @@ or agent. A saved password is only as safe as your Windows account (see DPAPI be
 Binaries are unsigned, so Windows SmartScreen reports an unknown publisher on every launch.
 Until there is a code-signing certificate, the checksum is the only integrity check there is.
 
+Build 0.8.0-dev.30, `baudhoundterm-0.8.0-dev.20261014.30-win-x64.zip`, 75,114,466 bytes, built
+from commit `df17bb9` (tag `v0.8.0-dev.30`):
+
+| Algorithm | Digest |
+|---|---|
+| SHA-1 | `29fa34f76d0d5806d7edfa34dcc780989570c825` |
+| SHA-256 | `b5c87783315f7eb4714be0c760ba5c989c85bea94a8c31d0b561b70c6e7817bd` |
+
+The unpacked `BaudHoundTerm.exe` is SHA-1 `15d5c8cf4e2f5b1f0240b14e50cf4dab6e0f7b6e`.
+
 Build 0.8.0-dev.29, `baudhoundterm-0.8.0-dev.20261014.29-win-x64.zip`, 75,113,921 bytes, built
 from commit `80f0d2d` (tag `v0.8.0-dev.29`):
 
