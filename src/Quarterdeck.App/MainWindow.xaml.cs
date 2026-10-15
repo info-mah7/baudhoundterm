@@ -1910,7 +1910,7 @@ public partial class MainWindow : Window
         MessageBox.Show(this,
             $"BaudHoundTerm {Version}\n" +
             "Terminal and session manager for Windows: SSH, telnet, serial and local shells.\n" +
-            "The desktop console for BaudHound (github.com/magicsmokepress/BaudHound).\n\n" +
+            "The desktop console for BaudHound (github.com/info-mah7/BaudHound).\n\n" +
             "Apache-2.0. Terminal rendering by xterm.js (MIT), SSH by SSH.NET (MIT).",
             "About BaudHoundTerm");
 

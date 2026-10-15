@@ -5,7 +5,7 @@ folders, an encrypted credential store, session logging, scripted logins, auto-r
 SFTP/SCP transfer. SSH, telnet, serial and local shells. One self-contained executable, no
 runtime to install.
 
-It is also the desktop console for [BaudHound](https://github.com/magicsmokepress/BaudHound),
+It is also the desktop console for [BaudHound](https://github.com/info-mah7/BaudHound),
 the pocket ESP32-S3 wireless serial tap: BaudHound puts a UART on the network over telnet, and
 BaudHoundTerm gives that connection saved sessions, logging, highlight rules and reconnect.
 
@@ -93,7 +93,7 @@ button uses it whenever the device offers it; a saved session can turn it on wit
    it; a PC that drops off the network frees it after about 25 seconds.
 
 The device asks for no password: whoever connects first holds it. The firmware's
-[docs/TLS.md](https://github.com/magicsmokepress/BaudHound/blob/main/docs/TLS.md) has the
+[docs/TLS.md](https://github.com/info-mah7/BaudHound/blob/main/docs/TLS.md) has the
 details.
 
 ## Agent on a remote desktop
