@@ -16,7 +16,7 @@ public sealed class SshTerminalSession : ITerminalSession
 {
     private readonly SessionDefinition _definition;
     private readonly CredentialVault _vault;
-    private readonly Func<string, string?>? _promptForSecret;
+    private readonly Func<string, string, string?>? _promptForSecret;
 
     private SshClient? _client;
     private ShellStream? _stream;
@@ -42,7 +42,7 @@ public sealed class SshTerminalSession : ITerminalSession
     public SshTerminalSession(
         SessionDefinition definition,
         CredentialVault vault,
-        Func<string, string?>? promptForSecret = null)
+        Func<string, string, string?>? promptForSecret = null)
     {
         _definition = definition;
         _vault = vault;
@@ -245,7 +245,7 @@ public sealed class SshTerminalSession : ITerminalSession
     private string? ResolveSecret(string name)
     {
         var key = IsPasswordPrompt(name) ? "password" : name;
-        return _vault.Get(_definition.Id, key) ?? _promptForSecret?.Invoke(name);
+        return _vault.Get(_definition.Id, key) ?? _promptForSecret?.Invoke(name, key);
     }
 
     private void OnClientError(object? sender, ExceptionEventArgs e) => RaiseClosed(e.Exception.Message);

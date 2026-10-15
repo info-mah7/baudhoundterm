@@ -513,7 +513,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
             var answer = MessageBox.Show(
                 Window.GetWindow(this),
                 $"Send this to {Definition.Name}?\n\n{shortcut.Text}",
-                "Quarterdeck", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                "BaudHoundTerm", MessageBoxButton.YesNo, MessageBoxImage.Warning);
 
             if (answer != MessageBoxResult.Yes)
             {
@@ -629,7 +629,11 @@ public partial class TerminalView : UserControl, ITerminalTarget
         await controller.ConnectAsync();
     }
 
-    private string? PromptForSecret(string prompt)
+    /// <summary>
+    /// Asks for a secret that is not saved. "Remember" stores it in the vault under the name it
+    /// was asked for (password, passphrase, an auto-login secret), so the next connect needs no prompt.
+    /// </summary>
+    private string? PromptForSecret(string prompt, string key)
     {
         return Dispatcher.Invoke(() =>
         {
@@ -638,9 +642,22 @@ public partial class TerminalView : UserControl, ITerminalTarget
                 Owner = Window.GetWindow(this)
             };
 
-            return dialog.ShowDialog() == true ? dialog.Secret : null;
+            if (dialog.ShowDialog() != true)
+            {
+                return null;
+            }
+
+            if (dialog.Remember && dialog.Secret.Length > 0)
+            {
+                _vault.Set(Definition.Id, dialog.Secret, key);
+            }
+
+            return dialog.Secret;
         });
     }
+
+    /// <summary>VNC tabs: Ctrl+Alt+Del on the remote desktop (noVNC refuses it on a view-only session).</summary>
+    public void SendCtrlAltDel() => Post(new { t = "cad" });
 
     private void Write(string text)
     {

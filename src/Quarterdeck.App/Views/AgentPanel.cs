@@ -135,7 +135,7 @@ internal sealed class AgentPanel : DockPanel
         };
 
         Reload();
-        Append($"Attached to {_target.Describe}. It acts without asking; every step is logged.");
+        Append($"Attached to {_target.Describe}. Every step is logged; what needs your approval first depends on the endpoint's Approval setting (⚙).");
         if (_protocol == Core.Model.SessionProtocol.Vnc)
         {
             Append("This is a remote desktop: the agent sees screenshots and clicks and types over VNC, so the endpoint's " +

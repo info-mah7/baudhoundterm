@@ -32,6 +32,8 @@
             <TextBox x:Name="NameBox"/>
             <TextBlock Text="Folder (use / to nest, blank for top level)"/>
             <TextBox x:Name="FolderBox"/>
+            <TextBlock Text="Tags (comma-separated; the filter above the shortcut list matches them)"/>
+            <TextBox x:Name="TagsBox"/>
             <TextBlock Text="Protocol"/>
             <ComboBox x:Name="ProtocolBox" SelectionChanged="OnProtocolChanged">
               <ComboBoxItem Content="SSH"/>
@@ -228,7 +230,7 @@
       <TabItem Header="Logging">
         <StackPanel Margin="12">
           <CheckBox x:Name="LogEnabledBox" Content="Log this session to a file"/>
-          <TextBlock Text="Directory (blank uses %APPDATA%\Quarterdeck\logs)"/>
+          <TextBlock Text="Directory (blank uses %APPDATA%\BaudHoundTerm\logs)"/>
           <TextBox x:Name="LogDirBox"/>
           <TextBlock Text="File name pattern"/>
           <TextBox x:Name="LogPatternBox"/>

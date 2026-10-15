@@ -197,7 +197,7 @@ public text; there is no separate disclosure channel yet.
 ## Known limits
 
 - Highlight rules are applied to text as it arrives, so a match split across two reads is missed.
-- The jump-host field is stored but not yet used for connection chaining.
+- SSH jump hosts are not supported yet.
 - Port forwarding is not implemented.
 - Not tested against a hardened or non-OpenSSH server.
 - SFTP/SCP transfer, auto-login scripting, and a real BaudHound device are all implemented but
