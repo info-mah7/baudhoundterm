@@ -21,7 +21,18 @@ public enum SessionProtocol
     /// A Windows desktop over RDP, drawn by Windows' own Remote Desktop control (mstscax.dll).
     /// Last on purpose: shortcuts store the protocol as its number.
     /// </summary>
-    Rdp
+    Rdp,
+
+    /// <summary>A SQL query tab: SQL Server, PostgreSQL, MySQL/MariaDB or a SQLite file.</summary>
+    Sql
+}
+
+public enum SqlEngine
+{
+    SqlServer,
+    PostgreSql,
+    MySql,
+    Sqlite
 }
 
 public enum SshAuthMethod
@@ -112,6 +123,27 @@ public sealed class SessionDefinition
 
     /// <summary>Connect to the server's console/admin session (mstsc /admin).</summary>
     public bool RdpAdmin { get; set; }
+
+    // SQL: Host, Port, Username and the password source are shared fields.
+    public SqlEngine SqlEngine { get; set; }
+
+    /// <summary>Database to open. Blank: the login's default.</summary>
+    public string SqlDatabase { get; set; } = "";
+
+    /// <summary>SQLite only: the database file.</summary>
+    public string SqlFile { get; set; } = "";
+
+    /// <summary>SQL Server only: sign in as the current Windows user.</summary>
+    public bool SqlWindowsAuth { get; set; }
+
+    /// <summary>Accept a server certificate that does not verify (self-signed). Encryption stays on.</summary>
+    public bool SqlTrustServerCertificate { get; set; }
+
+    /// <summary>Refuse changes: enforced by PostgreSQL, MySQL and SQLite; checked by the app for SQL Server.</summary>
+    public bool SqlReadOnly { get; set; }
+
+    /// <summary>Ask before running a statement that changes data or structure.</summary>
+    public bool SqlConfirmChanges { get; set; } = true;
 
     // RTSP camera: Host, Port (554) and Username are shared fields; the password is in the vault.
     /// <summary>Stream path after host:port, e.g. /Streaming/Channels/101. Blank asks the camera over ONVIF.</summary>

@@ -317,6 +317,7 @@ public partial class MainWindow : Window
                 SessionProtocol.Vnc => 5900,
                 SessionProtocol.Rtsp => 554,
                 SessionProtocol.Rdp => 3389,
+                SessionProtocol.Sql => 1433,
                 SessionProtocol.Telnet => 23,
                 _ => 22
             },
@@ -924,7 +925,7 @@ public partial class MainWindow : Window
             menu.Items.Add(cad);
         }
 
-        if (definition.Protocol is not (SessionProtocol.Rtsp or SessionProtocol.Rdp))
+        if (definition.Protocol is not (SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Sql))
         {
             var agent = new MenuItem { Header = "_Agent on this tab" };
             agent.Click += (_, _) =>
@@ -1287,7 +1288,7 @@ public partial class MainWindow : Window
         MenuItem AddProtocolMenu()
         {
             var add = new MenuItem { Header = "_Add protocol for this host" };
-            foreach (var (label, protocol) in new[] { ("SSH...", "Ssh"), ("RDP...", "Rdp"), ("VNC...", "Vnc"), ("Telnet...", "Telnet"), ("RTSP camera...", "Rtsp") })
+            foreach (var (label, protocol) in new[] { ("SSH...", "Ssh"), ("RDP...", "Rdp"), ("VNC...", "Vnc"), ("Telnet...", "Telnet"), ("SQL database...", "Sql"), ("RTSP camera...", "Rtsp") })
             {
                 var item = new MenuItem { Header = label, Tag = protocol };
                 item.Click += OnAddProtocol;
@@ -1769,7 +1770,7 @@ public partial class MainWindow : Window
                 : "Needs a VNC tab",
             async () => await OpenVncFilesAsync(view!.Definition)));
 
-        var terminal = view is not null && protocol is not (SessionProtocol.Vnc or SessionProtocol.Rtsp or SessionProtocol.Rdp);
+        var terminal = view is not null && protocol is not (SessionProtocol.Vnc or SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Sql);
         items.Add(Item("Send _text file...", terminal && view!.IsConnected && !view.IsSending,
             !terminal ? "Needs a terminal tab"
             : !view!.IsConnected ? "Connect the tab first"
