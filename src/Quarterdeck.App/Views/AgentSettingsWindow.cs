@@ -400,7 +400,9 @@ internal sealed class AgentSettingsWindow : Window
         }
 
         Note(string.Join(Environment.NewLine, lines.Select(l => (l.Ok ? (l.Warning ? "! " : "✔ ") : "✖ ") + l.Text)),
-            lines.All(l => l.Ok) ? Color.FromRgb(0x98, 0xC3, 0x79) : Color.FromRgb(0xE0, 0x6C, 0x75));
+            lines.Any(l => !l.Ok) ? Color.FromRgb(0xE0, 0x6C, 0x75)
+            : lines.Any(l => l.Warning) ? Color.FromRgb(0xE5, 0xC0, 0x7B)
+            : Color.FromRgb(0x98, 0xC3, 0x79));
     }
 
     /// <summary>The key typed in the form, else the saved one. Pasted keys often carry a trailing space or newline.</summary>

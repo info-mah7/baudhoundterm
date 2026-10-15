@@ -226,7 +226,7 @@ public static class EndpointTest
             picture[k] = v?.DeepClone();
         }
 
-        const string noPictures = "so the agent cannot drive remote desktops (VNC) with this model. Terminals are not affected.";
+        const string noPictures = "so this model cannot drive remote desktops (VNC); use an endpoint whose model takes images for those. Terminals are not affected.";
         try
         {
             using var response = await http.SendAsync(Request(HttpMethod.Post, "/chat/completions", picture), token);
@@ -236,14 +236,14 @@ public static class EndpointTest
                 : "";
 
             results.Add(!response.IsSuccessStatusCode
-                ? new EndpointCheck(false, $"Pictures refused ({(int)response.StatusCode}: {Short(ErrorText(text))}), " + noPictures, Warning: true)
+                ? new EndpointCheck(true, $"Pictures refused ({(int)response.StatusCode}: {Short(ErrorText(text))}), " + noPictures, Warning: true)
                 : reply.Contains("red") && reply.Contains("blue") && reply.IndexOf("red", StringComparison.Ordinal) < reply.IndexOf("blue", StringComparison.Ordinal)
                     ? new EndpointCheck(true, "Pictures work: the agent can also drive remote desktops (VNC) with this model.")
-                    : new EndpointCheck(false, $"It did not read a test picture correctly (\"{Short(reply)}\"), " + noPictures, Warning: true));
+                    : new EndpointCheck(true, $"It did not read a test picture correctly (\"{Short(reply)}\"), " + noPictures, Warning: true));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
-            results.Add(new EndpointCheck(false, $"The picture test failed ({Plain(ex)}), " + noPictures, Warning: true));
+            results.Add(new EndpointCheck(true, $"The picture test failed ({Plain(ex)}), " + noPictures, Warning: true));
         }
 
         return results;
