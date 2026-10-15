@@ -1,6 +1,6 @@
 # BaudHoundTerm
 
-Terminal and session manager for Windows 11, in the shape of SecureCRT: saved sessions in
+Multi protocol terminal and session manager for Windows 11: saved sessions in
 folders, an encrypted credential store, session logging, scripted logins, auto-reconnect, and
 SFTP/SCP transfer. SSH, telnet, serial and local shells. One self-contained executable, no
 runtime to install.
