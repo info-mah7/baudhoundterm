@@ -295,9 +295,13 @@ it sees screenshots and clicks and types.
 
 > [!WARNING]
 > **Everything the agent works with is sent to the endpoint's provider:** your goals, the terminal
-> output it reads, VNC screenshots and your skills, including any hostnames, configuration or
-> secrets on screen. A cloud provider receives all of it under its own terms. For sensitive
-> systems, use a model you host yourself, or do not attach the agent.
+> output it reads, VNC screenshots and your skills. That includes whatever is on screen:
+> configuration files, passwords, keys, hostnames and addresses. A cloud provider receives all of
+> it under its own terms.
+>
+> For better security, use a **local model** that you run yourself with vLLM, llama.cpp or Ollama,
+> on your own PC or network, so nothing leaves it. For sensitive systems, use a local model or do
+> not attach the agent at all.
 
 ### Set up an endpoint
 
