@@ -128,7 +128,7 @@ internal sealed class RdpView : Grid, IDisposable
         string? password;
         try
         {
-            (username, password) = await CredentialsAsync();
+            (username, password) = await LoginResolver.ResolveAsync(_definition, _vault, this, _promptForSecret, "rdp", 3389);
         }
         catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException or KeePassXcException)
         {
@@ -185,67 +185,6 @@ internal sealed class RdpView : Grid, IDisposable
         {
             _report(SessionState.Failed, "The Remote Desktop control refused the settings: " + ex.Message);
         }
-    }
-
-    /// <summary>
-    /// User name and password from the shortcut, KeePassXC, or a prompt. Not saving the
-    /// password is the recommended setup, so asking is the normal path, not an error.
-    /// </summary>
-    private async Task<(string User, string? Password)> CredentialsAsync()
-    {
-        var username = _definition.Username.Trim();
-        string? password = null;
-
-        if (_definition.PasswordSource == PasswordSource.KeePassXc)
-        {
-            // Blank entry: look for an entry with the URL rdp://host (and :port when not 3389).
-            var entry = _definition.KeePassEntry.Trim();
-            if (entry.Length == 0)
-            {
-                entry = "rdp://" + _definition.Host.Trim() + (_definition.Port is 3389 or 0 ? "" : $":{_definition.Port}");
-            }
-
-            var login = await KeePassXcPasswords.LookupAsync(
-                _vault, entry, _definition.Host, _definition.Port, username);
-            password = login.Password;
-            if (username.Length == 0)
-            {
-                username = login.Login;
-            }
-        }
-        else
-        {
-            password = _vault.Get(_definition.Id);
-        }
-
-        if (username.Length == 0)
-        {
-            var dialog = new CredentialPromptWindow($"{_definition.Host}:{_definition.Port}", Environment.UserName)
-            {
-                Owner = Window.GetWindow(this)
-            };
-            if (dialog.ShowDialog() != true)
-            {
-                throw new OperationCanceledException("Cancelled.");
-            }
-
-            username = dialog.Username;
-            if (dialog.Password.Length > 0)
-            {
-                password = dialog.Password;
-            }
-        }
-
-        if (string.IsNullOrEmpty(password))
-        {
-            password = _promptForSecret($"Password for {username}", "password");
-            if (password is null)
-            {
-                throw new OperationCanceledException("Cancelled.");
-            }
-        }
-
-        return (username, password);
     }
 
     /// <summary>The tab's size in device pixels, as RDP wants it: even, and within its limits.</summary>

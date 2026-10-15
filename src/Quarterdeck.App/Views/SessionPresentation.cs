@@ -19,6 +19,7 @@ internal static class SessionPresentation
         SessionProtocol.Vnc => ("VNC", Color.FromRgb(0xC6, 0x78, 0xDD)),
         SessionProtocol.Rtsp => ("CAM", Color.FromRgb(0xE0, 0x6C, 0x75)),
         SessionProtocol.Rdp => ("RDP", Color.FromRgb(0x56, 0xB6, 0xC2)),
+        SessionProtocol.Sql => ("SQL", Color.FromRgb(0xD1, 0x9A, 0x66)),
         SessionProtocol.Telnet => ("TEL", Color.FromRgb(0xE5, 0xC0, 0x7B)),
         SessionProtocol.Serial => ("COM", Color.FromRgb(0x98, 0xC3, 0x79)),
         _ => (ShellBadge(s.ShellCommand), Color.FromRgb(0x56, 0xB6, 0xC2))
@@ -51,6 +52,11 @@ internal static class SessionPresentation
             SessionProtocol.Vnc => host + PortSuffix(s.Port, 5900, hostShown) + (s.ViewOnly ? "  · view only" : ""),
             SessionProtocol.Rtsp => host + PortSuffix(s.Port, 554, hostShown) + (s.RtspPath.Length > 0 ? s.RtspPath : "  · ONVIF"),
             SessionProtocol.Serial => $"{s.SerialPort} · {s.BaudRate} {Framing(s)}",
+            SessionProtocol.Sql => s.SqlEngine == SqlEngine.Sqlite
+                ? System.IO.Path.GetFileName(s.SqlFile)
+                : (string.IsNullOrEmpty(s.Username) || s.SqlWindowsAuth ? "" : s.Username + "@") + host
+                  + PortSuffix(s.Port, Quarterdeck.Core.Sql.SqlSession.DefaultPort(s.SqlEngine), hostShown)
+                  + (s.SqlDatabase.Length > 0 ? "/" + s.SqlDatabase : ""),
             SessionProtocol.Rdp =>
                 (string.IsNullOrEmpty(s.Username) ? "" : s.Username + "@") + host + PortSuffix(s.Port, 3389, hostShown)
                 + (s.RdpGateway.Length > 0 ? "  · via " + s.RdpGateway : ""),
@@ -75,7 +81,8 @@ internal static class SessionPresentation
     /// port or a local shell never groups.
     /// </summary>
     public static string? HostKey(SessionDefinition s) =>
-        s.Protocol is SessionProtocol.Ssh or SessionProtocol.Telnet or SessionProtocol.Vnc or SessionProtocol.Rtsp or SessionProtocol.Rdp
+        (s.Protocol is SessionProtocol.Ssh or SessionProtocol.Telnet or SessionProtocol.Vnc or SessionProtocol.Rtsp or SessionProtocol.Rdp
+         || s.Protocol == SessionProtocol.Sql && s.SqlEngine != SqlEngine.Sqlite)
         && !string.IsNullOrWhiteSpace(s.Host)
             ? s.Host.Trim().ToLowerInvariant()
             : null;
@@ -86,6 +93,7 @@ internal static class SessionPresentation
         "ssh" => SessionProtocol.Ssh,
         "vnc" => SessionProtocol.Vnc,
         "rdp" => SessionProtocol.Rdp,
+        "sql" or "db" or "database" => SessionProtocol.Sql,
         "rtsp" or "cam" or "camera" => SessionProtocol.Rtsp,
         "telnet" or "tel" => SessionProtocol.Telnet,
         "serial" or "com" => SessionProtocol.Serial,
