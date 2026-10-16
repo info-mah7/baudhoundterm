@@ -15,6 +15,8 @@ public partial class App : Application
         // An unhandled exception on the UI thread would otherwise kill the app with no trace,
         // taking every open session with it.
         DispatcherUnhandledException += OnUnhandled;
+
+        SystemLook.Install(this);
     }
 
     /// <summary>Enables the text-box menu's items for the box it opened on.</summary>

@@ -1,7 +1,7 @@
 <Window x:Class="Quarterdeck.App.Views.SessionEditorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Shortcut properties" Height="620" Width="560"
+        Title="Shortcut properties" Height="620" Width="660"
         WindowStartupLocation="CenterOwner"
         Background="#171C27" Foreground="#DFE4EE">
   <Window.Resources>
@@ -24,7 +24,8 @@
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
-    <TabControl Grid.Row="0" Background="#171C27">
+    <!-- Seven pages: a column on the left, not two rows of tabs that swap when clicked. -->
+    <TabControl Grid.Row="0" Background="#171C27" TabStripPlacement="Left">
       <TabItem Header="Connection">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel Margin="12">
@@ -81,7 +82,7 @@
               <StackPanel x:Name="PasswordSourcePanel">
                 <TextBlock Text="Password from"/>
                 <ComboBox x:Name="PasswordSourceBox" SelectionChanged="OnAuthChanged">
-                  <ComboBoxItem Content="Saved here (DPAPI), or ask"/>
+                  <ComboBoxItem Content="Saved on this PC, or ask"/>
                   <ComboBoxItem Content="KeePassXC, looked up at each connect"/>
                 </ComboBox>
               </StackPanel>
@@ -96,7 +97,7 @@
               </StackPanel>
 
               <StackPanel x:Name="SecretPanel">
-                <TextBlock x:Name="SecretLabel" Text="Password (stored with DPAPI, blank keeps the existing one)"/>
+                <TextBlock x:Name="SecretLabel" Text="Password (encrypted on this PC; blank keeps the existing one)"/>
                 <PasswordBox x:Name="SecretBox" Padding="3"/>
               </StackPanel>
 
@@ -149,7 +150,7 @@
               <TextBox x:Name="VncHostBox"/>
               <TextBlock Text="Port"/>
               <TextBox x:Name="VncPortBox"/>
-              <TextBlock Text="Password (stored with DPAPI, blank keeps the existing one)"/>
+              <TextBlock Text="Password (encrypted on this PC; blank keeps the existing one)"/>
               <PasswordBox x:Name="VncSecretBox" Padding="3"/>
               <CheckBox x:Name="VncViewOnlyBox" Content="View only, send no input"/>
               <TextBlock Text="Classic VNC auth is weak by design. Fine on a trusted network, not across one."
@@ -167,12 +168,12 @@
               <TextBox x:Name="RdpDomainBox"/>
               <TextBlock Text="Password from"/>
               <ComboBox x:Name="RdpPasswordSourceBox">
-                <ComboBoxItem Content="Saved here (DPAPI), or ask"/>
+                <ComboBoxItem Content="Saved on this PC, or ask"/>
                 <ComboBoxItem Content="KeePassXC, looked up at each connect"/>
               </ComboBox>
               <TextBlock Text="KeePassXC entry: blank finds entries with URL rdp://host; or paste the entry's UUID"/>
               <TextBox x:Name="RdpKeePassEntryBox"/>
-              <TextBlock Text="Password (stored with DPAPI, blank keeps the existing one; none saved means ask)"/>
+              <TextBlock Text="Password (encrypted on this PC; blank keeps the existing one, none saved means ask)"/>
               <PasswordBox x:Name="RdpSecretBox" Padding="3"/>
               <TextBlock Text="Remote Desktop Gateway (optional)"/>
               <TextBox x:Name="RdpGatewayBox"/>
@@ -204,12 +205,12 @@
                   <TextBox x:Name="SqlUserBox"/>
                   <TextBlock Text="Password from"/>
                   <ComboBox x:Name="SqlPasswordSourceBox">
-                    <ComboBoxItem Content="Saved here (DPAPI), or ask"/>
+                    <ComboBoxItem Content="Saved on this PC, or ask"/>
                     <ComboBoxItem Content="KeePassXC, looked up at each connect"/>
                   </ComboBox>
                   <TextBlock Text="KeePassXC entry: blank finds entries with URL mssql://, postgresql:// or mysql://host; or paste the entry's UUID"/>
                   <TextBox x:Name="SqlKeePassEntryBox"/>
-                  <TextBlock Text="Password (stored with DPAPI, blank keeps the existing one; none saved means ask)"/>
+                  <TextBlock Text="Password (encrypted on this PC; blank keeps the existing one, none saved means ask)"/>
                   <PasswordBox x:Name="SqlSecretBox" Padding="3"/>
                 </StackPanel>
                 <CheckBox x:Name="SqlTrustBox" Content="Trust the server's certificate even if it does not verify (self-signed)"/>
@@ -238,7 +239,7 @@
                          Foreground="#5C6370" FontSize="11" TextWrapping="Wrap"/>
               <TextBlock Text="Username"/>
               <TextBox x:Name="RtspUserBox"/>
-              <TextBlock Text="Password (stored with DPAPI, blank keeps the existing one)"/>
+              <TextBlock Text="Password (encrypted on this PC; blank keeps the existing one)"/>
               <PasswordBox x:Name="RtspSecretBox" Padding="3"/>
               <CheckBox x:Name="RtspTcpBox" Content="RTP over TCP (works through firewalls; UDP is lighter)"/>
               <CheckBox x:Name="RtspLowLatencyBox" Content="Low latency (200 ms buffer instead of 1 s)"/>
@@ -373,7 +374,7 @@
 
     <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
       <Button Content="Cancel" Width="90" Margin="0,0,8,0" IsCancel="True"/>
-      <Button Content="Save" Width="90" IsDefault="True" Click="OnSave"/>
+      <Button Content="Save" Width="90" IsDefault="True" Click="OnSave" Style="{StaticResource QdPrimary}"/>
     </StackPanel>
   </Grid>
 </Window>

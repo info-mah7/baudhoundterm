@@ -28,6 +28,10 @@ serial, local shells, VNC desktops and RTSP cameras. This manual covers build 0.
 It needs WebView2, which Windows 11 already has. The app starts with no tabs open. The title bar
 shows the version and build number.
 
+The window follows Windows' **Text size** setting (Settings > Accessibility > Text size), and
+High Contrast themes replace its dark colours. Closing it while tabs are connected asks first,
+because tabs are not reopened on the next start.
+
 ## 2. Connecting
 
 ### Quick connect
@@ -87,7 +91,7 @@ The properties window has seven tabs. **Save** keeps the changes.
 
 - **Host**, **Port** (22), **Username**.
 - **Authentication:**
-  - **Password**. **Password from** is either *Saved here (DPAPI), or ask* or *KeePassXC, looked
+  - **Password**. **Password from** is either *Saved on this PC, or ask* or *KeePassXC, looked
     up at each connect*.
   - **Public key file**, with an optional key passphrase.
   - **SSH agent (KeePassXC, Pageant, OpenSSH agent)**. The key stays in the agent, which only
@@ -182,6 +186,8 @@ is a temporary file. Other tab types do not support it.
 
 ### Tab strip
 
+- **Name:** the shortcut's name. The title the shell or server sets is in the tab's tooltip and on
+  its row in the shortcut list.
 - **Colour:** right-click a tab to pick a colour, which is saved on the shortcut. When two tabs
   open to the same machine, they get different colours automatically.
 - **State dot** (serial and telnet tabs): grey disconnected, amber connecting, green connected,
@@ -230,7 +236,7 @@ a device's UART and reach that UART over Wi-Fi.
 1. Make sure the PC is on the same network as the BaudHound: either the network the device joined,
    or the device's own Wi-Fi, `BaudHound-XXXX`.
 2. Press **BaudHound** on the toolbar. The window searches for about two seconds.
-3. Pick the device and press **Connect**, or double-click it.
+3. Pick the device and press **Connect to device**, or double-click it.
 
 Each result shows the device's address, firmware, baud rate, the network it joined, and its
 certificate fingerprint. **Save shortcut** adds it to the **BaudHound** folder; saving it again
