@@ -20,6 +20,20 @@
     <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FFFFFF"/>
     <SolidColorBrush x:Key="{x:Static SystemColors.GrayTextBrushKey}" Color="#7C8AA0"/>
 
+    <!-- Keyboard focus. The stock focus rectangle is black dots, invisible on this chrome, and
+         the templated controls below would otherwise show none at all. -->
+    <Style x:Key="QdFocusVisual">
+      <Setter Property="Control.Template">
+        <Setter.Value>
+          <ControlTemplate>
+            <Rectangle Margin="-2" Stroke="#7AA2F7" StrokeThickness="2" RadiusX="3" RadiusY="3"
+                       SnapsToDevicePixels="True"/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="{x:Static SystemParameters.FocusVisualStyleKey}" BasedOn="{StaticResource QdFocusVisual}"/>
+
     <Style TargetType="Menu">
       <Setter Property="Background" Value="#171C27"/>
       <Setter Property="Foreground" Value="#DFE4EE"/>
@@ -173,6 +187,7 @@
     <!-- The stock ComboBox paints its own light surface from theme brushes, so a dark
          Foreground setter alone leaves pale text on white. Template it. -->
     <Style TargetType="ComboBox">
+      <Setter Property="FocusVisualStyle" Value="{StaticResource QdFocusVisual}"/>
       <Setter Property="Foreground" Value="#DFE4EE"/>
       <Setter Property="Height" Value="24"/>
       <Setter Property="Template">
@@ -183,14 +198,14 @@
                             IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
                 <ToggleButton.Template>
                   <ControlTemplate TargetType="ToggleButton">
-                    <Border x:Name="Box" Background="#10141C" BorderBrush="#3A4459"
+                    <Border x:Name="Box" Background="#10141C" BorderBrush="#5D6984"
                             BorderThickness="1" CornerRadius="2">
                       <Path HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0"
                             Data="M0,0 L8,0 L4,5 Z" Fill="#8B94A7"/>
                     </Border>
                     <ControlTemplate.Triggers>
                       <Trigger Property="IsMouseOver" Value="True">
-                        <Setter TargetName="Box" Property="BorderBrush" Value="#5C6370"/>
+                        <Setter TargetName="Box" Property="BorderBrush" Value="#8B94A7"/>
                       </Trigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
@@ -253,6 +268,7 @@
     <!-- The stock tab paints a light selected header from the Windows theme, which left the
          active tab white on white. Template it so selection reads as a lit tab on dark chrome. -->
     <Style TargetType="TabItem">
+      <Setter Property="FocusVisualStyle" Value="{StaticResource QdFocusVisual}"/>
       <Setter Property="Foreground" Value="#8B94A7"/>
       <Setter Property="Template">
         <Setter.Value>
@@ -271,6 +287,14 @@
                 <Setter Property="Foreground" Value="#FFFFFF"/>
                 <Setter Property="Panel.ZIndex" Value="1"/>
               </Trigger>
+              <!-- A strip on the left (the shortcut editor) reads as a list of pages. -->
+              <Trigger Property="TabStripPlacement" Value="Left">
+                <Setter TargetName="Box" Property="BorderThickness" Value="1,1,0,1"/>
+                <Setter TargetName="Box" Property="CornerRadius" Value="3,0,0,3"/>
+                <Setter TargetName="Box" Property="Margin" Value="0,0,0,2"/>
+                <Setter TargetName="Box" Property="Padding" Value="12,7"/>
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+              </Trigger>
               <MultiTrigger>
                 <MultiTrigger.Conditions>
                   <Condition Property="IsSelected" Value="False"/>
@@ -287,10 +311,40 @@
     <Style TargetType="TextBlock">
       <Setter Property="Foreground" Value="#DFE4EE"/>
     </Style>
+    <!-- The stock ListBox paints a white surface from the Windows theme. -->
+    <Style TargetType="ListBox">
+      <Setter Property="Background" Value="#10141C"/>
+      <Setter Property="Foreground" Value="#DFE4EE"/>
+      <Setter Property="BorderBrush" Value="#5D6984"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource QdFocusVisual}"/>
+    </Style>
+    <Style TargetType="ListBoxItem">
+      <Setter Property="Foreground" Value="#DFE4EE"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource QdFocusVisual}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBoxItem">
+            <Border x:Name="Box" Background="Transparent" Padding="{TemplateBinding Padding}">
+              <ContentPresenter/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Box" Property="Background" Value="#1C2230"/>
+              </Trigger>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="Box" Property="Background" Value="#2F3B52"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
     <Style TargetType="Label">
       <Setter Property="Foreground" Value="#DFE4EE"/>
     </Style>
     <Style TargetType="CheckBox">
+      <Setter Property="FocusVisualStyle" Value="{StaticResource QdFocusVisual}"/>
       <Setter Property="Foreground" Value="#DFE4EE"/>
     </Style>
     <Style TargetType="DataGrid">
@@ -306,6 +360,8 @@
       <Setter Property="Padding" Value="6,4"/>
     </Style>
     <Style TargetType="TabControl">
+      <!-- The tabs are the stops; the control itself is not one. -->
+      <Setter Property="IsTabStop" Value="False"/>
       <Setter Property="Background" Value="#0F131A"/>
       <Setter Property="BorderBrush" Value="#232A38"/>
     </Style>
@@ -330,6 +386,7 @@
     </Style>
     <!-- Templated: the stock button turns pale blue on hover and press. -->
     <Style TargetType="Button">
+      <Setter Property="FocusVisualStyle" Value="{StaticResource QdFocusVisual}"/>
       <Setter Property="Background" Value="#2A3245"/>
       <Setter Property="Foreground" Value="#DFE4EE"/>
       <Setter Property="BorderBrush" Value="#3A4459"/>
@@ -344,13 +401,19 @@
               <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2"/>
               <Border x:Name="Shade" Background="Transparent" CornerRadius="2"/>
+              <!-- The empty TextBlock style blocks the app-wide one, which pinned every label
+                   to one colour: disabled buttons looked exactly like enabled ones. -->
               <ContentPresenter Margin="{TemplateBinding Padding}" RecognizesAccessKey="True"
                                 HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
+                <ContentPresenter.Resources>
+                  <Style TargetType="TextBlock"/>
+                </ContentPresenter.Resources>
+              </ContentPresenter>
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Shade" Property="Background" Value="#22FFFFFF"/>
+                <Setter TargetName="Shade" Property="Background" Value="#33FFFFFF"/>
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="Shade" Property="Background" Value="#33000000"/>
@@ -363,18 +426,31 @@
         </Setter.Value>
       </Setter>
     </Style>
+    <!-- The most likely action in a dialog: Save, Connect to device. -->
+    <Style x:Key="QdPrimary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Background" Value="#3B5BA9"/>
+      <Setter Property="BorderBrush" Value="#7AA2F7"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Style.Triggers>
+        <!-- Disabled, it is an ordinary dimmed button: grey text on the accent read as broken. -->
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Background" Value="#2A3245"/>
+          <Setter Property="BorderBrush" Value="#3A4459"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
     <Style TargetType="TextBox">
       <Setter Property="Background" Value="#10141C"/>
       <Setter Property="ContextMenu" Value="{StaticResource QdEditMenu}"/>
       <Setter Property="Foreground" Value="#DFE4EE"/>
-      <Setter Property="BorderBrush" Value="#3A4459"/>
+      <Setter Property="BorderBrush" Value="#5D6984"/>
       <Setter Property="CaretBrush" Value="#DFE4EE"/>
     </Style>
     <Style TargetType="PasswordBox">
       <Setter Property="Background" Value="#10141C"/>
       <Setter Property="ContextMenu" Value="{StaticResource QdEditMenu}"/>
       <Setter Property="Foreground" Value="#DFE4EE"/>
-      <Setter Property="BorderBrush" Value="#3A4459"/>
+      <Setter Property="BorderBrush" Value="#5D6984"/>
       <Setter Property="CaretBrush" Value="#DFE4EE"/>
     </Style>
   </Application.Resources>

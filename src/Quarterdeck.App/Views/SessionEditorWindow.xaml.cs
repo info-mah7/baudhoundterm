@@ -227,8 +227,8 @@ public partial class SessionEditorWindow : Window
         KeePassPanel.Visibility = fromKeePass ? Visibility.Visible : Visibility.Collapsed;
         SecretPanel.Visibility = auth == SshAuthMethod.PublicKey || (usesPassword && !fromKeePass) ? Visibility.Visible : Visibility.Collapsed;
         SecretLabel.Text = auth == SshAuthMethod.PublicKey
-            ? "Key passphrase (stored with DPAPI, blank keeps the existing one)"
-            : "Password (stored with DPAPI, blank keeps the existing one; none saved means ask)";
+            ? "Key passphrase (encrypted on this PC; blank keeps the existing one)"
+            : "Password (encrypted on this PC; blank keeps the existing one, none saved means ask)";
 
         AuthNote.Text = auth switch
         {

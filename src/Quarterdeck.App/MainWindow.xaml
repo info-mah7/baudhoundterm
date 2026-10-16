@@ -21,9 +21,9 @@
         <MenuItem Header="_New shortcut..." Click="OnNewSession" InputGestureText="Ctrl+Shift+T"/>
         <MenuItem Header="New _folder..." Click="OnNewFolder"/>
         <MenuItem Header="_Move to folder..." Click="OnMoveToFolder"/>
-        <MenuItem Header="_Connect" Click="OnConnect"/>
-        <MenuItem Header="_Properties..." Click="OnEdit"/>
-        <MenuItem Header="_Delete shortcut" Click="OnDelete"/>
+        <MenuItem x:Name="ConnectMenu" Header="_Connect" Click="OnConnect"/>
+        <MenuItem x:Name="PropertiesMenu" Header="_Properties..." Click="OnEdit"/>
+        <MenuItem x:Name="DeleteMenu" Header="_Delete shortcut" Click="OnDelete"/>
         <Separator/>
         <MenuItem Header="Passwords and _keys (KeePassXC)..." Click="OnKeePassXc"/>
         <MenuItem Header="S_ync between PCs (git)..." Click="OnSyncSettings"/>
@@ -31,12 +31,12 @@
         <MenuItem Header="E_xit" Click="OnExit"/>
       </MenuItem>
       <MenuItem Header="_Terminal">
-        <MenuItem Header="_Find in scrollback" Click="OnFind" InputGestureText="Ctrl+Shift+F"/>
-        <MenuItem Header="C_lear screen" Click="OnClear"/>
+        <MenuItem x:Name="FindMenu" Header="_Find in scrollback" Click="OnFind" InputGestureText="Ctrl+Shift+F"/>
+        <MenuItem x:Name="ClearMenu" Header="C_lear screen" Click="OnClear"/>
         <MenuItem x:Name="ConnToggleMenu" Header="_Disconnect tab" Click="OnToggleConnection"/>
-        <MenuItem Header="Close ta_b" Click="OnCloseTab"/>
+        <MenuItem x:Name="CloseTabMenu" Header="Close ta_b" Click="OnCloseTab"/>
         <Separator/>
-        <MenuItem Header="_Agent on this tab" Click="OnToggleAgent" InputGestureText="Ctrl+Shift+A"/>
+        <MenuItem x:Name="AgentMenu" Header="_Agent on this tab" Click="OnToggleAgent" InputGestureText="Ctrl+Shift+A"/>
         <MenuItem Header="Agent _endpoints and skills..." Click="OnAgentSettings"/>
       </MenuItem>
       <!-- Filled when opened: what is offered depends on the active tab's protocol. -->
@@ -71,18 +71,18 @@
         </WrapPanel.Resources>
 
         <Button Click="OnNewSession" ToolTip="New shortcut (Ctrl+Shift+T)">New</Button>
-        <Button Click="OnEdit" ToolTip="Open the selected shortcut's properties">Open</Button>
+        <Button x:Name="OpenButton" Click="OnEdit" ToolTip="Open the selected shortcut's properties">Open</Button>
         <Rectangle/>
-        <Button Click="OnConnect" ToolTip="Connect the selected shortcut in a new tab">Connect</Button>
+        <Button x:Name="ConnectButton" Click="OnConnect" ToolTip="Connect the selected shortcut in a new tab">Connect</Button>
         <Button x:Name="ConnToggle" Click="OnToggleConnection"
                 ToolTip="Disconnect the active tab, leaving it open">Disconnect</Button>
-        <Button Click="OnCloseTab" ToolTip="Disconnect and close the active tab">Close</Button>
+        <Button x:Name="CloseButton" Click="OnCloseTab" ToolTip="Disconnect and close the active tab">Close</Button>
         <Rectangle/>
         <Button Click="OnShellMenu" ToolTip="A local shell in a new tab, without saving a shortcut: PowerShell or Command Prompt, as you or as administrator. Administrator relaunches BaudHoundTerm through UAC when it is not already elevated.">Shell ▾</Button>
         <Rectangle/>
-        <Button Click="OnFilesButton" ToolTip="Move files to and from the active tab's device or server: SFTP over SSH, typed text files for any terminal">Files ▾</Button>
-        <Button Click="OnFind" ToolTip="Find in scrollback (Ctrl+Shift+F)">Find</Button>
-        <Button Click="OnClear" ToolTip="Clear the screen">Clear</Button>
+        <Button x:Name="FilesButton" Click="OnFilesButton" ToolTip="Move files to and from the active tab's device or server: SFTP over SSH, typed text files for any terminal">Files ▾</Button>
+        <Button x:Name="FindButton" Click="OnFind" ToolTip="Find in scrollback (Ctrl+Shift+F)">Find</Button>
+        <Button x:Name="ClearButton" Click="OnClear" ToolTip="Clear the screen">Clear</Button>
         <Rectangle/>
         <Button Click="OnBaudHound" ToolTip="Find BaudHound wireless serial consoles on this PC's networks and open one">BaudHound</Button>
         <Rectangle/>
@@ -96,6 +96,7 @@
         <TextBlock DockPanel.Dock="Left" Text="Quick connect" Foreground="#8B94A7"
                    VerticalAlignment="Center" Margin="4,0,8,0"/>
         <ComboBox x:Name="QuickProtocol" DockPanel.Dock="Left" Width="110" SelectedIndex="0"
+                  AutomationProperties.Name="Quick connect protocol"
                   VerticalAlignment="Center" ToolTip="Protocol"
                   SelectionChanged="OnQuickProtocolChanged">
           <ComboBoxItem Content="SSH" Tag="Ssh"/>
@@ -128,6 +129,7 @@
         </StackPanel>
 
         <TextBox x:Name="QuickAddress" Margin="8,0,0,0" Padding="4,3" VerticalAlignment="Center"
+                 AutomationProperties.Name="Quick connect address"
                  KeyDown="OnQuickAddressKey"
                  ToolTip="SSH and RDP: host, host:port or user@host:port (the user name is asked when not given). Telnet: host or host:port. VNC: host, host:port or host:1. Local shell: a command line. Serial has its own fields."/>
       </DockPanel>
@@ -141,10 +143,15 @@
       </Grid.ColumnDefinitions>
 
       <DockPanel Grid.Column="0" Background="#141922">
-        <DockPanel DockPanel.Dock="Top" Margin="6">
-          <Button DockPanel.Dock="Right" Content="+" Width="26" Margin="6,0,0,0"
+        <!-- Local tab order: the filter first, then the two buttons beside it, though they come
+             first in the markup so they can dock right. -->
+        <DockPanel DockPanel.Dock="Top" Margin="6" KeyboardNavigation.TabNavigation="Local">
+          <Button DockPanel.Dock="Right" Content="+" Width="26" Margin="6,0,0,0" TabIndex="2"
+                  AutomationProperties.Name="New shortcut"
                   ToolTip="New shortcut" Click="OnNewSession"/>
           <ToggleButton x:Name="GroupToggle" DockPanel.Dock="Right" Content="🖥" Width="26" Margin="6,0,0,0"
+                        TabIndex="1" AutomationProperties.Name="Group shortcuts by host"
+                        FocusVisualStyle="{StaticResource QdFocusVisual}"
                         Click="OnGroupToggle"
                         ToolTip="Group shortcuts that share a host under one row. Off: a flat list. Remembered.">
             <ToggleButton.Template>
@@ -164,11 +171,13 @@
               </ControlTemplate>
             </ToggleButton.Template>
           </ToggleButton>
-          <TextBox x:Name="FilterBox" Padding="3" TextChanged="OnFilterChanged"
+          <TextBox x:Name="FilterBox" Padding="3" TextChanged="OnFilterChanged" TabIndex="0"
+                   AutomationProperties.Name="Filter shortcuts"
                    ToolTip="Filter by name, host or tag. Protocol words narrow it: &quot;vnc atlas&quot;, &quot;ssh&quot;, &quot;serial&quot;."/>
         </DockPanel>
 
         <TreeView x:Name="SessionTree" Background="#141922" Foreground="#DFE4EE"
+                  AutomationProperties.Name="Shortcuts" FocusVisualStyle="{StaticResource QdFocusVisual}"
                   BorderThickness="0" MouseDoubleClick="OnTreeActivated"
                   SelectedItemChanged="OnTreeSelectionChanged"
                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -176,6 +185,7 @@
           <TreeView.ItemContainerStyle>
             <Style TargetType="TreeViewItem">
               <Setter Property="IsExpanded" Value="True"/>
+              <Setter Property="FocusVisualStyle" Value="{StaticResource QdFocusVisual}"/>
               <!-- Without an explicit Foreground the item falls back to the system colour,
                    which is black: invisible on this background. The Style.Resources override
                    the selection brushes for the same reason - the default selected text is
@@ -196,13 +206,23 @@
         </TreeView>
       </DockPanel>
 
-      <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="#0F131A"/>
+      <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="#0F131A"
+                    AutomationProperties.Name="Resize the shortcut list"
+                    FocusVisualStyle="{StaticResource QdFocusVisual}"/>
 
       <!-- The TabControl's own Background does not paint the content panel, which left a
            white slab before the first tab existed. The Border behind it does. -->
       <Border Grid.Column="2" Background="#0F131A">
-        <TabControl x:Name="Tabs" Background="Transparent" BorderThickness="0"
-                    SelectionChanged="OnTabSelectionChanged"/>
+        <Grid>
+          <!-- Shown until the first tab opens. -->
+          <TextBlock x:Name="EmptyHint" HorizontalAlignment="Center" VerticalAlignment="Center"
+                     TextAlignment="Center" Foreground="#8B94A7" LineHeight="22">
+            Double-click a shortcut, or type an address in Quick connect.<LineBreak/>
+            New shortcut: Ctrl+Shift+T
+          </TextBlock>
+          <TabControl x:Name="Tabs" Background="Transparent" BorderThickness="0"
+                      SelectionChanged="OnTabSelectionChanged"/>
+        </Grid>
       </Border>
     </Grid>
   </DockPanel>

@@ -51,11 +51,31 @@ public partial class MainWindow : Window
         }
 
         InitSync();
+        UpdateConnectionToggle();
+        UpdateSelectionCommands();
 
         // Tabs are not kept across restarts: the app starts with none open. A connection that
         // drops while the app runs still reconnects, per the shortcut's reconnect settings.
-        Closing += async (_, _) =>
+        Closing += async (_, e) =>
         {
+            // Tabs are not restored, so closing ends every live session for good. Say so first.
+            var live = Tabs.Items.OfType<TabItem>().Select(t => t.Content).OfType<TerminalView>().Count(v => v.IsConnected);
+            if (live > 0 && !_closeConfirmed)
+            {
+                var answer = MessageBox.Show(this,
+                    live == 1
+                        ? "One tab is still connected. Close BaudHoundTerm and end that session?"
+                        : $"{live} tabs are still connected. Close BaudHoundTerm and end those sessions?",
+                    "Close BaudHoundTerm", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+                if (answer != MessageBoxResult.Yes)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+
+                _closeConfirmed = true;
+            }
+
             foreach (var view in Tabs.Items.OfType<TabItem>().Select(t => t.Content).OfType<TerminalView>())
             {
                 await view.DisconnectAsync();
@@ -472,6 +492,19 @@ public partial class MainWindow : Window
 
     private SessionDefinition? Selected => (SessionTree.SelectedItem as TreeViewItem)?.Tag as SessionDefinition;
 
+    private bool _closeConfirmed;
+
+    /// <summary>Shortcut commands work on the selected shortcut; without one they are dimmed.</summary>
+    private void UpdateSelectionCommands()
+    {
+        var any = Selected is not null;
+        OpenButton.IsEnabled = any;
+        ConnectButton.IsEnabled = any;
+        ConnectMenu.IsEnabled = any;
+        PropertiesMenu.IsEnabled = any;
+        DeleteMenu.IsEnabled = any;
+    }
+
     private TerminalView? ActiveView => (Tabs.SelectedItem as TabItem)?.Content as TerminalView;
 
     private void OnFilterChanged(object sender, TextChangedEventArgs e) => RebuildTree();
@@ -587,9 +620,12 @@ public partial class MainWindow : Window
 
         RefreshTab(live);
         tab.ContextMenu = BuildTabMenu(tab, definition);
+        // The tab keeps the shortcut's name: PowerShell titles itself with its full path. What
+        // the shell says goes in the tab's tooltip and on its row in the list.
         view.TitleChanged += (_, title) =>
         {
-            live.Title = string.IsNullOrWhiteSpace(title) ? definition.Name : title;
+            live.ShellTitle = string.IsNullOrWhiteSpace(title) ? "" : title;
+            tab.ToolTip = live.ShellTitle.Length > 0 ? live.ShellTitle : null;
             RefreshTab(live);
         };
         view.AgentAttachedChanged += (_, _) => RefreshTab(live);
@@ -619,6 +655,7 @@ public partial class MainWindow : Window
         };
 
         Tabs.Items.Add(tab);
+        UpdateConnectionToggle();
         Tabs.SelectedItem = tab;
         view.FocusTerminal();
         RebuildTree();   // the new connection shows under its shortcut straight away
@@ -646,6 +683,7 @@ public partial class MainWindow : Window
         public TerminalView View { get; } = view;
         public SessionDefinition Definition { get; } = definition;
         public string Title { get; set; } = "";
+        public string ShellTitle { get; set; } = "";
         public string Colour { get; set; } = "";
         public SessionState State { get; set; } = SessionState.Connecting;
     }
@@ -720,7 +758,7 @@ public partial class MainWindow : Window
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         panel.Children.Add(ColourStripe(live.Colour, hollow: true));
-        panel.Children.Add(new TextBlock { Text = ShortTitle(live.Title), VerticalAlignment = VerticalAlignment.Center });
+        panel.Children.Add(new TextBlock { Text = ShortTitle(live.ShellTitle.Length > 0 ? live.ShellTitle : live.Title), VerticalAlignment = VerticalAlignment.Center });
         panel.Children.Add(new TextBlock
         {
             Text = live.State switch
@@ -822,6 +860,7 @@ public partial class MainWindow : Window
     /// <summary>Clicking an open connection in the list brings its tab forward.</summary>
     private void OnTreeSelectionChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
+        UpdateSelectionCommands();
         if ((e.NewValue as TreeViewItem)?.Tag is LiveTab live && Tabs.Items.Contains(live.Tab))
         {
             Tabs.SelectedItem = live.Tab;
@@ -1035,6 +1074,8 @@ public partial class MainWindow : Window
                 : "Attach an agent to this session (Ctrl+Shift+A)"
         };
 
+        System.Windows.Automation.AutomationProperties.SetName(button, on ? "Detach the agent from this tab" : "Attach an agent to this tab");
+
         button.Click += (_, e) =>
         {
             e.Handled = true;
@@ -1113,9 +1154,19 @@ public partial class MainWindow : Window
         ConnToggle.ToolTip = reconnect
             ? "Connect the active tab again, keeping its scrollback (or press Enter in it)"
             : "Disconnect the active tab, leaving it open";
-        // Left enabled with no tab open: the toolbar's disabled look is a pale slab on this
-        // theme, and the click simply does nothing.
         ConnToggleMenu.Header = reconnect ? "_Reconnect tab" : "_Disconnect tab";
+
+        // Dimmed with no tab: the buttons' labels follow their Foreground since the button
+        // template stopped the app-wide TextBlock style from pinning it.
+        var tab = view is not null;
+        foreach (var control in new UIElement[] { ConnToggle, CloseButton, FindButton, ClearButton, FilesButton,
+                                                  ConnToggleMenu, CloseTabMenu, FindMenu, ClearMenu })
+        {
+            control.IsEnabled = tab;
+        }
+
+        AgentMenu.IsEnabled = view is { CanAttachAgent: true };
+        EmptyHint.Visibility = Tabs.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async void OnCloseTab(object sender, RoutedEventArgs e)
@@ -1139,6 +1190,7 @@ public partial class MainWindow : Window
         }
 
         Tabs.Items.Remove(tab);
+        UpdateConnectionToggle();
         (tab.Content as TerminalView)?.Release();
 
         if (LiveFor(tab) is { } live)
