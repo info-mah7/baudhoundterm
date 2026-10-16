@@ -130,7 +130,52 @@ function connect(cfg) {
     send({ t: 'vnc', s: 'failed', reason: e.detail.reason || '' });
   });
   rfb.addEventListener('desktopname', e => send({ t: 'title', d: e.detail.name }));
+  rfb.addEventListener('clipboard', e => toLocal(e.detail.text));
 }
+
+// ---------- clipboard ----------
+// noVNC carries the RFB clipboard messages but leaves this machine's clipboard to the page.
+// Without this, Ctrl+V in the tab sends only the keystroke and the far end pastes its own
+// clipboard. So Ctrl+V is caught before noVNC's canvas handler sees it, the local text goes
+// over as ClientCutText, and only then is V pressed there (Ctrl is already down remotely).
+// Classic RFB clipboard text is Latin-1: noVNC turns anything outside it into '?'.
+document.addEventListener('keydown', e => {
+  if (!rfb || rfb.viewOnly || e.code !== 'KeyV' || !e.ctrlKey || e.altKey || e.metaKey) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  if (e.repeat) return;
+  navigator.clipboard.readText()
+    .catch(err => { log('clipboard read failed: ' + (err && err.message || err)); return ''; })
+    .then(text => {
+      if (!rfb) return;
+      if (text) rfb.clipboardPasteFrom(text);
+      // The server applies the cut text before it injects the key, but give it a moment. A quick
+      // Ctrl+V has often let go of Ctrl by now, so press it again around the V if so.
+      setTimeout(() => {
+        if (!rfb) return;
+        const wrap = !ctrlHeld;
+        if (wrap) rfb.sendKey(0xffe3, 'ControlLeft', true);
+        rfb.sendKey(0x76, 'KeyV', true);
+        rfb.sendKey(0x76, 'KeyV', false);
+        if (wrap) rfb.sendKey(0xffe3, 'ControlLeft', false);
+      }, 50);
+    });
+}, true);
+
+let ctrlHeld = false;
+for (const type of ['keydown', 'keyup']) {
+  document.addEventListener(type, e => { if (e.key === 'Control') ctrlHeld = type === 'keydown'; }, true);
+}
+window.addEventListener('blur', () => { ctrlHeld = false; });
+
+// A copy on the far end lands here. Writing needs the page focused; if it is not, the text
+// waits for the next focus rather than being lost.
+let pendingClip = null;
+function toLocal(text) {
+  pendingClip = text;
+  navigator.clipboard.writeText(text).then(() => { if (pendingClip === text) pendingClip = null; }, () => {});
+}
+window.addEventListener('focus', () => { if (pendingClip !== null) toLocal(pendingClip); });
 
 host && host.addEventListener('message', ev => {
   const m = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
