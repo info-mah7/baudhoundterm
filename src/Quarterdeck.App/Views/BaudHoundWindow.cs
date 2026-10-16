@@ -50,6 +50,8 @@ internal sealed class BaudHoundWindow : Window
             Foreground = Muted
         });
 
+        System.Windows.Automation.AutomationProperties.SetName(_list, "BaudHounds found");
+        System.Windows.Automation.AutomationProperties.SetName(_address, "Address to connect to");
         _list.SelectionChanged += (_, _) => Refresh();
         _list.MouseDoubleClick += (_, e) =>
         {
@@ -63,7 +65,8 @@ internal sealed class BaudHoundWindow : Window
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
         _search = Btn("Search again", async () => await SearchAsync(), "Ask again; takes about two seconds");
-        _open = Btn("Connect", () => Open(Selected!), "Open the device's serial console in a new tab");
+        _open = Btn("Connect to device", () => Open(Selected!), "Open the device's serial console in a new tab");
+        _open.Style = (Style)Application.Current.FindResource("QdPrimary");
         _keep = Btn("Save shortcut", () => Keep(Selected!), "Add it to the BaudHound folder, or update the address of the one already there");
         _web = Btn("Web page", () => Browse(Selected!), "Open the device's own console and settings page in the browser");
         actions.Children.Add(_search);
@@ -74,7 +77,7 @@ internal sealed class BaudHoundWindow : Window
 
         root.Children.Add(new TextBlock { Text = "Or connect to an address (port 23 unless given; :992 for TLS):", Margin = new Thickness(0, 14, 0, 2) });
         var manual = new DockPanel();
-        var go = Btn("Connect", ConnectTyped);
+        var go = Btn("Connect to address", ConnectTyped);
         go.Margin = new Thickness(6, 0, 0, 0);
         DockPanel.SetDock(go, Dock.Right);
         manual.Children.Add(go);
@@ -103,6 +106,7 @@ internal sealed class BaudHoundWindow : Window
     {
         _search.IsEnabled = false;
         Status("Searching...", Muted);
+        Placeholder("Searching...");
 
         IReadOnlyList<BaudHoundDevice> devices;
         try
@@ -118,6 +122,11 @@ internal sealed class BaudHoundWindow : Window
 
         var previous = Selected?.Name;
         _list.Items.Clear();
+        if (devices.Count == 0)
+        {
+            Placeholder("No BaudHounds found yet. The note below says what to check.");
+        }
+
         foreach (var device in devices)
         {
             var item = new ListBoxItem { Content = Row(device), Tag = device, Padding = new Thickness(4) };
@@ -138,6 +147,18 @@ internal sealed class BaudHoundWindow : Window
 
         _search.IsEnabled = true;
         Refresh();
+    }
+
+    /// <summary>A line inside the empty list, so it never reads as a blank box.</summary>
+    private void Placeholder(string text)
+    {
+        _list.Items.Clear();
+        _list.Items.Add(new ListBoxItem
+        {
+            Content = new TextBlock { Text = text, Foreground = Muted, Margin = new Thickness(6, 8, 6, 8) },
+            IsEnabled = false,
+            Focusable = false
+        });
     }
 
     private static StackPanel Row(BaudHoundDevice d)
