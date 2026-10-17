@@ -79,6 +79,9 @@ After every move, the move list decides:
   `moves: 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6`. Pictures are dropped; this line is your only memory.
 - Copy the list exactly as the screen shows it, up to its last entry. Never add a move you have
   not read there: the last number on screen is the last move made.
+- Before each move, check its number against the list: if the list already shows the move you
+  are about to make, it is done, and it may be your turn again. Clicking a piece over and over
+  means your idea of the position is out of date: read the list.
 - Before choosing a move, rebuild the position from that list, not from an old picture. Check that
   your piece is really on the square you mean (zoom if unsure).
 

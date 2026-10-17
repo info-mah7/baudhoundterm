@@ -121,8 +121,23 @@ public sealed partial class AgentRunner
         || result.StartsWith("refused", StringComparison.Ordinal) || result.StartsWith("error", StringComparison.Ordinal);
 
     private const string NoChange = "the screen did not visibly change";
-    private const int CycleWindow = 15, CycleWarn = 3, CycleRefuse = 6;
-    private readonly Queue<string> _recent = new();
+    private const int CycleWindow = 15, CycleWarn = 3, CycleRefuse = 6, CycleNear = 15;
+    private readonly Queue<(string What, int[] Points)> _recent = new();
+
+    /// <summary>
+    /// The action without its seen note and positions, and the positions apart: one click
+    /// aimed a few points off the last (y 848, 850, 855) is still the same click.
+    /// </summary>
+    private static (string What, int[] Points) Shape(string name, JsonObject args)
+    {
+        string[] xy = ["x", "y", "x1", "y1", "x2", "y2"];
+        var what = name + " " + new JsonObject(args.Where(kv => kv.Key != "seen" && !xy.Contains(kv.Key))
+            .Select(kv => KeyValuePair.Create(kv.Key, kv.Value?.DeepClone()))).ToJsonString();
+        return (what, xy.Where(args.ContainsKey).Select(k => IntOrNull(args, k) ?? -1000).ToArray());
+    }
+
+    private static bool Near((string What, int[] Points) a, (string What, int[] Points) b) =>
+        a.What == b.What && a.Points.Length == b.Points.Length && a.Points.Zip(b.Points).All(p => Math.Abs(p.First - p.Second) <= CycleNear);
     private string _noEffectCall = "";
     private int _noEffectCount;
 
@@ -148,14 +163,15 @@ public sealed partial class AgentRunner
 
         // Going round in a circle: three illegal chess moves tried in turn, each changing the
         // screen a little (a piece selected, then not), so the exact-repeat guard never fired.
-        var before = _recent.Count(c => c == call);
+        var shape = Shape(name, args);
+        var before = _recent.Count(c => Near(c, shape));
         if (before >= CycleRefuse - 1)
         {
-            return $"refused: this exact action is {before + 1} of your last {_recent.Count + 1} and has not got you anywhere. " +
+            return $"refused: you have done this ({shape.What.Split(' ')[0]} at nearly the same point) {before + 1} times in your last {_recent.Count + 1} actions, and it has not got you anywhere. " +
                    "Stop going round: look at the screen, question what you believe about it, and try something different.";
         }
 
-        _recent.Enqueue(call);
+        _recent.Enqueue(shape);
         if (_recent.Count > CycleWindow)
         {
             _recent.Dequeue();
@@ -164,7 +180,7 @@ public sealed partial class AgentRunner
         var result = await ExecuteScreenCoreAsync(name, args, token);
         if (before + 1 >= CycleWarn && !ScreenActionFailed(result))
         {
-            result += $" Note: you have done exactly this {before + 1} times in your last {_recent.Count} actions. If it is not " +
+            result += $" Note: you have done this, at nearly the same point, {before + 1} times in your last {_recent.Count} actions. If it is not " +
                       "getting you anywhere, you are going in circles: change approach.";
         }
         if (result.Contains(NoChange, StringComparison.Ordinal))
