@@ -19,20 +19,25 @@ Starting a game:
   click the middle of the green button; it is wide, so aim at its centre, not its label.
 
 Finding the board, once per game:
-- Zoom on the board's top-left corner, then its bottom-right corner, and write both grid points in
-  `seen`, e.g. `board 210,135 to 640,895`. Note which colour is at the bottom (white at the bottom
-  when you play white: the a1 corner is bottom-left).
-- Squares are equal: square width w = (right - left) / 8 and height h = (bottom - top) / 8, on
-  the grid. They differ because the grid is 0-1000 in both directions on a wide screen.
-- Centre of a square, file f = 0 for a to 7 for h, rank r = 1 to 8:
-  - white at the bottom: x = left + (f + 0.5) * w, y = top + (8 - r + 0.5) * h
-  - black at the bottom: x = left + (7 - f + 0.5) * w, y = top + (r - 0.5) * h
-- Work squares out from these numbers. Do not re-find squares by eye.
+- Zoom on the board's top-left corner, then its bottom-right corner (the board's own edge, not
+  the name labels above and below it). Note which colour is at the bottom (white when you play
+  white: a1 is bottom-left).
+- Work out one table and keep it in every `seen` for the rest of the game: the x of each file
+  column and the y of each rank row. Width and height of a square are NOT the same on the grid:
+  the grid is 0-1000 both ways on a wide screen, so a square is about 1.8 times taller than wide.
+  - column width = (right - left) / 8; file x = left + width * (0.5, 1.5, ... 7.5)
+  - row height = (bottom - top) / 8; rank y = top + height * (0.5, 1.5, ... 7.5) from the top row
+- Worked example, white at the bottom, board 218,190 to 614,894: width 49.5, height 88.
+  `files a-h x: 243 292 342 391 441 490 540 589; ranks 8-1 y: 234 322 410 498 586 674 762 850`
+  so e2 is (441, 762) and c1 is (342, 850). With black at the bottom, files run h-a and ranks 1-8.
+- Take every square from the table. Do not re-find squares by eye or redo the sums per move.
 
 Making a move:
 - Click the piece's square, then the destination square. Targets: "white knight on g1", then
   "square f3" (or "black pawn on d5" for a capture), so the check knows a board square is meant.
 - A move that is not legal snaps back; nothing happens. Read the position again.
+- If a click on a square is refused, the table is off: zoom on that square once, correct the
+  table, and carry on. After two misses on one piece, play a different move instead.
 - Promotion shows a column of pieces on the destination file: click the queen unless you need
   another piece.
 
