@@ -30,10 +30,17 @@ Finding the board, once per game:
   the grid is 0-1000 both ways on a wide screen, so a square is about 1.8 times taller than wide.
   - column width = (right - left) / 8; file x = left + width * (0.5, 1.5, ... 7.5)
   - row height = (bottom - top) / 8; rank y = top + height * (0.5, 1.5, ... 7.5) from the top row
-- Worked example, white at the bottom, board 218,190 to 614,894: width 49.5, height 88.
-  `files a-h x: 243 292 342 391 441 490 540 589; ranks 8-1 y: 234 322 410 498 586 674 762 850`
-  so e2 is (441, 762) and c1 is (342, 850). With black at the bottom, files run h-a and ranks 1-8.
+- Write the table with every letter and number next to its value, so a square is a lookup, never
+  a count. Worked example, white at the bottom, board 218,190 to 614,894 (width 49.5, height 88):
+  `x: a243 b292 c342 d391 e441 f490 g540 h589; y: 8=234 7=322 6=410 5=498 4=586 3=674 2=762 1=850`
+  so e2 is (441, 762), g1 is (540, 850) and h1 is (589, 850). Mixing up g and h was a real
+  mistake: 589 is h, the rook's file. With black at the bottom, a is on the right and 1 at the top.
 - Take every square from the table. Do not re-find squares by eye or redo the sums per move.
+
+Choosing a move:
+- Before you click, check the move is legal from the position you rebuilt from the move list:
+  the piece is on that square, the path is clear, and bishops stay on their colour (a c1 bishop
+  can never reach d3). An illegal move does nothing and costs steps.
 
 Making a move:
 - Click the piece's square, then the destination square. Name only what a close-up of that one
@@ -48,8 +55,15 @@ Making a move:
 - Promotion shows a column of pieces on the destination file: click the queen unless you need
   another piece.
 
-After every move:
-- Use `wait` for the bot's reply, then zoom on the move list in the right panel and read it.
+After every move, the move list decides:
+- Right after clicking the destination, zoom on the move list in the right panel and read its
+  last entry. Do not wait first, and do not judge from the board.
+  - Your move is not in the list: it did not happen (wrong square, or not legal). Nothing is
+    coming from the bot. Rebuild the position, check the squares in your table, and move again.
+  - Your move is the last entry: the bot is to move. `wait` up to 5 s, then read the list again.
+  - The bot's reply is after your move: it is your turn. Read it and choose your next move.
+- The bot answers within seconds. Never `wait` twice in a row without reading the move list.
+- Tips and pop-ups beside the move list do not matter; leave them unless they cover the board.
 - The move list is the truth. Keep the whole game in `seen` in algebraic notation, e.g.
   `moves: 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6`. Pictures are dropped; this line is your only memory.
 - Before choosing a move, rebuild the position from that list, not from an old picture. Check that
