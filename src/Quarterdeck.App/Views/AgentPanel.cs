@@ -157,6 +157,7 @@ internal sealed class AgentPanel : DockPanel
 
         _endpoints.SelectedItem = config.Endpoints.FirstOrDefault(e => e.Id == selected) ?? config.Endpoints.FirstOrDefault();
 
+        var shown = _skills.Children.OfType<CheckBox>().Select(c => ((AgentSkill)c.Tag).Path).ToHashSet();
         var ticked = _skills.Children.OfType<CheckBox>().Where(c => c.IsChecked == true)
             .Select(c => ((AgentSkill)c.Tag).Path).ToHashSet();
         var first = _skills.Children.Count == 0;
@@ -169,7 +170,8 @@ internal sealed class AgentPanel : DockPanel
                 Content = skill.Name,
                 Tag = skill,
                 ToolTip = string.IsNullOrEmpty(skill.Description) ? skill.Path : skill.Description,
-                IsChecked = first || ticked.Contains(skill.Path),
+                // A skill new since the list was last built (copied in, or added by the app) starts ticked.
+                IsChecked = first || ticked.Contains(skill.Path) || !shown.Contains(skill.Path),
                 Margin = new Thickness(0, 0, 10, 2)
             });
         }
@@ -193,6 +195,10 @@ internal sealed class AgentPanel : DockPanel
         {
             return;
         }
+
+        // The skills folder may have changed since the pane opened (a skill copied in, or one the
+        // app added): a user once saw no chess.com skill until BaudHoundTerm was restarted.
+        Reload();
 
         if (_endpoints.SelectedItem is not AgentEndpoint endpoint)
         {
