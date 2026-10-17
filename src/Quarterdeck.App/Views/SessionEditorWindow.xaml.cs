@@ -54,6 +54,8 @@ public partial class SessionEditorWindow : Window
         PasswordSourceBox.SelectedIndex = (int)d.PasswordSource;
         KeePassEntryBox.Text = d.KeePassEntry;
         AgentFilterBox.Text = d.AgentKeyFilter;
+        TmuxBox.IsChecked = d.Tmux;
+        TmuxSessionBox.Text = d.TmuxSession;
         UpdateAuthPanels();
 
         foreach (var port in System.IO.Ports.SerialPort.GetPortNames().OrderBy(p => p.Length))
@@ -409,6 +411,8 @@ public partial class SessionEditorWindow : Window
         d.PasswordSource = (PasswordSource)Math.Max(0, PasswordSourceBox.SelectedIndex);
         d.KeePassEntry = KeePassEntryBox.Text.Trim();
         d.AgentKeyFilter = AgentFilterBox.Text.Trim();
+        d.Tmux = TmuxBox.IsChecked == true;
+        d.TmuxSession = string.IsNullOrWhiteSpace(TmuxSessionBox.Text) ? "bht" : TmuxSessionBox.Text.Trim();
 
         d.SerialPort = SerialPortBox.Text.Trim();
         d.BaudRate = ParseInt(BaudBox.Text, 115200);

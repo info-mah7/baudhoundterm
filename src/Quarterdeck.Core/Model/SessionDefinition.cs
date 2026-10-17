@@ -85,6 +85,15 @@ public sealed class SessionDefinition
     /// <summary>Optional jump host, "user@host:port". Empty means direct.</summary>
     public string JumpHost { get; set; } = "";
 
+    /// <summary>
+    /// Run the shell inside tmux: a dropped connection leaves it running on the host, and the
+    /// reconnect attaches to it again. Needs tmux on the host; without it the plain shell stays.
+    /// </summary>
+    public bool Tmux { get; set; }
+
+    /// <summary>The tmux session to create or attach to.</summary>
+    public string TmuxSession { get; set; } = "bht";
+
     // Serial
     public string SerialPort { get; set; } = "COM1";
     public int BaudRate { get; set; } = 115200;

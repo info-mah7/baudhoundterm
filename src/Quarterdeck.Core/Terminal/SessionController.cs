@@ -125,6 +125,11 @@ public sealed class SessionController : IAsyncDisposable
                     _expect = null;
                 }
             }
+
+            if (Definition is { Protocol: SessionProtocol.Ssh, Tmux: true })
+            {
+                await _transport.WriteAsync(TmuxCommand(Definition.TmuxSession), token).ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -145,6 +150,24 @@ public sealed class SessionController : IAsyncDisposable
 
             await ScheduleReconnectAsync(ex.Message, token).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Typed into the login shell after connect. exec replaces the shell, so leaving tmux ends
+    /// the channel; -A attaches when the session already exists. POSIX shells and fish accept
+    /// it; the leading space keeps it out of bash history under ignorespace.
+    /// </summary>
+    internal static string TmuxCommand(string session)
+    {
+        // tmux rejects '.' and ':' in names, and a safe name needs no quoting in any shell.
+        var name = new string(session.Where(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_').ToArray());
+        if (name.Length == 0)
+        {
+            name = "bht";
+        }
+
+        return $" command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s {name}"
+            + " || echo '[baudhoundterm] tmux not found on this host: plain shell, not kept on disconnect'\r";
     }
 
     /// <summary>
