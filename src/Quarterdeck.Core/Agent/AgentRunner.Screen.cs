@@ -472,7 +472,16 @@ public sealed partial class AgentRunner
             }
         }
 
-        var found = TextOf((await PostAsync(body, token))["content"]).Trim().Trim('"', '\'', '.', ' ');
+        var reply = await PostAsync(body, token);
+        if (OnlyThought(reply))
+        {
+            // Every later check would come back empty too: no click could ever land.
+            Log("click_check", text: $"'{target}' at ({px}, {py}) px: no answer, the model only thought");
+            _stopRun = "Stopped: the click check got no answer. " + ThinkingHint;
+            return "not clicked: the check got no answer from the model.";
+        }
+
+        var found = TextOf(reply["content"]).Trim().Trim('"', '\'', '.', ' ');
         found = found.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "";
         var ok = SameElement(found, target);
         Log("click_check", text: $"'{target}' at ({px}, {py}) px: {(ok ? "yes" : "no")}, the spot is \"{Truncate(found, 120)}\"");
