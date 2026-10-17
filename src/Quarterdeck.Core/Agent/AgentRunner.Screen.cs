@@ -121,6 +121,8 @@ public sealed partial class AgentRunner
         || result.StartsWith("refused", StringComparison.Ordinal) || result.StartsWith("error", StringComparison.Ordinal);
 
     private const string NoChange = "the screen did not visibly change";
+    private const int CycleWindow = 15, CycleWarn = 3, CycleRefuse = 6;
+    private readonly Queue<string> _recent = new();
     private string _noEffectCall = "";
     private int _noEffectCount;
 
@@ -144,7 +146,27 @@ public sealed partial class AgentRunner
                    "screen is out of date: look, read what is really there, and choose a different action.";
         }
 
+        // Going round in a circle: three illegal chess moves tried in turn, each changing the
+        // screen a little (a piece selected, then not), so the exact-repeat guard never fired.
+        var before = _recent.Count(c => c == call);
+        if (before >= CycleRefuse - 1)
+        {
+            return $"refused: this exact action is {before + 1} of your last {_recent.Count + 1} and has not got you anywhere. " +
+                   "Stop going round: look at the screen, question what you believe about it, and try something different.";
+        }
+
+        _recent.Enqueue(call);
+        if (_recent.Count > CycleWindow)
+        {
+            _recent.Dequeue();
+        }
+
         var result = await ExecuteScreenCoreAsync(name, args, token);
+        if (before + 1 >= CycleWarn && !ScreenActionFailed(result))
+        {
+            result += $" Note: you have done exactly this {before + 1} times in your last {_recent.Count} actions. If it is not " +
+                      "getting you anywhere, you are going in circles: change approach.";
+        }
         if (result.Contains(NoChange, StringComparison.Ordinal))
         {
             _noEffectCount = call == _noEffectCall ? _noEffectCount + 1 : 1;
@@ -679,6 +701,7 @@ public sealed partial class AgentRunner
         _refused.Clear();
         _noEffectCall = "";
         _noEffectCount = 0;
+        _recent.Clear();
         if (_screen is { IsConnected: true })
         {
             await QueueShotAsync(null, "The screen as the goal starts.", token);
