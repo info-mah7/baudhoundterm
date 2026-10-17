@@ -203,6 +203,7 @@ public sealed partial class AgentRunner
 
         var emptyReplies = 0;
         var loops = 0;
+        var brokenCalls = 0;
 
         // A skill for a long task (a chess game) raises the limit for runs that use it.
         var maxSteps = Math.Max(Math.Max(1, _endpoint.MaxSteps), _skills.Select(k => k.MinSteps).DefaultIfEmpty(0).Max());
@@ -262,6 +263,21 @@ public sealed partial class AgentRunner
                 {
                     Emit("thought", content.Trim());
                 }
+            }
+
+            // A small model may write its call as text the server could not parse (Cosmos-Reason2
+            // sent "x": 377, 529). That is a broken call, not an answer: say so and let it retry.
+            if (calls is not { Count: > 0 } && content.Contains("<tool_call>", StringComparison.Ordinal) && ++brokenCalls <= 3)
+            {
+                Log("broken_tool_call", text: Truncate(content, 400));
+                Emit("status", "The model wrote a tool call the server could not read; asking it to send it again.");
+                _messages.Add(new JsonObject
+                {
+                    ["role"] = "user",
+                    ["content"] = "Your tool call was written as text and is not valid JSON, so nothing happened. Call the tool " +
+                                  "again properly: each argument once, with one whole number per coordinate."
+                });
+                continue;
             }
 
             if (calls is not { Count: > 0 } && looped)
