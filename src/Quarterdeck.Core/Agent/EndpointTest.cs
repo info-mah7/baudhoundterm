@@ -181,9 +181,22 @@ public static class EndpointTest
             {
                 var name = calls[0]?["function"]?["name"]?.ToString();
                 results.Add(new EndpointCheck(true, $"{endpoint.Model} answered in {seconds:0.0} s."));
+                if (AgentRunner.Thinks(message))
+                {
+                    // Short questions finish thinking in time, so this test passes; the click
+                    // check on a busy screenshot did not, and came back empty every time.
+                    results.Add(new EndpointCheck(true,
+                        "This model thinks before answering. On hard pictures that can use up the reply and leave no answer, " +
+                        "which stops remote-desktop runs. " + AgentRunner.ThinkingHint[(AgentRunner.ThinkingHint.IndexOf("Turn", StringComparison.Ordinal))..],
+                        Warning: true));
+                }
                 results.Add(new EndpointCheck(name == "ping", name == "ping"
                     ? "Tool calling works: the agent can drive terminals with this model."
                     : $"It called an unexpected tool \"{name}\"."));
+            }
+            else if (AgentRunner.OnlyThought(message))
+            {
+                results.Add(new EndpointCheck(false, AgentRunner.ThinkingHint));
             }
             else
             {

@@ -333,7 +333,9 @@ it sees screenshots and clicks and types.
 - **Name**, **Base URL** (up to `/v1`), **Model** (**Fetch models** asks the server), **API key**.
 - **Temperature** and **Max steps per goal**.
 - **Extra request JSON**: merged into every request. For Qwen models on vLLM,
-  `{"chat_template_kwargs":{"enable_thinking":false}}` keeps replies fast.
+  `{"chat_template_kwargs":{"enable_thinking":false}}` keeps replies fast, and remote desktops
+  need it: with thinking on, the click check on a busy screen can use up its reply thinking and
+  return nothing, and the run stops saying so. **Test** warns when a model thinks.
 - **Approval**: *Run freely*, *Ask before risky commands* (the default; the patterns are listed
   below it and you can edit them), or *Ask before every command*.
 - **Never on local shells**: a local shell runs as you, and you can read the credential vault.
