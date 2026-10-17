@@ -203,7 +203,9 @@ public sealed partial class AgentRunner
 
         var emptyReplies = 0;
 
-        for (var step = 1; step <= Math.Max(1, _endpoint.MaxSteps); step++)
+        // A skill for a long task (a chess game) raises the limit for runs that use it.
+        var maxSteps = Math.Max(Math.Max(1, _endpoint.MaxSteps), _skills.Select(k => k.MinSteps).DefaultIfEmpty(0).Max());
+        for (var step = 1; step <= maxSteps; step++)
         {
             token.ThrowIfCancellationRequested();
             Emit("status", $"Thinking (step {step})...");
@@ -346,7 +348,7 @@ public sealed partial class AgentRunner
             }
         }
 
-        var stopped = $"Stopped after {_endpoint.MaxSteps} steps without finishing. Raise the step limit in the endpoint settings, or give a narrower goal.";
+        var stopped = $"Stopped after {maxSteps} steps without finishing. Raise the step limit in the endpoint settings, or give a narrower goal.";
         Log("step_limit", text: stopped);
         Emit("final", stopped);
         return stopped;
