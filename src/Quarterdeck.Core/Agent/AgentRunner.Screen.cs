@@ -121,7 +121,8 @@ public sealed partial class AgentRunner
         || result.StartsWith("refused", StringComparison.Ordinal) || result.StartsWith("error", StringComparison.Ordinal);
 
     private const string NoChange = "the screen did not visibly change";
-    private const int CycleWindow = 15, CycleWarn = 3, CycleRefuse = 6, CycleNear = 15;
+    private const int CycleWindow = 15, CycleWarn = 3, CycleRefuse = 6, CycleNear = 15, CycleStop = 3;
+    private int _cycleRefusals;
     private readonly Queue<(string What, int[] Points)> _recent = new();
 
     /// <summary>
@@ -167,6 +168,14 @@ public sealed partial class AgentRunner
         var before = _recent.Count(c => Near(c, shape));
         if (before >= CycleRefuse - 1)
         {
+            // Refusing does not change a model's mind: one game was refused 25 times for the same
+            // illegal move and burned its last 25 minutes. The third refusal ends the run.
+            if (++_cycleRefusals >= CycleStop)
+            {
+                _stopRun = $"Stopped: the agent kept going round in circles ({_cycleRefusals} actions refused for repeating " +
+                           "without progress). It may not be able to do this with this model; try a narrower goal.";
+            }
+
             return $"refused: you have done this ({shape.What.Split(' ')[0]} at nearly the same point) {before + 1} times in your last {_recent.Count + 1} actions, and it has not got you anywhere. " +
                    "Stop going round: look at the screen, question what you believe about it, and try something different.";
         }
@@ -718,6 +727,7 @@ public sealed partial class AgentRunner
         _noEffectCall = "";
         _noEffectCount = 0;
         _recent.Clear();
+        _cycleRefusals = 0;
         if (_screen is { IsConnected: true })
         {
             await QueueShotAsync(null, "The screen as the goal starts.", token);
