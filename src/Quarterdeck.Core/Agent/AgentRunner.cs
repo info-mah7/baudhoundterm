@@ -198,6 +198,7 @@ public sealed partial class AgentRunner
         Log("goal", text: goal);
         _goalMessage = new JsonObject { ["role"] = "user", ["content"] = goal };
         _messages.Add(_goalMessage);
+        _stopRun = null;
         await StartScreenGoalAsync(token);
 
         var emptyReplies = 0;
@@ -246,6 +247,13 @@ public sealed partial class AgentRunner
 
             if (calls is not { Count: > 0 })
             {
+                if (OnlyThought(message))
+                {
+                    Log("final", text: ThinkingHint);
+                    Emit("final", ThinkingHint);
+                    return ThinkingHint;
+                }
+
                 if (string.IsNullOrWhiteSpace(content) && ++emptyReplies < 2)
                 {
                     // Some servers return nothing at all when a reasoning model spends its budget
@@ -322,6 +330,13 @@ public sealed partial class AgentRunner
                 }
 
                 throw;
+            }
+
+            if (_stopRun is { } why)
+            {
+                Log("final", text: why);
+                Emit("final", why);
+                return why;
             }
         }
 
@@ -743,6 +758,25 @@ public sealed partial class AgentRunner
     }
 
     private static string? Str(JsonObject args, string name) => args[name]?.ToString();
+
+    /// <summary>
+    /// A reply that is all hidden reasoning: a thinking model (Qwen 3 on vLLM by default) spent
+    /// the whole token budget thinking and stopped before answering. Measured on the 27B: the
+    /// click check, 512 tokens, came back empty every time with thinking on and in 5 tokens off.
+    /// </summary>
+    internal static bool Thinks(JsonNode? message) =>
+        !string.IsNullOrWhiteSpace((message?["reasoning_content"] ?? message?["reasoning"])?.ToString());
+
+    internal static bool OnlyThought(JsonNode? message) =>
+        string.IsNullOrWhiteSpace(TextOf(message?["content"]))
+        && !string.IsNullOrWhiteSpace((message?["reasoning_content"] ?? message?["reasoning"])?.ToString());
+
+    internal const string ThinkingHint =
+        "The model spent its whole reply thinking and gave no answer. Turn thinking off for this endpoint: for Qwen on " +
+        "vLLM, put {\"chat_template_kwargs\":{\"enable_thinking\":false}} in Extra request JSON (Agent endpoints).";
+
+    /// <summary>Set when the run cannot go on (the click check gets no answers); ends it after this turn.</summary>
+    private string? _stopRun;
 
     private static int Clamp(int v, int lo, int hi) => Math.Min(hi, Math.Max(lo, v));
 
