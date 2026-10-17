@@ -19,7 +19,10 @@ public sealed partial class AgentRunner
 
     // A click on something with one of these names asks first under Risky, like a risky command.
     private static readonly Regex RiskyTarget = new(
-        @"\b(delete|remove|erase|format|uninstall|shut\s*down|restart|reboot|power\s*off|sign\s*out|log\s*off|reset|wipe|discard|don'?t\s+save|overwrite|empty\s+(recycle\s+)?bin)\b",
+        @"\b(delete|remove|erase|format|uninstall|shut\s*down|restart|reboot|power\s*off|sign\s*out|log\s*off|reset|wipe|discard|don'?t\s+save|overwrite|empty\s+(recycle\s+)?bin" +
+        // Accounts and money: a chess run clicked "Log in with Google" on its own (2026-10-17).
+        @"|log\s*in|sign\s*in|sign\s*up|create\s+(an\s+)?account|register|(continue|log\s*in|sign\s*in)\s+with|authori[sz]e|allow\s+access" +
+        @"|buy|purchase|pay|checkout|subscribe|upgrade|place\s+order|confirm\s+payment)\b",
         RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));
 
     // Key combinations that run things or end things without a click to check.
