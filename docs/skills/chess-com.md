@@ -20,6 +20,9 @@ Starting a game:
   panel. If a second screen asks for colour or mode, choose and press "Play" again.
 - If a click on "Play" is refused by the check, zoom on the bottom of the right panel once, then
   click the middle of the green button; it is wide, so aim at its centre, not its label.
+- "New Game" only takes you back to the bot list: press "Play" after it. A game has started only
+  when the right panel shows the move list (empty at first) and the big green Play button is gone.
+  Pieces will not move before that; do not try.
 
 Finding the board, once per game:
 - Zoom on the board's top-left corner, then its bottom-right corner (the board's own edge, not
@@ -35,6 +38,8 @@ Finding the board, once per game:
   `x: a243 b292 c342 d391 e441 f490 g540 h589; y: 8=234 7=322 6=410 5=498 4=586 3=674 2=762 1=850`
   so e2 is (441, 762), g1 is (540, 850) and h1 is (589, 850). Mixing up g and h was a real
   mistake: 589 is h, the rook's file. With black at the bottom, a is on the right and 1 at the top.
+- If your corners are within a few points of the example's (218,190 and 614,894), the board is
+  the same: copy the example table exactly, do not work it out again.
 - Take every square from the table. Do not re-find squares by eye or redo the sums per move.
 
 Choosing a move:
