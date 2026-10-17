@@ -475,6 +475,15 @@ public sealed partial class AgentRunner
         var reply = await PostAsync(body, token);
         if (OnlyThought(reply))
         {
+            // A model that always thinks (no switch turns it off) gets room to finish once. Measured on
+            // the 27B: an address-bar spot took 3,326 tokens; a cartoon chess piece ran past 16,000.
+            Log("click_check", text: $"'{target}' at ({px}, {py}) px: only thinking in 512 tokens, retrying with 4096");
+            body["max_tokens"] = 4096;
+            reply = await PostAsync(body, token);
+        }
+
+        if (OnlyThought(reply))
+        {
             // Every later check would come back empty too: no click could ever land.
             Log("click_check", text: $"'{target}' at ({px}, {py}) px: no answer, the model only thought");
             _stopRun = "Stopped: the click check got no answer. " + ThinkingHint;

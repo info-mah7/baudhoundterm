@@ -210,6 +210,12 @@ public sealed partial class AgentRunner
 
             TrimHistory();
             var message = await CallModelAsync(token);
+            if (OnlyThought(message))
+            {
+                // Thinking used up the reply; once more with room to finish before giving up.
+                Log("empty_reply", text: "only thinking in 2048 tokens, retrying with 8192");
+                message = await CallModelAsync(token, 8192);
+            }
             var content = TextOf(message["content"]);
 
             // Keep the assistant turn as returned so tool results can answer its ids; a call
@@ -346,7 +352,7 @@ public sealed partial class AgentRunner
         return stopped;
     }
 
-    private async Task<JsonObject> CallModelAsync(CancellationToken token)
+    private async Task<JsonObject> CallModelAsync(CancellationToken token, int maxTokens = 2048)
     {
         var body = new JsonObject
         {
@@ -355,7 +361,7 @@ public sealed partial class AgentRunner
             ["tools"] = (_screen is null ? Tools : ScreenTools).DeepClone(),
             ["tool_choice"] = "auto",
             ["temperature"] = _endpoint.Temperature,
-            ["max_tokens"] = 2048
+            ["max_tokens"] = maxTokens
         };
 
         if (AgentConfig.ParseExtra(_endpoint.ExtraJson) is { } extra)

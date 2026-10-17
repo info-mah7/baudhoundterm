@@ -335,7 +335,9 @@ it sees screenshots and clicks and types.
 - **Extra request JSON**: merged into every request. For Qwen models on vLLM,
   `{"chat_template_kwargs":{"enable_thinking":false}}` keeps replies fast, and remote desktops
   need it: with thinking on, the click check on a busy screen can use up its reply thinking and
-  return nothing, and the run stops saying so. **Test** warns when a model thinks.
+  return nothing, and the run stops saying so. **Test** notices a model that thinks, tries the
+  known switches for other servers (DeepSeek, OpenRouter, Ollama, OpenAI-style `reasoning_effort`)
+  and puts the first that works into this box; **Save** keeps it.
 - **Approval**: *Run freely*, *Ask before risky commands* (the default; the patterns are listed
   below it and you can edit them), or *Ask before every command*.
 - **Never on local shells**: a local shell runs as you, and you can read the credential vault.
@@ -379,7 +381,8 @@ Always run "terminal length 0" first. Never write memory without asking.
 `protocols` takes `ssh`, `serial`, `telnet`, `local` and `vnc`. Without it, the skill applies
 everywhere.
 
-Ready-made skills are in [docs/skills](skills/): copy one into the skills folder. **chess.com**
+The app also ships skills from [docs/skills](skills/), added to the folder once each (a file
+`.builtin` lists them, so one you delete stays deleted and one you edit is kept). **chess.com**
 opens chess.com in a browser on a VNC tab and plays a bot; give the endpoint about 300 steps.
 
 ### Logs
