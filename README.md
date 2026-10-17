@@ -48,6 +48,8 @@ The [manual](docs/MANUAL.md) explains how to use it.
 - **Auto-login scripting**: expect/send steps with literal or regex matching and a timeout per
   step, re-run after a reconnect. The password comes from the vault, never from the script text.
 - **Auto-reconnect** with exponential backoff and an attempt cap.
+- **tmux persistence** for SSH (opt-in per session): the shell runs in a named tmux session, so a
+  dropped link leaves it running and the reconnect attaches to it again.
 - **File transfer**: SFTP browser with upload and download, or SCP for hosts with no SFTP
   subsystem. Remote paths are shell-quoted.
 - **BaudHound**: the BaudHound button finds devices on the networks the PC is on (UDP broadcast,
