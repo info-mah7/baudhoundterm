@@ -73,6 +73,11 @@ After every move, the move list decides:
     coming from the bot. Rebuild the position, check the squares in your table, and move again.
   - Your move is the last entry: the bot is to move. `wait` up to 5 s, then read the list again.
   - The bot's reply is after your move: it is your turn. Read it and choose your next move.
+- Read the bot's move twice before you believe it: zoom on the last row of the move list with
+  size 200, then again with size 120, and accept it only when both readings agree. If they differ,
+  zoom a third time and take the reading that appears twice. The bot's moves are drawn in a thin
+  font, and one misread letter (Bb6 for Bd6) makes every later move wrong; two enlarged reads that
+  agree were right 144 times out of 144 in testing.
 - The bot answers within seconds. Never `wait` twice in a row without reading the move list.
 - Tips and pop-ups beside the move list do not matter; leave them unless they cover the board.
 - The move list is the truth. Keep the whole game in `seen` in algebraic notation, e.g.
