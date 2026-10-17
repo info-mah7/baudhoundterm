@@ -382,7 +382,8 @@ Always run "terminal length 0" first. Never write memory without asking.
 everywhere. `steps: 300` raises the step limit for runs that use the skill, for long tasks.
 
 The app also ships skills from [docs/skills](skills/), added to the folder and kept up to date (a file
-`.builtin` lists them: one you delete stays deleted, and one you edit is never overwritten). **chess.com**
+`.builtin` lists them: one you delete stays deleted, and one you edit is never overwritten).
+**Restore built-in skills** in the endpoints window puts back any that are missing. **chess.com**
 opens chess.com in a browser on a VNC tab and plays a bot; it raises the step limit to 300.
 
 ### Logs
