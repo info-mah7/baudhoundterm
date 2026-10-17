@@ -213,7 +213,20 @@ public sealed partial class AgentRunner
             Emit("status", $"Thinking (step {step})...");
 
             TrimHistory();
-            var message = await CallModelAsync(token);
+            JsonObject message;
+            try
+            {
+                message = await CallModelAsync(token);
+            }
+            catch (HttpRequestException ex) when (ex.Message.Contains("context length", StringComparison.OrdinalIgnoreCase)
+                                                  || ex.Message.Contains("context window", StringComparison.OrdinalIgnoreCase))
+            {
+                // The model's window is smaller than the budget assumed: trim to a quarter and try once more.
+                Log("context_overflow", text: Truncate(ex.Message, 300));
+                TrimHistory(HistoryBudget / 4);
+                message = await CallModelAsync(token);
+            }
+
             if (OnlyThought(message))
             {
                 // Thinking used up the reply; once more with room to finish before giving up.
@@ -675,12 +688,13 @@ public sealed partial class AgentRunner
     /// <summary>
     /// Keeps the conversation inside <see cref="HistoryBudget"/>: whole earlier goals go first
     /// (an assistant turn always leaves with its tool replies), then the bodies of all but the
-    /// last few tool results of the current goal. The system prompt and the goal stay.
+    /// last few tool results of the current goal, then the current goal's oldest steps. The system
+    /// prompt and the goal stay.
     /// </summary>
-    private void TrimHistory()
+    private void TrimHistory(int budget = HistoryBudget)
     {
         var trimmed = false;
-        while (HistoryLength() > HistoryBudget && _messages.Count > 2 && !ReferenceEquals(_messages[1], _goalMessage))
+        while (HistoryLength() > budget && _messages.Count > 2 && !ReferenceEquals(_messages[1], _goalMessage))
         {
             _messages.RemoveAt(1);
             while (_messages.Count > 1 && _messages[1]?["role"]?.ToString() == "tool")
@@ -691,7 +705,7 @@ public sealed partial class AgentRunner
             trimmed = true;
         }
 
-        if (HistoryLength() > HistoryBudget)
+        if (HistoryLength() > budget)
         {
             var tools = _messages.OfType<JsonObject>().Where(m => m["role"]?.ToString() == "tool").ToList();
             foreach (var m in tools.Take(Math.Max(0, tools.Count - 4)))
@@ -704,11 +718,42 @@ public sealed partial class AgentRunner
             }
         }
 
+        // One long goal (a 300-step chess game) grows by every step's thought and note, and the
+        // trims above never touch them: one run reached 129k tokens and the server refused it. Drop
+        // the goal's oldest steps whole, keeping the last few; the latest notes carry what matters.
+        var goalAt = _messages.IndexOf(_goalMessage);
+        if (goalAt >= 0 && HistoryLength() > budget)
+        {
+            var turns = Enumerable.Range(goalAt + 1, _messages.Count - goalAt - 1)
+                .Where(i => _messages[i]?["role"]?.ToString() == "assistant").ToList();
+            var keepFrom = turns.Count > KeepSteps ? turns[^KeepSteps] : -1;
+            var start = goalAt + 1;
+            if (start < _messages.Count && _messages[start]?["content"]?.ToString() == StepsDropped)
+            {
+                start++;                 // the marker from an earlier trim stays first
+            }
+
+            if (keepFrom > start)
+            {
+                _messages.RemoveRange(start, keepFrom - start);
+                if (_messages[goalAt + 1]?["content"]?.ToString() != StepsDropped)
+                {
+                    _messages.Insert(goalAt + 1, new JsonObject { ["role"] = "user", ["content"] = StepsDropped });
+                }
+
+                trimmed = true;
+            }
+        }
+
         if (trimmed)
         {
             Log("history_trimmed");
         }
     }
+
+    private const int KeepSteps = 12;
+    private const string StepsDropped = "(Earlier steps of this goal were removed to save context. Your latest seen notes " +
+                                        "hold what you need: continue from them.)";
 
     private void RequireConnected()
     {
