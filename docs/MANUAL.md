@@ -377,6 +377,9 @@ Always run "terminal length 0" first. Never write memory without asking.
 `protocols` takes `ssh`, `serial`, `telnet`, `local` and `vnc`. Without it, the skill applies
 everywhere.
 
+Ready-made skills are in [docs/skills](skills/): copy one into the skills folder. **chess.com**
+opens chess.com in a browser on a VNC tab and plays a bot; give the endpoint about 300 steps.
+
 ### Logs
 
 Every goal, model reply, action, approval and result is written to
