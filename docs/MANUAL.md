@@ -102,6 +102,11 @@ The properties window has seven tabs. **Save** keeps the changes.
 
   The most secure choice is **SSH agent** with your keys kept in KeePassXC: no password or key
   file is stored in BaudHoundTerm at all (see [section 7](#ssh-agent)).
+- **Keep the shell running in tmux when the connection drops**, with a **tmux session name**
+  (`bht`). After login the tab runs `tmux new-session -A -s <name>`, so a dropped link leaves the
+  shell running on the host and the reconnect attaches to it again, mid-command. Leaving tmux
+  (`exit`, or detaching with Ctrl+B D) ends the connection. The host needs tmux; without it the tab
+  says so and keeps the plain shell.
 
 **Serial**: **Port**, **Baud rate**, **Data bits**, **Parity**, **Stop bits**. Defaults are COM1,
 115200, 8, None, One.
@@ -120,6 +125,18 @@ The properties window has seven tabs. **Save** keeps the changes.
 
 **VNC**: **Host**, **Port** (5900), **Password**, and **View only,
 send no input**. Classic VNC passwords are weak; use VNC only on a network you trust.
+
+**RDP**: **Host**, **Port** (3389), **Username** (blank asks at connect), **Domain**, the password
+from the vault or KeePassXC, an optional **Remote Desktop Gateway**, **Share the clipboard**,
+**Share this PC's drives** (off by default: the server can then read them) and **Admin session**.
+It uses Windows' own Remote Desktop client, and the remote desktop follows the tab's size.
+
+**SQL**: **Database type** (SQL Server, PostgreSQL, MySQL/MariaDB, SQLite file), **Host**,
+**Port**, **Database**, the login (or **Windows sign-in** for SQL Server), **Trust the server's
+certificate** for self-signed servers, **Read-only** and **Ask before statements that change data
+or structure** (on by default). Read-only is enforced by PostgreSQL, MySQL and SQLite; for SQL
+Server the app refuses such statements itself. In the tab, F5 or Ctrl+Enter runs the query, or
+only the selected text.
 
 **RTSP camera**: **Camera host**, **RTSP port** (554), **Stream path** (blank asks the camera over
 ONVIF), **Username**, **Password**, **RTP over TCP**, **Low latency**, and the **ONVIF port** used
