@@ -399,6 +399,12 @@ internal sealed class AgentSettingsWindow : Window
             return;
         }
 
+        // A switch that turns thinking off goes into the form, not the saved endpoint: Save keeps it.
+        if (lines.LastOrDefault(l => l.SuggestedExtra is not null)?.SuggestedExtra is { } better)
+        {
+            _extra.Text = better;
+        }
+
         Note(string.Join(Environment.NewLine, lines.Select(l => (l.Ok ? (l.Warning ? "! " : "✔ ") : "✖ ") + l.Text)),
             lines.Any(l => !l.Ok) ? Color.FromRgb(0xE0, 0x6C, 0x75)
             : lines.Any(l => l.Warning) ? Color.FromRgb(0xE5, 0xC0, 0x7B)
