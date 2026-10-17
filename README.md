@@ -2,8 +2,8 @@
 
 Agentic, multi-protocol terminal and session manager for Windows 11: saved sessions in folders,
 an encrypted credential store, session logging, scripted logins, auto-reconnect, SFTP/SCP
-transfer, and an AI agent that can work in any tab. SSH, telnet, serial, local shells, VNC and
-cameras. One self-contained executable, no runtime to install.
+transfer, and an AI agent that can work in any tab. SSH, telnet, serial, local shells, VNC,
+RDP, SQL databases and cameras. One self-contained executable, no runtime to install.
 
 It is also the desktop console for [BaudHound](https://github.com/info-mah7/BaudHound),
 the pocket ESP32-S3 wireless serial tap: BaudHound puts a UART on the network over ssl, and
@@ -39,6 +39,11 @@ The [manual](docs/MANUAL.md) explains how to use it.
   paths stay on each PC. Conflicts keep both versions.
 - **VNC viewer** in a tab beside the terminals, rendered by noVNC over a WebSocket-to-TCP bridge
   bound to 127.0.0.1 behind a per-session token. View-only is a per-session setting.
+  Copy and paste work both ways.
+- **RDP** through Windows' own Remote Desktop client, with gateway, clipboard, drive sharing and
+  admin-session options.
+- **SQL query tabs** for SQL Server, PostgreSQL, MySQL/MariaDB and SQLite, with a read-only mode
+  and a prompt before statements that change data.
 - **AI agent** on any tab, through an OpenAI-compatible endpoint (vLLM, llama.cpp, Ollama,
   OpenRouter). On a terminal it types commands and reads the output; on a VNC tab it sees
   screenshots and clicks and types. Risky actions can need your approval, and every step is
