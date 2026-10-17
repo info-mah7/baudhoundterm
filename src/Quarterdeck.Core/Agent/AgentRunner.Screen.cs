@@ -140,7 +140,11 @@ public sealed partial class AgentRunner
             case "zoom":
             {
                 var size = Math.Clamp(Int(args, "size", 250), 50, 500);
-                var (cx, cy) = (Grid(args, "x"), Grid(args, "y"));
+                if (Grids(args, out var bad, "x", "y") is not [var cx, var cy])
+                {
+                    return bad!;
+                }
+
 
                 // The same close-up again shows nothing new; a model that cannot place something
                 // otherwise zooms on it until the step limit.
@@ -160,7 +164,11 @@ public sealed partial class AgentRunner
 
             case "click":
             {
-                var (gx, gy) = (Grid(args, "x"), Grid(args, "y"));
+                if (Grids(args, out var bad, "x", "y") is not [var gx, var gy])
+                {
+                    return bad!;
+                }
+
                 var target = Str(args, "target")?.Trim() ?? "";
                 if (target.Length == 0)
                 {
@@ -227,7 +235,11 @@ public sealed partial class AgentRunner
 
             case "scroll":
             {
-                var (gx, gy) = (Grid(args, "x"), Grid(args, "y"));
+                if (Grids(args, out var bad, "x", "y") is not [var gx, var gy])
+                {
+                    return bad!;
+                }
+
                 var amount = Math.Clamp(Int(args, "amount", 3), -30, 30);
                 var what = $"scroll {amount} at ({gx}, {gy})";
                 if (await ScreenDeniedAsync(name, what, false, token) is { } denied)
@@ -250,7 +262,11 @@ public sealed partial class AgentRunner
                     return "error: say what you are dragging in target, so the start point can be checked.";
                 }
 
-                var (x1, y1, x2, y2) = (Grid(args, "x1"), Grid(args, "y1"), Grid(args, "x2"), Grid(args, "y2"));
+                if (Grids(args, out var bad, "x1", "y1", "x2", "y2") is not [var x1, var y1, var x2, var y2])
+                {
+                    return bad!;
+                }
+
                 var what = $"drag '{target}' from ({x1}, {y1}) to ({x2}, {y2})";
                 if (await ScreenDeniedAsync(name, what, RiskyTarget.IsMatch(target) || NeedsApproval(_endpoint, target), token) is { } denied)
                 {
@@ -565,7 +581,21 @@ public sealed partial class AgentRunner
     private int ToGridX(int px) => _screenSize.W > 1 ? (int)Math.Round(px * 1000.0 / (_screenSize.W - 1)) : 0;
     private int ToGridY(int py) => _screenSize.H > 1 ? (int)Math.Round(py * 1000.0 / (_screenSize.H - 1)) : 0;
 
-    private static int Grid(JsonObject args, string name) => Math.Clamp(Int(args, name, 500), 0, 1000);
+    /// <summary>A grid position, or null when the model left it out or wrote something that is not a number.</summary>
+    private static int? Grid(JsonObject args, string name) => IntOrNull(args, name) is { } v ? Math.Clamp(v, 0, 1000) : null;
+
+    /// <summary>
+    /// Every named position, or an error for the model. A missing one used to become 500, the
+    /// middle of the screen, so a call without coordinates zoomed on or clicked the centre.
+    /// </summary>
+    private static int[]? Grids(JsonObject args, out string? error, params string[] names)
+    {
+        var values = names.Select(n => Grid(args, n)).ToArray();
+        var missing = names.Where((_, i) => values[i] is null).ToArray();
+        error = missing.Length == 0 ? null
+            : $"error: {string.Join(" and ", missing)} missing or not a number. Give whole numbers on the 0-1000 grid, e.g. \"x\": 512.";
+        return error is null ? values.Select(v => v!.Value).ToArray() : null;
+    }
 
     /// <summary>A screenshot with the goal, so the first step already sees the screen.</summary>
     private async Task StartScreenGoalAsync(CancellationToken token)

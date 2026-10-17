@@ -727,16 +727,19 @@ public sealed partial class AgentRunner
         _ => null
     };
 
-    private static int Int(JsonObject args, string name, int fallback)
+    private static int Int(JsonObject args, string name, int fallback) => IntOrNull(args, name) ?? fallback;
+
+    /// <summary>
+    /// A whole number however the model wrote it: 512, 512.0, 511.6 or "512". Models do not
+    /// all keep integer parameters integral, and reading 512.0 as missing put the point elsewhere.
+    /// </summary>
+    private static int? IntOrNull(JsonObject args, string name)
     {
-        try
-        {
-            return args[name]?.GetValue<int>() ?? fallback;
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or FormatException)
-        {
-            return int.TryParse(args[name]?.ToString(), out var v) ? v : fallback;
-        }
+        var text = args[name]?.ToString().Trim().Trim('"');
+        return double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v)
+               && double.IsFinite(v)
+            ? (int)Math.Round(v)
+            : null;
     }
 
     private static string? Str(JsonObject args, string name) => args[name]?.ToString();
