@@ -33,8 +33,12 @@ Finding the board, once per game:
 - Take every square from the table. Do not re-find squares by eye or redo the sums per move.
 
 Making a move:
-- Click the piece's square, then the destination square. Targets: "white knight on g1", then
-  "square f3" (or "black pawn on d5" for a capture), so the check knows a board square is meant.
+- Click the piece's square, then the destination square. Name only what a close-up of that one
+  square shows: "white knight" for the piece, then "empty square" (or "black pawn" for a
+  capture). Leave the square's name ("g1", "f3") out of the target: it is not printed on the
+  square, so the check cannot see it. Keep which square you mean in your own notes.
+- Never copy what a refused check said into your next target. If the check names a different
+  piece than you expected, your idea of the position may be wrong: read the move list again.
 - A move that is not legal snaps back; nothing happens. Read the position again.
 - If a click on a square is refused, the table is off: zoom on that square once, correct the
   table, and carry on. After two misses on one piece, play a different move instead.
