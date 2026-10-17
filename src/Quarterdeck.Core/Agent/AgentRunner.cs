@@ -202,6 +202,7 @@ public sealed partial class AgentRunner
         await StartScreenGoalAsync(token);
 
         var emptyReplies = 0;
+        var loops = 0;
 
         // A skill for a long task (a chess game) raises the limit for runs that use it.
         var maxSteps = Math.Max(Math.Max(1, _endpoint.MaxSteps), _skills.Select(k => k.MinSteps).DefaultIfEmpty(0).Max());
@@ -219,6 +220,16 @@ public sealed partial class AgentRunner
                 message = await CallModelAsync(token, 8192);
             }
             var content = TextOf(message["content"]);
+
+            // A model stuck in a loop writes one paragraph over and over until the token limit;
+            // a chess run ended on dozens of copies, taken as its final answer. Keep one copy in
+            // the history so the loop does not feed itself, and do not accept it as an answer.
+            var looped = Repeats(content);
+            if (looped)
+            {
+                content = Dedupe(content);
+                Log("repetition", text: Truncate(content, 400));
+            }
 
             // Keep the assistant turn as returned so tool results can answer its ids; a call
             // without an id gets one here, in the stored turn too, or the reply would not match.
@@ -251,6 +262,27 @@ public sealed partial class AgentRunner
                 {
                     Emit("thought", content.Trim());
                 }
+            }
+
+            if (calls is not { Count: > 0 } && looped)
+            {
+                if (++loops > 1)
+                {
+                    const string stuck = "Stopped: the model kept repeating itself instead of acting. Start the goal again, " +
+                                         "or give it a narrower one.";
+                    Log("final", text: stuck);
+                    Emit("final", stuck);
+                    return stuck;
+                }
+
+                Emit("status", "The model repeated itself; asking it to look again.");
+                _messages.Add(new JsonObject
+                {
+                    ["role"] = "user",
+                    ["content"] = "Your last reply repeated the same text many times and did nothing. Stop planning in text: " +
+                                  "look at the screen, then take one step with a tool."
+                });
+                continue;
             }
 
             if (calls is not { Count: > 0 })
@@ -772,6 +804,20 @@ public sealed partial class AgentRunner
     /// the whole token budget thinking and stopped before answering. Measured on the 27B: the
     /// click check, 512 tokens, came back empty every time with thinking on and in 5 tokens off.
     /// </summary>
+    /// <summary>A line of some length that appears three times or more: the model is looping.</summary>
+    internal static bool Repeats(string text) =>
+        Lines(text).Where(l => l.Length >= 20).GroupBy(l => l).Any(g => g.Count() >= 3);
+
+    /// <summary>The text with each repeated line kept once, in first-seen order.</summary>
+    internal static string Dedupe(string text)
+    {
+        var seen = new HashSet<string>();
+        return string.Join("\n", Lines(text).Where(l => l.Length < 20 || seen.Add(l))).Trim();
+    }
+
+    private static IEnumerable<string> Lines(string text) =>
+        Regex.Split(text.Replace("\r", ""), @"\n+|(?<=[.!?])\s+(?=[A-Z])").Select(l => l.Trim()).Where(l => l.Length > 0);
+
     internal static bool Thinks(JsonNode? message) =>
         !string.IsNullOrWhiteSpace((message?["reasoning_content"] ?? message?["reasoning"])?.ToString());
 
