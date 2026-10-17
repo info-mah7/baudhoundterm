@@ -102,6 +102,12 @@
               </StackPanel>
 
               <TextBlock x:Name="AuthNote" TextWrapping="Wrap" Foreground="#8B94A7" Margin="0,6,0,0"/>
+
+              <CheckBox x:Name="TmuxBox" Margin="0,10,0,0"
+                        Content="Keep the shell running in tmux when the connection drops"
+                        ToolTip="Starts or attaches a tmux session after login; a reconnect attaches to it again. Needs tmux on the host."/>
+              <TextBlock Text="tmux session name"/>
+              <TextBox x:Name="TmuxSessionBox" IsEnabled="{Binding IsChecked, ElementName=TmuxBox}"/>
             </StackPanel>
 
             <StackPanel x:Name="SerialPanel" Visibility="Collapsed">
