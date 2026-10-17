@@ -24,6 +24,9 @@ public sealed class AgentSkill
     public string Body { get; init; } = "";
     public string Path { get; init; } = "";
 
+    /// <summary>Header "steps: 300": a task this long needs at least that many steps, whatever the endpoint allows.</summary>
+    public int MinSteps { get; init; }
+
     /// <summary>
     /// True when the header has a protocols line. A line naming only unknown protocols (a typo
     /// such as "telnett") then applies nowhere instead of everywhere.
@@ -69,6 +72,7 @@ public static class SkillLibrary
         var description = "";
         var protocols = new HashSet<SessionProtocol>();
         var restricted = false;
+        var minSteps = 0;
         var body = text;
 
         var lines = text.Replace("\r\n", "\n").Split('\n');
@@ -92,6 +96,7 @@ public static class SkillLibrary
                     {
                         case "name": name = value; break;
                         case "description": description = value; break;
+                        case "steps": minSteps = int.TryParse(value, out var n) ? Math.Clamp(n, 0, 1000) : 0; break;
                         case "protocols":
                             restricted |= value.Length > 0;
                             foreach (var word in value.Split(',', ' ', StringSplitOptions.RemoveEmptyEntries))
@@ -110,7 +115,7 @@ public static class SkillLibrary
             }
         }
 
-        return new AgentSkill { Name = name, Description = description, Protocols = protocols, Restricted = restricted, Body = body, Path = path };
+        return new AgentSkill { Name = name, Description = description, Protocols = protocols, Restricted = restricted, Body = body, Path = path, MinSteps = minSteps };
     }
 
     private static SessionProtocol? ProtocolWord(string word) => word.Trim().ToLowerInvariant() switch
@@ -124,41 +129,84 @@ public static class SkillLibrary
     };
 
     /// <summary>
-    /// Skills shipped in the app (docs/skills) reach an existing skills folder too. Each is
-    /// offered once: the names offered are kept in .builtin, so one the user deleted stays
-    /// deleted, and a file that exists is never overwritten.
+    /// Earlier shipped texts of each built-in skill (SHA-256 of the text with CR removed). A copy
+    /// on disk that matches one is untouched by the user and is brought up to date; anything else
+    /// is the user's own and is left alone.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> ShippedBefore = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["chess-com.md"] =
+        [
+            "5482e27a46c2212373f9d8e17ebcd5c86c9ac23afab4fb6051eb5010351a5aed",   // build 40
+            "bf2b69b9ea5463f03641eb0249f1cdfe7538e39eb0a223aad4ec8d58953cb933",   // build 41
+            "9369f6fc4af92c70d77d37c88a15af7750b5d40df374248c8de053616c0107be"    // build 41, later asset, and 43
+        ]
+    };
+
+    private static string Hash(string text) =>
+        Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text.Replace("\r", ""))));
+
+    /// <summary>
+    /// Skills shipped in the app (docs/skills) reach an existing skills folder too, and stay up to
+    /// date. The ledger .builtin lists each one offered with the hash of the text written: one the
+    /// user deleted stays deleted, one the user edited is never overwritten, and an unedited older
+    /// copy (written by the app, or copied in from a release) is replaced by the current text.
     /// </summary>
     private static void OfferBuiltIns(string dir)
     {
-        var ledger = System.IO.Path.Combine(dir, ".builtin");
+        var ledgerPath = System.IO.Path.Combine(dir, ".builtin");
         try
         {
-            var offered = File.Exists(ledger)
-                ? File.ReadAllLines(ledger).Select(l => l.Trim()).Where(l => l.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase)
-                : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // "name hash" per line; build 43 wrote names only.
+            var ledger = (File.Exists(ledgerPath) ? File.ReadAllLines(ledgerPath) : [])
+                .Select(l => l.Trim().Split(' ', 2)).Where(p => p[0].Length > 0)
+                .ToDictionary(p => p[0], p => p.Length > 1 ? p[1].Trim() : "", StringComparer.OrdinalIgnoreCase);
             var assembly = typeof(SkillLibrary).Assembly;
-            var added = false;
+            var changed = false;
             foreach (var resource in assembly.GetManifestResourceNames().Where(r => r.StartsWith("skills/", StringComparison.Ordinal)))
             {
                 var file = resource["skills/".Length..];
-                if (!offered.Add(file))
-                {
-                    continue;
-                }
-
-                added = true;
+                using var stream = assembly.GetManifestResourceStream(resource)!;
+                using var reader = new StreamReader(stream);
+                var text = reader.ReadToEnd();
+                var hash = Hash(text);
                 var path = System.IO.Path.Combine(dir, file);
+                var offered = ledger.TryGetValue(file, out var written);
+
                 if (!File.Exists(path))
                 {
-                    using var stream = assembly.GetManifestResourceStream(resource)!;
-                    using var reader = new StreamReader(stream);
-                    File.WriteAllText(path, reader.ReadToEnd());
+                    if (offered)
+                    {
+                        continue;   // deleted by the user
+                    }
+
+                    File.WriteAllText(path, text);
+                }
+                else
+                {
+                    var onDisk = Hash(File.ReadAllText(path));
+                    var untouched = onDisk == written || ShippedBefore.GetValueOrDefault(file, []).Contains(onDisk);
+                    if (onDisk != hash)
+                    {
+                        if (!untouched)
+                        {
+                            continue;   // the user's own version
+                        }
+
+                        File.WriteAllText(path, text);
+                    }
+                }
+
+                if (written != hash)
+                {
+                    ledger[file] = hash;
+                    changed = true;
                 }
             }
 
-            if (added)
+            if (changed)
             {
-                File.WriteAllLines(ledger, offered.Order(StringComparer.OrdinalIgnoreCase));
+                File.WriteAllLines(ledgerPath, ledger.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase).Select(p => $"{p.Key} {p.Value}"));
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

@@ -2,17 +2,20 @@
 name: chess.com
 description: Open chess.com in a browser and play a game against a bot
 protocols: vnc
+steps: 300
 ---
-A whole game is long: give the endpoint a step limit of about 300 (Agent endpoints, Steps).
+A whole game is long; this skill raises the step limit to 300.
 
 Getting there, keyboard first:
-- Open the browser with `key win`, `type firefox` (or edge, chrome), `key enter`. Do not hunt for
-  taskbar icons.
+- Open the browser with `key win`, `type firefox` (or edge, chrome), `key enter`. Never click
+  taskbar icons: they are small and the click check misreads them.
 - Go to a page with `key ctrl+l`, then `type https://www.chess.com/play/computer` with enter.
 - Close cookie banners, sign-up offers and tips with their Close, X, "No thanks" or `key esc`
   before anything else. They come back after games too.
 
 Starting a game:
+- If the page already shows a game, finished or not, start a new one ("New Game", or the bot list
+  and "Play") unless the goal says to continue it. An old position is not yours to rescue.
 - The right-hand panel lists bots. Click a bot, then the green "Play" button at the bottom of that
   panel. If a second screen asks for colour or mode, choose and press "Play" again.
 - If a click on "Play" is refused by the check, zoom on the bottom of the right panel once, then
