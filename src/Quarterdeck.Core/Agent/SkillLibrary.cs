@@ -45,6 +45,8 @@ public static class SkillLibrary
             SeedDefaults(dir);
         }
 
+        OfferBuiltIns(dir);
+
         var skills = new List<AgentSkill>();
         foreach (var file in Directory.EnumerateFiles(dir, "*.md").OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
         {
@@ -120,6 +122,50 @@ public static class SkillLibrary
         "vnc" or "desktop" => SessionProtocol.Vnc,
         _ => null
     };
+
+    /// <summary>
+    /// Skills shipped in the app (docs/skills) reach an existing skills folder too. Each is
+    /// offered once: the names offered are kept in .builtin, so one the user deleted stays
+    /// deleted, and a file that exists is never overwritten.
+    /// </summary>
+    private static void OfferBuiltIns(string dir)
+    {
+        var ledger = System.IO.Path.Combine(dir, ".builtin");
+        try
+        {
+            var offered = File.Exists(ledger)
+                ? File.ReadAllLines(ledger).Select(l => l.Trim()).Where(l => l.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase)
+                : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var assembly = typeof(SkillLibrary).Assembly;
+            var added = false;
+            foreach (var resource in assembly.GetManifestResourceNames().Where(r => r.StartsWith("skills/", StringComparison.Ordinal)))
+            {
+                var file = resource["skills/".Length..];
+                if (!offered.Add(file))
+                {
+                    continue;
+                }
+
+                added = true;
+                var path = System.IO.Path.Combine(dir, file);
+                if (!File.Exists(path))
+                {
+                    using var stream = assembly.GetManifestResourceStream(resource)!;
+                    using var reader = new StreamReader(stream);
+                    File.WriteAllText(path, reader.ReadToEnd());
+                }
+            }
+
+            if (added)
+            {
+                File.WriteAllLines(ledger, offered.Order(StringComparer.OrdinalIgnoreCase));
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A read-only or locked folder: the user's own skills still load.
+        }
+    }
 
     private static void SeedDefaults(string dir)
     {

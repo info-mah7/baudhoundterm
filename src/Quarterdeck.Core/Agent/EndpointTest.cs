@@ -6,7 +6,8 @@ using System.Text.Json.Nodes;
 namespace Quarterdeck.Core.Agent;
 
 /// <summary>One line of a connection test: what was checked, and whether it passed.</summary>
-public sealed record EndpointCheck(bool Ok, string Text, bool Warning = false);
+/// <param name="SuggestedExtra">Extra request JSON the test found works better; the form offers it.</param>
+public sealed record EndpointCheck(bool Ok, string Text, bool Warning = false, string? SuggestedExtra = null);
 
 /// <summary>
 /// "Test connection" for an agent endpoint: can we reach it, does it accept the key, does the
@@ -183,12 +184,9 @@ public static class EndpointTest
                 results.Add(new EndpointCheck(true, $"{endpoint.Model} answered in {seconds:0.0} s."));
                 if (AgentRunner.Thinks(message))
                 {
-                    // Short questions finish thinking in time, so this test passes; the click
+                    // Short questions finish thinking in time, so the test above passes; the click
                     // check on a busy screenshot did not, and came back empty every time.
-                    results.Add(new EndpointCheck(true,
-                        "This model thinks before answering. On hard pictures that can use up the reply and leave no answer, " +
-                        "which stops remote-desktop runs. " + AgentRunner.ThinkingHint[(AgentRunner.ThinkingHint.IndexOf("Turn", StringComparison.Ordinal))..],
-                        Warning: true));
+                    results.Add(await ThinkingSwitchAsync(http, Request, body, endpoint, token));
                 }
                 results.Add(new EndpointCheck(name == "ping", name == "ping"
                     ? "Tool calling works: the agent can drive terminals with this model."
@@ -260,6 +258,86 @@ public static class EndpointTest
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Ways servers take to turn thinking off or down, most common first. There is no standard:
+    /// a wrong one is ignored, or rejected with a 400, so each is tried on its own.
+    /// </summary>
+    internal static readonly string[] ThinkingSwitches =
+    [
+        """{"chat_template_kwargs":{"enable_thinking":false}}""",   // Qwen 3, GLM on vLLM / SGLang / llama.cpp
+        """{"chat_template_kwargs":{"thinking":false}}""",          // DeepSeek V3.1+ on vLLM
+        """{"reasoning":{"enabled":false}}""",                       // OpenRouter
+        """{"think":false}""",                                       // Ollama
+        """{"reasoning_effort":"none"}""",                           // Gemini (OpenAI-compatible)
+        """{"reasoning_effort":"minimal"}""",                        // OpenAI GPT-5
+        """{"reasoning_effort":"low"}"""                             // o-series, gpt-oss: less, not none
+    ];
+
+    /// <summary>
+    /// The model thinks: try each switch on the same request and offer the first one that gets an
+    /// answer with no reasoning. None works on models that always think (DeepSeek R1, gpt-oss).
+    /// </summary>
+    private static async Task<EndpointCheck> ThinkingSwitchAsync(HttpClient http, Func<HttpMethod, string, JsonObject?, HttpRequestMessage> request,
+        JsonObject body, AgentEndpoint endpoint, CancellationToken token)
+    {
+        foreach (var candidate in ThinkingSwitches)
+        {
+            var extra = AgentConfig.ParseExtra(endpoint.ExtraJson) ?? new JsonObject();
+            Merge(extra, JsonNode.Parse(candidate)!.AsObject());
+            var tryBody = (JsonObject)body.DeepClone();
+            foreach (var (k, v) in extra)
+            {
+                tryBody[k] = v?.DeepClone();
+            }
+
+            try
+            {
+                using var response = await http.SendAsync(request(HttpMethod.Post, "/chat/completions", tryBody), token);
+                if (!response.IsSuccessStatusCode)
+                {
+                    continue;
+                }
+
+                var reply = JsonNode.Parse(await response.Content.ReadAsStringAsync(token))?["choices"]?[0]?["message"];
+                var answered = reply?["tool_calls"] is JsonArray { Count: > 0 } || !string.IsNullOrWhiteSpace(reply?["content"]?.ToString());
+                if (answered && !AgentRunner.Thinks(reply))
+                {
+                    var json = extra.ToJsonString();
+                    return new EndpointCheck(true,
+                        $"This model thinks before answering, which can leave remote-desktop clicks with no answer. {candidate} turns it " +
+                        "off on this server: it is now in Extra request JSON. Save to keep it.",
+                        Warning: true, SuggestedExtra: json);
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            {
+                // This switch is not it; try the next.
+            }
+        }
+
+        return new EndpointCheck(true,
+            "This model thinks before answering, and none of the known switches turned it off on this server. Terminals " +
+            "are fine. On remote desktops each click check waits for the thinking (about 20 s on a 27B), and on a confusing " +
+            "picture it may never finish, which stops the run: use a model that can answer without thinking for those.",
+            Warning: true);
+    }
+
+    /// <summary>Copies b into a, merging nested objects so chat_template_kwargs keeps keys already set.</summary>
+    internal static void Merge(JsonObject a, JsonObject b)
+    {
+        foreach (var (k, v) in b)
+        {
+            if (v is JsonObject inner && a[k] is JsonObject existing)
+            {
+                Merge(existing, inner);
+            }
+            else
+            {
+                a[k] = v?.DeepClone();
+            }
+        }
     }
 
     /// <summary>A 64x32 PNG: left half red, right half blue. Built by hand to keep Core free of imaging code.</summary>

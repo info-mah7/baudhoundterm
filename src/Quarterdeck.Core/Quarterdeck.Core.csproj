@@ -23,4 +23,9 @@
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Built-in agent skills, one copy: docs/skills is what the manual links to. -->
+    <EmbeddedResource Include="../../docs/skills/*.md" LogicalName="skills/%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>
