@@ -71,6 +71,14 @@ internal sealed class AgentSettingsWindow : Window
         var bottom = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) };
         bottom.Children.Add(Btn("Skills folder", () => AgentPanel.OpenFolder(AgentConfig.SkillsDirectory),
             "Each .md file is a skill; its header lists the protocols it applies to"));
+        bottom.Children.Add(Btn("Restore built-in skills", () =>
+        {
+            var restored = SkillLibrary.RestoreBuiltIns();
+            Note(restored.Count == 0
+                ? "All built-in skills are already in the skills folder (edited ones are left as they are)."
+                : "Put back: " + string.Join(", ", restored) + ". The agent pane lists them the next time you press Run.",
+                Color.FromRgb(0x98, 0xC3, 0x79));
+        }, "Put back any built-in skill (such as chess.com) that is missing from the skills folder"));
         bottom.Children.Add(Btn("Logs folder", () => AgentPanel.OpenFolder(AgentConfig.LogDirectory)));
         bottom.Children.Add(Btn("Close", Close));
         Closing += (_, e) => e.Cancel = !ConfirmLeave();
