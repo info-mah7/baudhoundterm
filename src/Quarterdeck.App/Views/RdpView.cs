@@ -64,14 +64,41 @@ internal sealed class RdpView : Grid, IDisposable
     /// <summary>The control's dispatch object; dynamic because no interop assembly is shipped.</summary>
     private dynamic? Rdp => _ax?.Ocx;
 
+    private static string? _clsid;
+
+    /// <summary>
+    /// The newest control that actually creates. Registered is not enough: Windows 11 26100
+    /// registers MsTscAx.MsTscAx.13, but mstscax.dll refuses it with CLASS_E_CLASSNOTAVAILABLE.
+    /// </summary>
     private static string? FindClsid()
     {
+        if (_clsid is not null)
+        {
+            return _clsid;
+        }
+
         foreach (var progId in ProgIds)
         {
             using var key = Registry.ClassesRoot.OpenSubKey(progId + @"\CLSID");
-            if (key?.GetValue("") is string clsid && clsid.Length > 0)
+            if (key?.GetValue("") is not string clsid || !Guid.TryParse(clsid, out var guid)
+                || Type.GetTypeFromCLSID(guid) is not { } type)
             {
-                return clsid;
+                continue;
+            }
+
+            try
+            {
+                var probe = Activator.CreateInstance(type);
+                if (probe is not null && System.Runtime.InteropServices.Marshal.IsComObject(probe))
+                {
+                    System.Runtime.InteropServices.Marshal.FinalReleaseComObject(probe);
+                }
+
+                return _clsid = clsid;
+            }
+            catch (Exception)
+            {
+                // Registered but refused; try the next version down.
             }
         }
 
@@ -88,14 +115,25 @@ internal sealed class RdpView : Grid, IDisposable
         var clsid = FindClsid();
         if (clsid is null)
         {
-            _report(SessionState.Failed, "This PC has no Remote Desktop control (mstscax.dll, Windows 10 or later).");
+            _report(SessionState.Failed, "This PC has no working Remote Desktop control (mstscax.dll, Windows 10 or later).");
             return false;
         }
 
-        _ax = new RdpAxHost(clsid) { Dock = System.Windows.Forms.DockStyle.Fill };
-        _host.Child = _ax;
-        _ax.CreateControl();
-        return true;
+        try
+        {
+            _ax = new RdpAxHost(clsid) { Dock = System.Windows.Forms.DockStyle.Fill };
+            _host.Child = _ax;
+            _ax.CreateControl();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _host.Child = null;
+            _ax?.Dispose();
+            _ax = null;
+            _report(SessionState.Failed, "The Remote Desktop control would not start: " + ex.Message);
+            return false;
+        }
     }
 
     public async Task ConnectAsync()
