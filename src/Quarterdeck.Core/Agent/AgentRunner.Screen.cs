@@ -120,7 +120,46 @@ public sealed partial class AgentRunner
         result.StartsWith("not clicked", StringComparison.Ordinal) || result.StartsWith("denied", StringComparison.Ordinal)
         || result.StartsWith("refused", StringComparison.Ordinal) || result.StartsWith("error", StringComparison.Ordinal);
 
+    private const string NoChange = "the screen did not visibly change";
+    private string _noEffectCall = "";
+    private int _noEffectCount;
+
+    /// <summary>
+    /// One action, repeated exactly, that changed nothing twice is not tried a third time. A
+    /// chess run clicked one empty square twelve times running, each time believing a piece
+    /// was selected; only a fresh look gets out of that.
+    /// </summary>
     private async Task<string> ExecuteScreenAsync(string name, JsonObject args, CancellationToken token)
+    {
+        if (name is not ("click" or "type" or "key" or "scroll" or "drag"))
+        {
+            return await ExecuteScreenCoreAsync(name, args, token);
+        }
+
+        var call = name + " " + new JsonObject(args.Where(kv => kv.Key != "seen")
+            .Select(kv => KeyValuePair.Create(kv.Key, kv.Value?.DeepClone()))).ToJsonString();
+        if (call == _noEffectCall && _noEffectCount >= 2)
+        {
+            return $"refused: you did exactly this {_noEffectCount} times and the screen did not change. Your picture of the " +
+                   "screen is out of date: look, read what is really there, and choose a different action.";
+        }
+
+        var result = await ExecuteScreenCoreAsync(name, args, token);
+        if (result.Contains(NoChange, StringComparison.Ordinal))
+        {
+            _noEffectCount = call == _noEffectCall ? _noEffectCount + 1 : 1;
+            _noEffectCall = call;
+        }
+        else if (!ScreenActionFailed(result))
+        {
+            _noEffectCall = "";
+            _noEffectCount = 0;
+        }
+
+        return result;
+    }
+
+    private async Task<string> ExecuteScreenCoreAsync(string name, JsonObject args, CancellationToken token)
     {
         var screen = _screen!;
         if (!screen.IsConnected)
@@ -341,7 +380,7 @@ public sealed partial class AgentRunner
             ? "Done; the screen changed. Screenshot attached."
             : waitForChange
                 ? $"Nothing changed in {seconds} s. Screenshot attached."
-                : "Done, but the screen did not visibly change. Screenshot attached: check the action had an effect.";
+                : $"Done, but {NoChange}. Screenshot attached: check the action had an effect.";
     }
 
     /// <summary>More than a few thumbnail pixels moved by more than noise.</summary>
@@ -381,6 +420,17 @@ public sealed partial class AgentRunner
         // The same spot already refused for the same target: answer from memory, so a model that
         // keeps resending one point does not burn a check (and a step) each time.
         var key = target.ToLowerInvariant();
+
+        // A model that cannot place something keeps guessing: one chess run aimed at the same
+        // piece 200 times, wandering off the board onto the tab strip. Past a few misses the
+        // guesses get worse, not better.
+        var misses = _refused.Count(r => r.Target == key);   // since it was last hit
+        if (misses >= MaxMisses)
+        {
+            return $"not clicked: {misses} points for '{target}' were all wrong, so no more are checked. Stop aiming at it: " +
+                   "use the keyboard, click something else, or report that you could not reach it.";
+        }
+
         if (_refused.FirstOrDefault(r => r.Target == key && Math.Abs(r.X - px) <= 6 && Math.Abs(r.Y - py) <= 6) is { Target: not null } seen)
         {
             return $"not clicked: this point was already checked and is on \"{seen.Found}\", not '{target}'. " +
@@ -429,16 +479,23 @@ public sealed partial class AgentRunner
 
         if (ok)
         {
+            // Misses count until the target is hit; a long game aims at "square f3" many times.
+            _refused.RemoveAll(r => r.Target == key);
             return null;
         }
 
         _refused.Add((key, px, py, Truncate(found, 80)));
         Emit("action", $"✖ check: the point is on \"{Truncate(found, 60)}\", not '{target}'; no click");
-        return found.Length == 0
+        var refusal = found.Length == 0
             ? $"not clicked: the check could not tell what is at that point. Zoom in and give a point on '{target}' itself."
             : $"not clicked: the point is on \"{found}\", not '{target}'. Zoom in and give a point on '{target}' itself.";
+        return misses + 1 == MaxMisses / 2
+            ? refusal + $" That is {misses + 1} misses: take a fresh look before the next try, and if you worked the point out, " +
+                        $"check the numbers. After {MaxMisses} misses no more points for it are checked."
+            : refusal;
     }
 
+    private const int MaxMisses = 6;
     private readonly List<(string Target, int X, int Y, string Found)> _refused = new();
     private readonly List<(int X, int Y, int Size)> _zooms = new();
 
@@ -602,6 +659,8 @@ public sealed partial class AgentRunner
     {
         _zooms.Clear();
         _refused.Clear();
+        _noEffectCall = "";
+        _noEffectCount = 0;
         if (_screen is { IsConnected: true })
         {
             await QueueShotAsync(null, "The screen as the goal starts.", token);
