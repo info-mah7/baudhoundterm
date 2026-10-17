@@ -40,7 +40,13 @@ Finding the board, once per game:
 Choosing a move:
 - Before you click, check the move is legal from the position you rebuilt from the move list:
   the piece is on that square, the path is clear, and bishops stay on their colour (a c1 bishop
-  can never reach d3). An illegal move does nothing and costs steps.
+  can never reach d3). Pawns move straight ahead only onto an empty square, and capture only
+  diagonally. An illegal move does nothing and costs steps.
+- Let the board tell you: after you click a piece, chess.com marks every square it may go to with
+  a grey dot (a ring on a piece it may take). Zoom once on the board and click only a marked
+  square. No marks at all: you picked the wrong square, or that piece cannot move.
+- Keep `failed: f2-f4, d3xd4` in `seen` for this turn: moves that did not register. Never try
+  one of them again; pick another move.
 
 Making a move:
 - Click the piece's square, then the destination square. Name only what a close-up of that one
@@ -66,6 +72,8 @@ After every move, the move list decides:
 - Tips and pop-ups beside the move list do not matter; leave them unless they cover the board.
 - The move list is the truth. Keep the whole game in `seen` in algebraic notation, e.g.
   `moves: 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6`. Pictures are dropped; this line is your only memory.
+- Copy the list exactly as the screen shows it, up to its last entry. Never add a move you have
+  not read there: the last number on screen is the last move made.
 - Before choosing a move, rebuild the position from that list, not from an old picture. Check that
   your piece is really on the square you mean (zoom if unsure).
 
