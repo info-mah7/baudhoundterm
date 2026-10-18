@@ -223,6 +223,16 @@ internal sealed class AgentPanel : DockPanel
             _runner = _protocol == Core.Model.SessionProtocol.Vnc && _target is IScreenTarget screen
                 ? new AgentRunner(endpoint, apiKey, screen, skills, _log)
                 : new AgentRunner(endpoint, apiKey, (ITerminalTarget)_target, skills, _log);
+            // Helpers: only those enabled in agent.json and named by a ticked skill.
+            _runner.Helpers = AgentHelper.ForRun(AgentConfig.Load().Helpers, skills, _runner.BuiltInToolNames);
+            foreach (var h in AgentConfig.Load().Helpers.Where(h => skills.Any(s => s.Helpers.Contains(h.Name))))
+            {
+                if (h.Problem(_runner.BuiltInToolNames) is { } why)
+                {
+                    Append($"Helper {h.Name} is not offered: {why}.");
+                }
+            }
+
             _runner.Event += e => Dispatcher.BeginInvoke(() => Show(e));
             _runner.Approve = command => Dispatcher.InvokeAsync(() => MessageBox.Show(
                 Window.GetWindow(this)!,

@@ -3,8 +3,24 @@ name: chess.com
 description: Open chess.com in a browser and play a game against a bot
 protocols: vnc
 steps: 300
+helpers: chess_read, chess_best
 ---
 A whole game is long; this skill raises the step limit to 300.
+
+With the chess_read and chess_best helpers (they appear among your tools when set up), let them
+do the chess and do the browser yourself:
+- Start a new game (below), then find the board's two corners once, by zooming: the outer edge
+  of the 8x8 squares, top-left and bottom-right. Pass them as "board" to every helper call, e.g.
+  {"board": {"top_left": [218, 190], "bottom_right": [614, 894]}}.
+- Call chess_read right after the game starts: it learns the pieces from the starting position.
+- Your turn ("to_move": "you"): call chess_best, click click_from (target: the piece's name),
+  then click_to (target: "empty square", or the piece taken). Then call chess_read: its "moves"
+  must now end with your move. If not, call chess_read once more before trying again.
+- The bot's turn: wait 3 s, then chess_read, until "to_move" is "you" again.
+- Never choose a move yourself, and believe chess_read over what you think you see.
+- A "note" or "unclear" status: close any dialog over the board, wait, and call chess_read again.
+- When "game_over" is true, report "result" and "moves".
+Without the helpers, play with the rules below.
 
 Getting there, keyboard first:
 - Open the browser with `key win`, `type firefox` (or edge, chrome), `key enter`. Never click

@@ -44,6 +44,8 @@ The [manual](docs/MANUAL.md) explains how to use it.
   admin-session options.
 - **SQL query tabs** for SQL Server, PostgreSQL, MySQL/MariaDB and SQLite, with a read-only mode
   and a prompt before statements that change data.
+- **Agent helpers**: skills can name small local services (JSON over HTTP) the agent calls for exact work, such as
+  reading a chess position or OCR of a screen region. Example service in `helpers/`.
 - **AI agent** on any tab, through an OpenAI-compatible endpoint (vLLM, llama.cpp, Ollama,
   OpenRouter). On a terminal it types commands and reads the output; on a VNC tab it sees
   screenshots and clicks and types. Risky actions can need your approval, and every step is

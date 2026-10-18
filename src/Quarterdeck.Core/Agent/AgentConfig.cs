@@ -94,6 +94,9 @@ public sealed class AgentConfig
     public List<AgentEndpoint> Endpoints { get; set; } = new();
     public Guid? DefaultEndpoint { get; set; }
 
+    /// <summary>Helper services skills may use (see <see cref="AgentHelper"/>). Edited in agent.json.</summary>
+    public List<AgentHelper> Helpers { get; set; } = new();
+
     public static string DefaultPath => Path.Combine(AppPaths.DataDirectory, "agent.json");
     public static string SkillsDirectory => Path.Combine(AppPaths.DataDirectory, "skills");
     public static string LogDirectory => Path.Combine(AppPaths.DataDirectory, "agent-logs");
