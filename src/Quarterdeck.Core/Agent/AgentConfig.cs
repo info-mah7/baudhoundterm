@@ -26,6 +26,23 @@ public sealed class AgentEndpoint
     public int MaxSteps { get; set; } = 150;
 
     /// <summary>
+    /// Whether the model should think before answering. Thinking gives better plans on hard
+    /// steps and costs time on every step; on a remote desktop each click check waits for it.
+    /// Auto leaves the model as the server has it (and whatever Extra request JSON says).
+    /// </summary>
+    public AgentThinking Thinking { get; set; } = AgentThinking.Auto;
+
+    /// <summary>The request JSON that turns thinking off and on here, found by Tune.</summary>
+    public string ThinkingOffJson { get; set; } = "";
+    public string ThinkingOnJson { get; set; } = "";
+
+    /// <summary>
+    /// The model's context window in tokens, as the conversation is trimmed to fit. 0 uses a
+    /// safe default (about 32k). Tune reads the real size from the server.
+    /// </summary>
+    public int ContextTokens { get; set; }
+
+    /// <summary>
     /// Raw JSON merged into every request, for what only some servers take, e.g.
     /// {"chat_template_kwargs":{"enable_thinking":false}} for Qwen on vLLM. Blank for none.
     /// </summary>
@@ -74,6 +91,19 @@ public sealed class AgentEndpoint
     public override string ToString() => string.IsNullOrWhiteSpace(Model) ? Name : $"{Name} ({Model})";
 
     public AgentEndpoint Copy() => (AgentEndpoint)MemberwiseClone();
+}
+
+/// <summary>Thinking (reasoning) for an endpoint's model.</summary>
+public enum AgentThinking
+{
+    /// <summary>However the server has it.</summary>
+    Auto,
+
+    /// <summary>Off: every step answers at once. Best for remote desktops and long runs.</summary>
+    Off,
+
+    /// <summary>On: slower, better on hard steps.</summary>
+    On
 }
 
 public enum AgentApproval

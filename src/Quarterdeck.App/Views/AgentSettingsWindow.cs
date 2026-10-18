@@ -30,6 +30,11 @@ internal sealed class AgentSettingsWindow : Window
     private readonly TextBox _extra = new() { AcceptsReturn = true, Height = 54, TextWrapping = TextWrapping.Wrap };
     private readonly CheckBox _default = new() { Content = "Use by default for new agents" };
     private readonly ComboBox _approval = new();
+    private readonly ComboBox _thinking = new();
+    private readonly TextBox _context = new()
+    {
+        ToolTip = "The model's context window in tokens; the conversation is trimmed to fit. 0 uses a safe default (about 32k). Tune reads the real size from the server."
+    };
     private readonly TextBox _risky = new()
     {
         AcceptsReturn = true, Height = 90, TextWrapping = TextWrapping.NoWrap,
@@ -110,6 +115,19 @@ internal sealed class AgentSettingsWindow : Window
         var nums = new UniformGrid2(_temperature, _steps);
         Field(form, "Temperature  /  Max steps per goal", nums);
         Field(form, "Extra request JSON (optional)", _extra);
+        _thinking.Items.Add("Thinking: as the server has it");
+        _thinking.Items.Add("Thinking: off (faster, one round trip per step)");
+        _thinking.Items.Add("Thinking: on (slower, better on hard steps)");
+        _thinking.ToolTip = "Thinking models plan before answering. That helps on hard steps and costs time on every step; " +
+                            "on a remote desktop each click is checked against a close-up first, and that check waits too.";
+        var thinkRow = new DockPanel();
+        var tune = Btn("Tune for this model", async () => await TuneAsync(),
+            "Measure this model on this server: its context window, whether thinking can be turned off, and what each costs");
+        DockPanel.SetDock(tune, Dock.Right);
+        thinkRow.Children.Add(tune);
+        thinkRow.Children.Add(_thinking);
+        Field(form, "Thinking", thinkRow);
+        Field(form, "Context window in tokens (0 = default)", _context);
         _approval.Items.Add("Run freely: never ask");
         _approval.Items.Add("Ask before risky commands (patterns below)");
         _approval.Items.Add("Ask before every command");
@@ -192,7 +210,8 @@ internal sealed class AgentSettingsWindow : Window
 
     /// <summary>Everything the form holds, to tell whether it has unsaved edits.</summary>
     private string Snapshot() => string.Join("\u0001", _name.Text, _url.Text, _model.Text, _key.Password,
-        _temperature.Text, _steps.Text, _extra.Text, _default.IsChecked, _approval.SelectedIndex, _risky.Text, _noLocal.IsChecked, _shotWidth.Text, _confirm.IsChecked);
+        _temperature.Text, _steps.Text, _extra.Text, _default.IsChecked, _approval.SelectedIndex, _risky.Text, _noLocal.IsChecked, _shotWidth.Text, _confirm.IsChecked,
+        _thinking.SelectedIndex, _context.Text);
 
     private bool Dirty => Snapshot() != _clean;
 
@@ -263,6 +282,10 @@ internal sealed class AgentSettingsWindow : Window
         _extra.Text = ep.ExtraJson;
         _default.IsChecked = _config.DefaultEndpoint == ep.Id || (isNew && _config.Endpoints.Count == 0);
         _approval.SelectedIndex = (int)ep.Approval;
+        _thinking.SelectedIndex = (int)ep.Thinking;
+        _context.Text = ep.ContextTokens.ToString(CultureInfo.InvariantCulture);
+        _thinkingOff = ep.ThinkingOffJson;
+        _thinkingOn = ep.ThinkingOnJson;
         _risky.Text = ep.RiskyPatterns;
         _noLocal.IsChecked = ep.NeverOnLocalShells;
         _shotWidth.Text = ep.ScreenshotWidth.ToString(CultureInfo.InvariantCulture);
@@ -344,6 +367,10 @@ internal sealed class AgentSettingsWindow : Window
         ep.ExtraJson = _extra.Text.Trim();
         // Nothing selected (an unknown value in agent.json) keeps the strictest mode, not Free.
         ep.Approval = _approval.SelectedIndex < 0 ? AgentApproval.Always : (AgentApproval)_approval.SelectedIndex;
+        ep.Thinking = _thinking.SelectedIndex < 0 ? AgentThinking.Auto : (AgentThinking)_thinking.SelectedIndex;
+        ep.ContextTokens = int.TryParse(_context.Text, out var ctx) && ctx > 0 ? Math.Clamp(ctx, 4_000, 2_000_000) : 0;
+        ep.ThinkingOffJson = _thinkingOff;
+        ep.ThinkingOnJson = _thinkingOn;
         ep.RiskyPatterns = _risky.Text.Trim().Length > 0 ? _risky.Text.Trim() : AgentEndpoint.DefaultRiskyPatterns;
         ep.NeverOnLocalShells = _noLocal.IsChecked == true;
         ep.ScreenshotWidth = int.TryParse(_shotWidth.Text, out var sw) ? Math.Clamp(sw, 320, 2560) : 1280;
@@ -385,6 +412,46 @@ internal sealed class AgentSettingsWindow : Window
     }
 
     /// <summary>Runs the connection test on the form's current values and shows each step.</summary>
+    // Found by Tune and saved with the endpoint: the switch this server takes.
+    private string _thinkingOff = "";
+    private string _thinkingOn = "";
+
+    private async Task TuneAsync()
+    {
+        var probe = new AgentEndpoint
+        {
+            BaseUrl = _url.Text.Trim(),
+            Model = _model.Text.Trim(),
+            ExtraJson = _extra.Text.Trim()
+        };
+
+        Note("Measuring this model: context window, and what thinking costs here...");
+        EndpointTest.EndpointTuning tuning;
+        try
+        {
+            tuning = await EndpointTest.TuneAsync(probe, FormKey());
+        }
+        catch (Exception ex)
+        {
+            Note("✖ Tuning failed: " + ex.Message, Color.FromRgb(0xE0, 0x6C, 0x75));
+            return;
+        }
+
+        if (tuning.ContextTokens > 0)
+        {
+            _context.Text = tuning.ContextTokens.ToString(CultureInfo.InvariantCulture);
+        }
+
+        _thinkingOff = tuning.ThinkingOffJson;
+        _thinkingOn = tuning.ThinkingOnJson;
+        if (tuning.Recommended != AgentThinking.Auto || _thinking.SelectedIndex < 0)
+        {
+            _thinking.SelectedIndex = (int)tuning.Recommended;
+        }
+
+        Show(tuning.Notes);
+    }
+
     private async Task TestAsync()
     {
         var probe = new AgentEndpoint
@@ -414,11 +481,15 @@ internal sealed class AgentSettingsWindow : Window
             _extra.Text = better;
         }
 
+        Show(lines);
+    }
+
+    /// <summary>One line per check, coloured by the worst of them.</summary>
+    private void Show(List<EndpointCheck> lines) =>
         Note(string.Join(Environment.NewLine, lines.Select(l => (l.Ok ? (l.Warning ? "! " : "✔ ") : "✖ ") + l.Text)),
             lines.Any(l => !l.Ok) ? Color.FromRgb(0xE0, 0x6C, 0x75)
             : lines.Any(l => l.Warning) ? Color.FromRgb(0xE5, 0xC0, 0x7B)
             : Color.FromRgb(0x98, 0xC3, 0x79));
-    }
 
     /// <summary>The key typed in the form, else the saved one. Pasted keys often carry a trailing space or newline.</summary>
     private string? FormKey()

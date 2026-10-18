@@ -260,6 +260,239 @@ public static class EndpointTest
         return results;
     }
 
+    /// <summary>What Tune found: the settings to apply, and a line per check for the user.</summary>
+    public sealed record EndpointTuning(int ContextTokens, string ThinkingOffJson, string ThinkingOnJson,
+                                        AgentThinking Recommended, List<EndpointCheck> Notes);
+
+    /// <summary>
+    /// Measures this model on this server rather than assuming: the real context window, which
+    /// switch (if any) turns thinking off and on, and how long a step takes each way. Nothing is
+    /// saved here; the form shows the result and the user applies it.
+    /// </summary>
+    public static async Task<EndpointTuning> TuneAsync(AgentEndpoint endpoint, string? apiKey, CancellationToken token = default)
+    {
+        var notes = new List<EndpointCheck>();
+        var baseUrl = endpoint.BaseUrl.Trim().TrimEnd('/');
+        var context = 0;
+        var off = "";
+        var on = "";
+
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out _) || string.IsNullOrWhiteSpace(endpoint.Model))
+        {
+            notes.Add(new EndpointCheck(false, "Fill in the base URL and the model first."));
+            return new EndpointTuning(0, "", "", AgentThinking.Auto, notes);
+        }
+
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(3) };
+
+        HttpRequestMessage Request(HttpMethod method, string path, JsonObject? body = null)
+        {
+            var r = new HttpRequestMessage(method, baseUrl + path);
+            if (!string.IsNullOrEmpty(apiKey))
+            {
+                r.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            }
+
+            if (body is not null)
+            {
+                r.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
+            }
+
+            return r;
+        }
+
+        // 1. The context window, as the server reports it for this model.
+        try
+        {
+            using var response = await http.SendAsync(Request(HttpMethod.Get, "/models"), token);
+            if (response.IsSuccessStatusCode)
+            {
+                var models = JsonNode.Parse(await response.Content.ReadAsStringAsync(token))?["data"] as JsonArray;
+                var mine = models?.FirstOrDefault(m => m?["id"]?.ToString() == endpoint.Model) ?? models?.FirstOrDefault();
+                foreach (var field in new[] { "max_model_len", "context_length", "max_context_length", "context_window" })
+                {
+                    if (mine?[field]?.GetValue<object>() is { } raw && int.TryParse(raw.ToString(), out var size) && size > 0)
+                    {
+                        context = size;
+                        notes.Add(new EndpointCheck(true, $"Context window: {size:N0} tokens, as the server reports it."));
+                        break;
+                    }
+                }
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            // Fall through to the note below.
+        }
+
+        if (context == 0)
+        {
+            notes.Add(new EndpointCheck(true,
+                "The server does not say how big this model's context window is; leave Context at 0 for the safe default, " +
+                "or type the number from the model's own documentation.", Warning: true));
+        }
+
+        // 2. Does it think at all, and what turns that off and on? Timed, so the cost is visible.
+        var probe = new JsonObject
+        {
+            ["model"] = endpoint.Model,
+            ["messages"] = new JsonArray { new JsonObject { ["role"] = "user", ["content"] = "In one short sentence: what is a terminal emulator?" } },
+            ["temperature"] = 0,
+            ["max_tokens"] = 1024
+        };
+
+        var (plainOk, plainThinks, plainMs, plainWhy) = await TryAsync(http, Request, probe, endpoint.ExtraJson, null, token);
+        if (!plainOk)
+        {
+            notes.Add(new EndpointCheck(false, $"The model did not answer a plain question: {plainWhy}"));
+            return new EndpointTuning(context, "", "", AgentThinking.Auto, notes);
+        }
+
+        notes.Add(new EndpointCheck(true, $"As it stands: {(plainThinks ? "thinks" : "answers straight away")}, {plainMs:N0} ms for a one-line answer."));
+
+        foreach (var candidate in ThinkingSwitches)
+        {
+            var (ok, thinks, ms, _) = await TryAsync(http, Request, probe, endpoint.ExtraJson, candidate, token);
+            if (ok && !thinks)
+            {
+                off = candidate;
+                notes.Add(new EndpointCheck(true, $"Thinking off: {candidate} works here ({ms:N0} ms)."));
+                break;
+            }
+        }
+
+        foreach (var candidate in ThinkingOnSwitches)
+        {
+            var (ok, thinks, ms, _) = await TryAsync(http, Request, probe, endpoint.ExtraJson, candidate, token);
+            if (ok && thinks)
+            {
+                on = candidate;
+                notes.Add(new EndpointCheck(true, $"Thinking on: {candidate} works here ({ms:N0} ms)."));
+                break;
+            }
+        }
+
+        // 3. What a long conversation costs. The model re-reads the whole history on every step,
+        //    so the window the server allows is not the window worth using: on a 27B at 0.6 ms a
+        //    token, a 60k-token history makes one step take half a minute.
+        var suggested = context;
+        var (fillOk, _, fillMs, _) = await TryAsync(http, Request, Filler(endpoint.Model, 6000), endpoint.ExtraJson,
+            off.Length > 0 ? off : null, token);
+        if (fillOk && fillMs > plainMs)
+        {
+            var perToken = (fillMs - plainMs) / 6000.0;          // ms per token of history
+            var affordable = perToken > 0.01 ? (int)(StepBudgetMs / perToken) : context;
+            suggested = context > 0 ? Math.Min(context, affordable) : affordable;
+            suggested = Math.Max(8_000, suggested / 1000 * 1000);
+            notes.Add(new EndpointCheck(true,
+                $"Reading history costs about {perToken * 1000:N0} ms per 1,000 tokens here, so a full {(context > 0 ? context : affordable):N0}-token " +
+                $"conversation would add about {perToken * (context > 0 ? context : affordable) / 1000:N0} s to every step."));
+            if (context > 0 && suggested < context)
+            {
+                notes.Add(new EndpointCheck(true,
+                    $"Suggested context: {suggested:N0} tokens, which keeps a step's share near {StepBudgetMs / 1000:N0} s. " +
+                    "Raise it for long tasks that need the history, and expect slower steps.", Warning: true));
+            }
+        }
+
+        AgentThinking recommended;
+        if (off.Length > 0 || (!plainThinks && on.Length > 0))
+        {
+            recommended = AgentThinking.Off;
+            notes.Add(new EndpointCheck(true,
+                "Suggested: thinking Off. Every step is one round trip, which matters most on remote desktops, where each " +
+                "click is checked against a close-up first. Turn it On for a model you only use on hard, slow tasks."));
+        }
+        else if (plainThinks)
+        {
+            recommended = AgentThinking.Auto;
+            notes.Add(new EndpointCheck(true,
+                "This model always thinks and no switch here turns it off. Expect slow steps, and empty answers on the " +
+                "click check; a model that can answer straight away suits remote desktops better.", Warning: true));
+        }
+        else
+        {
+            recommended = AgentThinking.Auto;
+            notes.Add(new EndpointCheck(true, "This model does not think, so the setting makes no difference here."));
+        }
+
+        return new EndpointTuning(suggested, off, on, recommended, notes);
+    }
+
+    /// <summary>What one step may spend re-reading the conversation before Tune suggests a smaller window.</summary>
+    private const double StepBudgetMs = 8_000;
+
+    /// <summary>A request with about this many tokens of filler, to time how history is read.</summary>
+    private static JsonObject Filler(string model, int tokens) => new()
+    {
+        ["model"] = model,
+        ["messages"] = new JsonArray
+        {
+            new JsonObject { ["role"] = "user", ["content"] = string.Concat(Enumerable.Repeat("word ", tokens)) + "\nIn one short sentence: what is a terminal emulator?" }
+        },
+        ["temperature"] = 0,
+        ["max_tokens"] = 64
+    };
+
+    /// <summary>Switches that turn thinking on, in the same order as the ones that turn it off.</summary>
+    internal static readonly string[] ThinkingOnSwitches =
+    [
+        @"{""chat_template_kwargs"":{""enable_thinking"":true}}",
+        @"{""chat_template_kwargs"":{""thinking"":true}}",
+        @"{""reasoning"":{""enabled"":true}}",
+        @"{""think"":true}",
+        @"{""reasoning_effort"":""medium""}"
+    ];
+
+    /// <summary>One timed request with an extra switch merged in: did it answer, and did it think?</summary>
+    private static async Task<(bool Ok, bool Thinks, double Ms, string Why)> TryAsync(
+        HttpClient http, Func<HttpMethod, string, JsonObject?, HttpRequestMessage> request, JsonObject probe,
+        string extraJson, string? switchJson, CancellationToken token)
+    {
+        var body = (JsonObject)probe.DeepClone();
+        try
+        {
+            if (AgentConfig.ParseExtra(extraJson) is { } extra)
+            {
+                foreach (var (k, v) in extra)
+                {
+                    body[k] = v?.DeepClone();
+                }
+            }
+
+            if (switchJson is not null && JsonNode.Parse(switchJson) is JsonObject sw)
+            {
+                foreach (var (k, v) in sw)
+                {
+                    body[k] = v?.DeepClone();
+                }
+            }
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or FormatException)
+        {
+            return (false, false, 0, "the Extra request JSON is not valid JSON");
+        }
+
+        var clock = Stopwatch.StartNew();
+        try
+        {
+            using var response = await http.SendAsync(request(HttpMethod.Post, "/chat/completions", body), token);
+            var text = await response.Content.ReadAsStringAsync(token);
+            if (!response.IsSuccessStatusCode)
+            {
+                return (false, false, clock.Elapsed.TotalMilliseconds, $"{(int)response.StatusCode}: {Short(text)}");
+            }
+
+            var message = JsonNode.Parse(text)?["choices"]?[0]?["message"];
+            var answered = message?["tool_calls"] is JsonArray { Count: > 0 } || !string.IsNullOrWhiteSpace(message?["content"]?.ToString());
+            return (answered, AgentRunner.Thinks(message), clock.Elapsed.TotalMilliseconds, answered ? "" : "it answered with nothing");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            return (false, false, clock.Elapsed.TotalMilliseconds, Plain(ex));
+        }
+    }
+
     /// <summary>
     /// Ways servers take to turn thinking off or down, most common first. There is no standard:
     /// a wrong one is ignored, or rejected with a 400, so each is tried on its own.
