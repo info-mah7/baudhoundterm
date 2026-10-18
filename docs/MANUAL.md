@@ -355,6 +355,11 @@ opens on the right of the tab.
 2. Type the goal and press Enter (Shift+Enter for a new line).
 3. Follow its steps in the panel. **Stop** ends the run; **New** starts a fresh conversation.
 
+**Interrupting.** While the agent works, type in the goal box and press Enter (the button reads
+**Send**): the agent stops what it is waiting on, finishes any typing or click already under way,
+and reads your message before its next step, ahead of the goal. Use it to correct or redirect a
+run without losing what the agent has seen. **Stop** (with the box empty) or **Esc** ends the run.
+
 When an action needs approval, a box shows exactly what it wants to run and in which tab, with No
 as the default. A refused action is not retried.
 
@@ -363,10 +368,9 @@ point and must match what it meant to click, or nothing is clicked. Clicks on th
 Shut down, and keys such as Win+R, Ctrl+Alt+Del and Alt+F4, need approval under *Ask before risky
 commands*. A view-only VNC tab can be looked at but not driven.
 
-On an RDP tab the agent's clicks and keys go to the Remote Desktop control, which takes them only
-while it has the keyboard focus, so it takes the focus for each action: typing elsewhere in the app
-during a run can be interrupted. Keys are sent as this PC's keyboard layout, which RDP expects to
-match the remote one; a character this layout cannot type stops the action with an error.
+On an RDP tab the agent's clicks and keys go into the session through the Remote Desktop control,
+without taking the keyboard focus from you. Keys are sent as this PC's keyboard layout, which RDP
+expects to match the remote one; a character this layout cannot type stops the action with an error.
 
 ### Skills
 

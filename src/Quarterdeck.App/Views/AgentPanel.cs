@@ -39,7 +39,8 @@ internal sealed class AgentPanel : DockPanel
         MinHeight = 44,
         MaxHeight = 120,
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-        ToolTip = "What the agent should do in this session. Enter runs; Shift+Enter for a new line."
+        ToolTip = "What the agent should do in this session. Enter runs; Shift+Enter for a new line.\n" +
+                  "While it runs, Enter sends what you type to the agent at once; Esc stops it."
     };
     private readonly Button _run = new() { Content = "Run", MinWidth = 64 };
     private readonly Button _reset = new() { Content = "New", ToolTip = "Forget this conversation; the next goal starts fresh" };
@@ -121,12 +122,26 @@ internal sealed class AgentPanel : DockPanel
             _transcript.Clear();
             Append("Conversation cleared.");
         };
+        _goal.TextChanged += (_, _) => ShowRunButton();
         _goal.PreviewKeyDown += async (_, e) =>
         {
             if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None)
             {
                 e.Handled = true;
-                await RunOrStopAsync();
+                if (_cts is null)
+                {
+                    await RunOrStopAsync();
+                }
+                else
+                {
+                    // Enter no longer stops a run by accident: with words it interrupts, empty it does nothing.
+                    SendInterruption();
+                }
+            }
+            else if (e.Key == Key.Escape && _cts is not null)
+            {
+                e.Handled = true;
+                _cts.Cancel();
             }
             else if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Shift)
             {
@@ -189,7 +204,15 @@ internal sealed class AgentPanel : DockPanel
     {
         if (_cts is not null)
         {
-            _cts.Cancel();
+            if (_goal.Text.Trim().Length > 0)
+            {
+                SendInterruption();
+            }
+            else
+            {
+                _cts.Cancel();
+            }
+
             return;
         }
 
@@ -250,7 +273,7 @@ internal sealed class AgentPanel : DockPanel
         Append("");
         Append("▶ " + goal);
         _cts = new CancellationTokenSource();
-        _run.Content = "Stop";
+        ShowRunButton();
         _endpoints.IsEnabled = false;
 
         try
@@ -270,7 +293,7 @@ internal sealed class AgentPanel : DockPanel
         {
             _cts.Dispose();
             _cts = null;
-            _run.Content = "Run";
+            ShowRunButton();
             _endpoints.IsEnabled = true;
             _goal.Focus();
         }
@@ -314,6 +337,29 @@ internal sealed class AgentPanel : DockPanel
     {
         Directory.CreateDirectory(path);
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = true });
+    }
+
+    /// <summary>What the user types while the agent works goes to it now, not after the run.</summary>
+    private void SendInterruption()
+    {
+        var text = _goal.Text.Trim();
+        if (_runner is null || text.Length == 0)
+        {
+            return;
+        }
+
+        _goal.Clear();
+        Append("✋ " + text);
+        _runner.Interrupt(text);
+    }
+
+    /// <summary>Run when idle; while running, Send with words in the box, Stop without.</summary>
+    private void ShowRunButton()
+    {
+        _run.Content = _cts is null ? "Run" : _goal.Text.Trim().Length > 0 ? "Send" : "Stop";
+        _run.ToolTip = _cts is null ? null
+            : _goal.Text.Trim().Length > 0 ? "Interrupt the agent with this message; it goes on from there"
+            : "Stop the agent (Esc)";
     }
 
     /// <summary>Stop a running goal, e.g. when the tab is closed under it.</summary>
