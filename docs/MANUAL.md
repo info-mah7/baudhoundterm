@@ -313,12 +313,12 @@ default: accept only if you know the server was reinstalled or reset.
 ## 8. The AI agent
 
 The agent works in one tab for you, through any OpenAI-compatible endpoint: vLLM, llama.cpp,
-Ollama, OpenRouter or OpenAI. On a terminal it types commands and reads the output. On a VNC tab
-it sees screenshots and clicks and types.
+Ollama, OpenRouter or OpenAI. On a terminal it types commands and reads the output. On a VNC or
+RDP tab it sees screenshots and clicks and types.
 
 > [!WARNING]
 > **Everything the agent works with is sent to the endpoint's provider:** your goals, the terminal
-> output it reads, VNC screenshots and your skills. That includes whatever is on screen:
+> output it reads, remote desktop screenshots and your skills. That includes whatever is on screen:
 > configuration files, passwords, keys, hostnames and addresses. A cloud provider receives all of
 > it under its own terms.
 >
@@ -344,7 +344,7 @@ it sees screenshots and clicks and types.
 - **Remote desktops**: the screenshot width, and **Check each click on a remote desktop first**.
 
 **Test connection** checks that the server answers, the key works, the model calls tools, and
-whether it reads pictures. Terminals need tool calling; VNC tabs also need pictures.
+whether it reads pictures. Terminals need tool calling; VNC and RDP tabs also need pictures.
 
 ### Use it
 
@@ -358,10 +358,15 @@ opens on the right of the tab.
 When an action needs approval, a box shows exactly what it wants to run and in which tab, with No
 as the default. A refused action is not retried.
 
-On a VNC tab the agent checks each click before it happens: it names what is under the point and
-must match what it meant to click, or nothing is clicked. Clicks on things like Delete or Shut
-down, and keys such as Win+R, Ctrl+Alt+Del and Alt+F4, need approval under *Ask before risky
+On a VNC or RDP tab the agent checks each click before it happens: it names what is under the
+point and must match what it meant to click, or nothing is clicked. Clicks on things like Delete or
+Shut down, and keys such as Win+R, Ctrl+Alt+Del and Alt+F4, need approval under *Ask before risky
 commands*. A view-only VNC tab can be looked at but not driven.
+
+On an RDP tab the agent's clicks and keys go to the Remote Desktop control, which takes them only
+while it has the keyboard focus, so it takes the focus for each action: typing elsewhere in the app
+during a run can be interrupted. Keys are sent as this PC's keyboard layout, which RDP expects to
+match the remote one; a character this layout cannot type stops the action with an error.
 
 ### Skills
 
@@ -378,8 +383,8 @@ protocols: serial, ssh
 Always run "terminal length 0" first. Never write memory without asking.
 ```
 
-`protocols` takes `ssh`, `serial`, `telnet`, `local` and `vnc`. Without it, the skill applies
-everywhere. `steps: 300` raises the step limit for runs that use the skill, for long tasks.
+`protocols` takes `ssh`, `serial`, `telnet`, `local`, `vnc` and `rdp`. A `vnc` skill is a
+desktop skill and applies to RDP tabs too. Without it, the skill applies everywhere. `steps: 300` raises the step limit for runs that use the skill, for long tasks.
 
 The app also ships skills from [docs/skills](skills/), added to the folder and kept up to date (a file
 `.builtin` lists them: one you delete stays deleted, and one you edit is never overwritten).

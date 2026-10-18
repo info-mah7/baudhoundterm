@@ -50,6 +50,9 @@ internal sealed class AgentPanel : DockPanel
 
     public event EventHandler? CloseRequested;
 
+    /// <summary>A remote desktop (VNC or RDP): the screen agent, not the terminal one.</summary>
+    private bool Desktop => _protocol is Core.Model.SessionProtocol.Vnc or Core.Model.SessionProtocol.Rdp;
+
     public AgentPanel(IAgentTarget target, Core.Model.SessionProtocol protocol, CredentialVault vault)
     {
         _target = target;
@@ -136,9 +139,9 @@ internal sealed class AgentPanel : DockPanel
 
         Reload();
         Append($"Attached to {_target.Describe}. Every step is logged; what needs your approval first depends on the endpoint's Approval setting (⚙).");
-        if (_protocol == Core.Model.SessionProtocol.Vnc)
+        if (Desktop)
         {
-            Append("This is a remote desktop: the agent sees screenshots and clicks and types over VNC, so the endpoint's " +
+            Append($"This is a remote desktop: the agent sees screenshots and clicks and types over {(_protocol == Core.Model.SessionProtocol.Rdp ? "RDP" : "VNC")}, so the endpoint's " +
                    "model must accept images (Test in Agent endpoints checks). Clicks are checked against a close-up first.");
         }
     }
@@ -220,12 +223,12 @@ internal sealed class AgentPanel : DockPanel
         if (_runner is null || key != _runnerKey)
         {
             var apiKey = _vault.Get(endpoint.Id, "apikey")?.Trim();
-            _runner = _protocol == Core.Model.SessionProtocol.Vnc && _target is IScreenTarget screen
+            _runner = Desktop && _target is IScreenTarget screen
                 ? new AgentRunner(endpoint, apiKey, screen, skills, _log)
                 : new AgentRunner(endpoint, apiKey, (ITerminalTarget)_target, skills, _log);
             // Helpers: only those enabled in agent.json and named by a ticked skill.
             _runner.Helpers = AgentHelper.ForRun(AgentConfig.Load().Helpers, skills, _runner.BuiltInToolNames,
-                screen: _protocol == Core.Model.SessionProtocol.Vnc);
+                screen: Desktop);
             foreach (var h in AgentConfig.Load().Helpers.Where(h => skills.Any(s => s.Helpers.Contains(h.Name))))
             {
                 if (h.Problem(_runner.BuiltInToolNames) is { } why)
@@ -237,7 +240,7 @@ internal sealed class AgentPanel : DockPanel
             _runner.Event += e => Dispatcher.BeginInvoke(() => Show(e));
             _runner.Approve = command => Dispatcher.InvokeAsync(() => MessageBox.Show(
                 Window.GetWindow(this)!,
-                $"The agent wants to {(_protocol == Core.Model.SessionProtocol.Vnc ? "do this" : "run")}:\n\n{command}\n\nin {_target.Describe}.\n\nAllow it?",
+                $"The agent wants to {(Desktop ? "do this" : "run")}:\n\n{command}\n\nin {_target.Describe}.\n\nAllow it?",
                 "BaudHoundTerm: agent approval", MessageBoxButton.YesNo, MessageBoxImage.Question,
                 MessageBoxResult.No) == MessageBoxResult.Yes).Task;
             _runnerKey = key;

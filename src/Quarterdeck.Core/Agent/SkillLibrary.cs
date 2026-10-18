@@ -36,7 +36,9 @@ public sealed class AgentSkill
     /// </summary>
     public bool Restricted { get; init; }
 
-    public bool AppliesTo(SessionProtocol protocol) => !Restricted || Protocols.Contains(protocol);
+    /// <summary>A desktop skill ("vnc") is for any remote desktop, RDP included.</summary>
+    public bool AppliesTo(SessionProtocol protocol) =>
+        !Restricted || Protocols.Contains(protocol) || protocol == SessionProtocol.Rdp && Protocols.Contains(SessionProtocol.Vnc);
 }
 
 public static class SkillLibrary
@@ -131,6 +133,7 @@ public static class SkillLibrary
         "local" or "localshell" or "shell" => SessionProtocol.LocalShell,
         "telnet" => SessionProtocol.Telnet,
         "vnc" or "desktop" => SessionProtocol.Vnc,
+        "rdp" => SessionProtocol.Rdp,
         _ => null
     };
 
