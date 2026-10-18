@@ -184,6 +184,16 @@ public static class SkillLibrary
         ]
     };
 
+    /// <summary>
+    /// Built-in skills that shipped once and were then withdrawn, by file name and the SHA-256 of
+    /// each text shipped. An unedited copy on disk is removed; one the user changed is left alone.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> RetiredBuiltIns = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["security-review.md"] = ["53348c5092ed19c15755713a99c87ce1aca33aea4056123af069bc9b11ea4ba5"],   // build 56
+        ["fortigate-review.md"] = ["3776224ad5dbdaea357d364cc2bbd3980d0bd50b3370e110ea9ba684405071f1"]    // build 56
+    };
+
     private static string Hash(string text) =>
         Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text.Replace("\r", ""))));
 
@@ -260,6 +270,20 @@ public static class SkillLibrary
                 {
                     ledger[file] = hash;
                     changed = true;
+                }
+            }
+
+            // Remove skills that shipped once and were withdrawn, if the copy on disk is unedited.
+            foreach (var (file, hashes) in RetiredBuiltIns)
+            {
+                var path = System.IO.Path.Combine(dir, file);
+                if (File.Exists(path) && hashes.Contains(Hash(File.ReadAllText(path))))
+                {
+                    File.Delete(path);
+                    if (ledger.Remove(file))
+                    {
+                        changed = true;
+                    }
                 }
             }
 
