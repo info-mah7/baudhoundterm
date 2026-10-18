@@ -148,7 +148,8 @@ public static class SkillLibrary
             "9369f6fc4af92c70d77d37c88a15af7750b5d40df374248c8de053616c0107be",   // build 41, later asset, and 43
             "ea5dafc11bbfab3ae7232f396ae824e87b8085ac3589d83da30d7ab596dfcb61",   // build 44
             "5d920d82f138afa085e7f2619922d8c48d2927ff13204f173d8d0b63fb30289e",   // builds 45 and 46
-            "559bf8fd3f5b77d0a3186113c0e8103cab0bd0b31eeb7cdaf114fa18b36fe9a7"    // build 47
+            "559bf8fd3f5b77d0a3186113c0e8103cab0bd0b31eeb7cdaf114fa18b36fe9a7",   // build 47
+            "62d02a3c940c9e932a8e4aca3924a06f2d4e30d48b410a1809a65d377d3c63f1"    // build 48
         ]
     };
 

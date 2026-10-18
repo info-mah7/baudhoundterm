@@ -17,6 +17,9 @@ public partial class App : Application
         DispatcherUnhandledException += OnUnhandled;
 
         SystemLook.Install(this);
+
+        // Built-in agent helpers: offered on every remote-desktop run, nothing to set up.
+        Core.Agent.AgentHelper.BuiltIn.Add(OcrHelper.Definition);
     }
 
     /// <summary>Enables the text-box menu's items for the box it opened on.</summary>

@@ -39,6 +39,20 @@ public sealed partial class AgentRunner
             }
         }
 
+        if (helper.Run is { } run)
+        {
+            Emit("action", $"helper {helper.Name}");
+            var screen = helper.Screenshot && _screen is not null ? await _screen.CaptureAsync(null, 4096, null, token) : null;
+            try
+            {
+                return Truncate(await run((JsonObject)args.DeepClone(), screen, token), 6000);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return $"error: helper {helper.Name} failed: {ex.Message}";
+            }
+        }
+
         var body = (JsonObject)args.DeepClone();
         if (helper.Screenshot && _screen is not null)
         {

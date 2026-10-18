@@ -34,6 +34,16 @@ public sealed class AgentHelper
 
     public bool Enabled { get; set; } = true;
 
+    /// <summary>
+    /// A helper built into BaudHoundTerm runs here instead of at a URL: it gets the arguments and,
+    /// when <see cref="Screenshot"/> is set, the current screen, and returns the text the agent reads.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public Func<JsonObject, ScreenShot?, CancellationToken, Task<string>>? Run { get; init; }
+
+    /// <summary>Helpers built into the app (registered at startup); offered on every remote-desktop run.</summary>
+    public static List<AgentHelper> BuiltIn { get; } = new();
+
     private static readonly Regex NameRule = new("^[a-z][a-z0-9_]{1,40}$");
 
     /// <summary>Why this helper cannot be offered, or null when it can.</summary>
@@ -47,6 +57,11 @@ public sealed class AgentHelper
         if (builtInTools.Contains(Name))
         {
             return $"name \"{Name}\" is a built-in tool";
+        }
+
+        if (Run is not null)
+        {
+            return null;                 // built into the app: no address to check
         }
 
         if (!Uri.TryCreate(Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
@@ -67,12 +82,17 @@ public sealed class AgentHelper
         return null;
     }
 
-    /// <summary>The helpers a run gets: enabled, valid, and named by a ticked skill.</summary>
-    public static List<AgentHelper> ForRun(IEnumerable<AgentHelper> configured, IEnumerable<AgentSkill> skills, IEnumerable<string> builtInTools)
+    /// <summary>
+    /// The helpers a run gets: the app's built-in ones on a remote desktop (they need no setup and
+    /// suit any task there), plus configured ones that are enabled, valid and named by a ticked skill.
+    /// </summary>
+    public static List<AgentHelper> ForRun(IEnumerable<AgentHelper> configured, IEnumerable<AgentSkill> skills, IEnumerable<string> builtInTools,
+                                           bool screen = false)
     {
         var wanted = skills.SelectMany(s => s.Helpers).ToHashSet(StringComparer.Ordinal);
         var builtIn = builtInTools.ToList();
-        return configured.Where(h => h.Enabled && wanted.Contains(h.Name) && h.Problem(builtIn) is null)
+        var mine = screen ? BuiltIn.Where(h => h.Problem(builtIn) is null) : [];
+        return mine.Concat(configured.Where(h => h.Enabled && wanted.Contains(h.Name) && h.Problem(builtIn) is null))
             .GroupBy(h => h.Name).Select(g => g.First()).ToList();
     }
 
