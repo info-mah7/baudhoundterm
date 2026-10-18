@@ -111,10 +111,20 @@ public partial class TerminalView : UserControl, ITerminalTarget
         // A WebView2 user data folder belongs to one browser process family. An elevated copy of
         // BaudHoundTerm cannot attach to the one a medium-integrity copy already started, and the
         // failure surfaces as ERROR_INVALID_STATE (0x8007139F), so the two get separate folders.
-        var userData = Path.Combine(
-            AppPaths.DataDirectory,
-            Elevation.IsCurrentProcessElevated ? "webview-elevated" : "webview");
-        Directory.CreateDirectory(userData);
+        string userData;
+        try
+        {
+            userData = Elevation.IsCurrentProcessElevated
+                ? Elevation.ElevatedWebViewFolder()
+                : Path.Combine(AppPaths.DataDirectory, "webview");
+            Directory.CreateDirectory(userData);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            SetStatus($"The terminal surface could not start, so the session was closed: no safe browser profile folder ({ex.Message}).");
+            await DisconnectAsync();
+            return;
+        }
 
         // WebView2 is Chromium and will talk to Microsoft on its own account unless told not
         // to: component updates, field-trial "variations", domain reliability, SmartScreen
