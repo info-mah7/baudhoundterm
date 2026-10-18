@@ -104,9 +104,7 @@ public static class KnownHosts
     private static void Save(Dictionary<string, Entry> all)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(StorePath)!);
-        var tmp = StorePath + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(all, JsonOptions));
-        File.Move(tmp, StorePath, overwrite: true);
+        Quarterdeck.Core.Model.AtomicFile.Write(StorePath, JsonSerializer.Serialize(all, JsonOptions));
     }
 
     /// <summary>Connect, turning a refused host key into a clear, non-retryable error.</summary>

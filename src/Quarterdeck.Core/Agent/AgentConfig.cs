@@ -72,6 +72,8 @@ public sealed class AgentEndpoint
         """;
 
     public override string ToString() => string.IsNullOrWhiteSpace(Model) ? Name : $"{Name} ({Model})";
+
+    public AgentEndpoint Copy() => (AgentEndpoint)MemberwiseClone();
 }
 
 public enum AgentApproval
@@ -142,7 +144,21 @@ public sealed class AgentConfig
 
             return config;
         }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        catch (JsonException)
+        {
+            // A damaged file is set aside rather than replaced by the next save with an empty one.
+            var file = path ?? DefaultPath;
+            try
+            {
+                File.Move(file, $"{file}.corrupt-{DateTime.Now:yyyyMMdd-HHmmss}");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+
+            return new() { StepsRaised = true };
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return new();
         }
@@ -152,9 +168,9 @@ public sealed class AgentConfig
     {
         var file = path ?? DefaultPath;
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-        var tmp = file + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(this, JsonOptions));
-        File.Move(tmp, file, overwrite: true);
+        // A temp name of its own: the elevated window saves the same file, and a shared
+        // "agent.json.tmp" let the two clobber each other mid-write.
+        Quarterdeck.Core.Model.AtomicFile.Write(file, JsonSerializer.Serialize(this, JsonOptions));
     }
 
     /// <summary>Parses <see cref="AgentEndpoint.ExtraJson"/>; a broken value is reported, not ignored.</summary>

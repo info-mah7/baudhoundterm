@@ -227,9 +227,14 @@ public static class SkillLibrary
         try
         {
             // "name hash" per line; build 43 wrote names only.
-            var ledger = (File.Exists(ledgerPath) ? File.ReadAllLines(ledgerPath) : [])
-                .Select(l => l.Trim().Split(' ', 2)).Where(p => p[0].Length > 0)
-                .ToDictionary(p => p[0], p => p.Length > 1 ? p[1].Trim() : "", StringComparer.OrdinalIgnoreCase);
+            // Built line by line: a name listed twice (an edit by hand) made ToDictionary throw and the
+            // agent pane fail to open.
+            var ledger = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in (File.Exists(ledgerPath) ? File.ReadAllLines(ledgerPath) : [])
+                         .Select(l => l.Trim().Split(' ', 2)).Where(p => p[0].Length > 0))
+            {
+                ledger[p[0]] = p.Length > 1 ? p[1].Trim() : "";
+            }
             var assembly = typeof(SkillLibrary).Assembly;
             var changed = false;
             foreach (var resource in assembly.GetManifestResourceNames().Where(r => r.StartsWith("skills/", StringComparison.Ordinal)))

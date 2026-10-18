@@ -29,11 +29,33 @@ public sealed partial class AgentRunner
         @"|buy|purchase|pay|checkout|subscribe|upgrade|place\s+order|confirm\s+payment)\b",
         RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));
 
-    // Key combinations that run things or end things without a click to check.
+    // Key combinations that run things or end things without a click to check, compared after
+    // RiskyCombo puts them in one form: super+r, meta+r and r+win are all win+r.
     private static readonly HashSet<string> RiskyCombos = new(StringComparer.OrdinalIgnoreCase)
     {
-        "ctrl+alt+del", "ctrl+alt+delete", "win+r", "win+x", "alt+f4", "ctrl+shift+esc", "win+l", "ctrl+alt+end"
+        "ctrl+alt+delete", "win+r", "win+x", "alt+f4", "ctrl+shift+esc", "win+l", "ctrl+alt+end",
+        "ctrl+alt+backspace", "shift+delete", "ctrl+shift+enter"
     };
+
+    /// <summary>A combination in one form: aliases resolved, modifiers first in a fixed order.</summary>
+    internal static bool RiskyCombo(string combo)
+    {
+        var order = new[] { "ctrl", "alt", "shift", "win" };
+        var keys = combo.ToLowerInvariant().Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(k => k switch
+            {
+                "control" => "ctrl",
+                "super" or "meta" or "cmd" => "win",
+                "del" => "delete",
+                "return" => "enter",
+                "escape" => "esc",
+                _ => k
+            })
+            .Distinct()
+            .OrderBy(k => Array.IndexOf(order, k) is var i and >= 0 ? i : order.Length)
+            .ToList();
+        return RiskyCombos.Contains(string.Join("+", keys));
+    }
 
     private string ScreenSystemPrompt()
     {
@@ -315,7 +337,7 @@ public sealed partial class AgentRunner
             {
                 var combo = (Str(args, "combo") ?? "").Trim().ToLowerInvariant().Replace(" ", "");
                 ScreenInput.ParseCombo(combo);   // throws on an unknown key before anything is asked or pressed
-                if (await ScreenDeniedAsync(name, "key " + combo, RiskyCombos.Contains(combo), token) is { } denied)
+                if (await ScreenDeniedAsync(name, "key " + combo, RiskyCombo(combo), token) is { } denied)
                 {
                     return denied;
                 }

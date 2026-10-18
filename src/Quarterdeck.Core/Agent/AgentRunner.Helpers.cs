@@ -72,8 +72,13 @@ public sealed partial class AgentRunner
         cts.CancelAfter(TimeSpan.FromSeconds(60));
         try
         {
-            using var response = await Http.SendAsync(request, cts.Token);
-            var text = await response.Content.ReadAsStringAsync(cts.Token);
+            using var response = await HelperHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+            if ((int)response.StatusCode is >= 300 and < 400)
+            {
+                return $"error: helper {helper.Name} answered with a redirect, which is not followed. Tell the user.";
+            }
+
+            var text = await ReadCappedAsync(response, cts.Token);
             return response.IsSuccessStatusCode
                 ? Truncate(text, 6000)
                 : $"error: helper {helper.Name} answered {(int)response.StatusCode}: {Truncate(text, 400)}";
@@ -82,5 +87,32 @@ public sealed partial class AgentRunner
         {
             return $"error: helper {helper.Name} could not be reached ({ex.Message}). Tell the user it is not running.";
         }
+    }
+
+    // Helpers get their own client that never follows a redirect: a 307 from a loopback helper
+    // would re-send the request, screenshot included, to wherever it pointed, past allowRemote.
+    private static readonly HttpClient HelperHttp = new(new HttpClientHandler { AllowAutoRedirect = false })
+    {
+        Timeout = TimeSpan.FromMinutes(2)
+    };
+
+    /// <summary>At most 64 KB of a helper's answer: only the first 6000 characters are used anyway.</summary>
+    private static async Task<string> ReadCappedAsync(HttpResponseMessage response, CancellationToken token)
+    {
+        await using var stream = await response.Content.ReadAsStreamAsync(token);
+        var buffer = new byte[64 * 1024];
+        var read = 0;
+        while (read < buffer.Length)
+        {
+            var n = await stream.ReadAsync(buffer.AsMemory(read), token);
+            if (n == 0)
+            {
+                break;
+            }
+
+            read += n;
+        }
+
+        return Encoding.UTF8.GetString(buffer, 0, read);
     }
 }

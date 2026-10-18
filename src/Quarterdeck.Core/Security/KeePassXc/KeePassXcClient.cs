@@ -123,6 +123,11 @@ public sealed class KeePassXcClient : IDisposable
         }
 
         _serverKey = Convert.FromBase64String(key);
+        if (_serverKey.Length != 32)
+        {
+            // libsodium reads exactly 32 bytes from it.
+            throw new InvalidDataException("KeePassXC sent a public key of the wrong length.");
+        }
         Version = reply["version"]?.ToString() ?? "";
     }
 

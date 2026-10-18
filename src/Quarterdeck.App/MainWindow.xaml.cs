@@ -101,7 +101,7 @@ public partial class MainWindow : Window
 
         return MessageBox.Show(this, text, tls ? "BaudHoundTerm: TLS certificate" : "BaudHoundTerm: SSH host key", MessageBoxButton.YesNo,
                    q.Changed ? MessageBoxImage.Warning : MessageBoxImage.Question,
-                   q.Changed ? MessageBoxResult.No : MessageBoxResult.Yes) == MessageBoxResult.Yes;
+                   MessageBoxResult.No) == MessageBoxResult.Yes;   // Enter never trusts a key by accident
     }
 
     // ---------- session tree ----------
@@ -1706,7 +1706,7 @@ public partial class MainWindow : Window
             {
                 Name = elevated ? $"Administrator: {shell.Label}" : shell.Label,
                 Protocol = SessionProtocol.LocalShell,
-                ShellCommand = shell.Command,
+                ShellCommand = shell.Command.Contains(' ') ? $"\"{shell.Command}\"" : shell.Command,
                 TabColor = elevated ? "#e06c75" : ""
             });
             return;

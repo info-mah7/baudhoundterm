@@ -190,7 +190,7 @@ public sealed class ConfigSync
         var outcome = new SyncOutcome();
         try
         {
-            Export(local, folders);
+            Export(local, folders, outcome.Notes);
 
             await GitAsync(token, "add", "-A");
             var status = await GitAsync(token, "status", "--porcelain");
@@ -465,10 +465,23 @@ public sealed class ConfigSync
         return node.ToJsonString(JsonOptions) + "\n";
     }
 
-    private void Export(IReadOnlyList<SessionDefinition> local, IReadOnlyList<string> folders)
+    private void Export(IReadOnlyList<SessionDefinition> local, IReadOnlyList<string> folders, List<string> notes)
     {
         Directory.CreateDirectory(ShortcutsDir);
         var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // No shortcuts here but some in the repository is a damaged or lost sessions.json, or a
+        // reinstall, far more often than a deliberate "delete them all": exporting it removed
+        // every shortcut from the repository and then from every other PC. Keep the repository's.
+        if (local.Count == 0 && Directory.GetFiles(ShortcutsDir, "*.json").Length is var inRepo and > 0)
+        {
+            foreach (var file in Directory.GetFiles(ShortcutsDir, "*.json"))
+            {
+                keep.Add(Path.GetFileName(file));
+            }
+
+            notes.Add($"This PC had no shortcuts, so the {inRepo} in the repository were kept, not deleted.");
+        }
 
         foreach (var definition in local)
         {
@@ -587,6 +600,13 @@ public sealed class ConfigSync
             {
                 if (JsonSerializer.Deserialize<SessionDefinition>(File.ReadAllText(file), JsonOptions) is { } d)
                 {
+                    // Two files with one Id (a copy made by hand) used to stop every later sync.
+                    if (list.Any(x => x.Id == d.Id))
+                    {
+                        notes.Add($"Skipped {Path.GetFileName(file)}: it has the same Id as another shortcut.");
+                        continue;
+                    }
+
                     // The repository holds no per-PC values; the class defaults (COM1) must not
                     // pass for this PC's own when the next export records them.
                     d.SerialPort = "";

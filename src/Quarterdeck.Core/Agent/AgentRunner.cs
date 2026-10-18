@@ -69,7 +69,11 @@ public sealed partial class AgentRunner
     /// </summary>
     public Func<string, Task<bool>>? Approve { get; set; }
 
-    /// <summary>Whether this command needs a yes under the endpoint's approval mode.</summary>
+    /// <summary>
+    /// Whether this command needs a yes under the endpoint's approval mode. In Risky mode the
+    /// endpoint's own patterns are checked, then <see cref="BaselineRiskyPatterns"/>, which no
+    /// endpoint can turn off; both against the command as typed and with shell escapes removed.
+    /// </summary>
     public static bool NeedsApproval(AgentEndpoint endpoint, string command)
     {
         switch (endpoint.Approval)
@@ -80,7 +84,61 @@ public sealed partial class AgentRunner
                 return true;
         }
 
-        foreach (var raw in endpoint.RiskyPatterns.Split('\n'))
+        var plain = Unescaped(command);
+        return Matches(endpoint.RiskyPatterns, command) || Matches(endpoint.RiskyPatterns, plain)
+               || Matches(BaselineRiskyPatterns, command) || Matches(BaselineRiskyPatterns, plain);
+    }
+
+    /// <summary>
+    /// Risky in every endpoint, added in build 59: the default list was written for Linux and
+    /// network gear, and let del/f/s/q, Remove-Item -r, vssadmin delete shadows, new
+    /// administrators, iex and -EncodedCommand through without asking. The last line keeps the
+    /// agent from editing its own settings, skills or the credential store, and from adding SSH keys.
+    /// </summary>
+    internal const string BaselineRiskyPatterns = """
+        \b(del|erase|rd|rmdir)\b.*/[sq]
+        \b(del|erase)\b.*\*
+        \b(Remove-Item|ri|rm|rmdir|del|erase|rd)\b.*\s-(r|re|rec|recu|recur|recurs|recurse|fo|for|forc|force)\b
+        \b(Remove-Item|ri)\b.*\*
+        \bvssadmin\b.*\b(delete|resize)\b|\bwbadmin\b.*\bdelete\b|\bbcdedit\b|\bwevtutil\b\s+(cl|clear-log)\b|\bcipher\b.*\s/w
+        \bnet\s+(user|localgroup|group|share)\b.*\s/(add|delete|del|active)|\b(New|Add|Remove|Set|Enable)-Local(User|GroupMember)\b
+        \b(iex|Invoke-Expression)\b|\b(powershell|pwsh)(\.exe)?\b.*\s-(e|ec|en|enc|enco|encod|encode|encoded|encodedcommand)\s|\|\s*(sudo\s+)?(sh|bash|zsh|dash)\b
+        \b(Set|Add)-MpPreference\b|\bSet-ExecutionPolicy\b|\bnetsh\b.*\b(firewall|advfirewall)\b.*\b(off|disable|delete)\b|\b(Disable|Remove)-NetFirewall|\bSet-NetFirewallProfile\b
+        \bsc(\.exe)?\s+(stop|delete|config)\b|\b(Stop|Remove)-Service\b|\bSet-Service\b.*\bDisabled\b|\bschtasks\b.*\s/(create|delete|change)|\b(Register|Unregister)-ScheduledTask\b|\btaskkill\b|\bStop-Process\b
+        \breg(\.exe)?\s+(add|delete|import|save|restore|load)\b|\b(Remove|Set|New)-ItemProperty\b|\b(icacls|takeown|cacls)\b|\bSet-Acl\b
+        \b(Initialize-Disk|Remove-Partition|Set-Disk|Clear-RecycleBin)\b
+        \bshred\b|\bfind\b.*\s-delete\b|\btruncate\s+-s\s*0|\bcrontab\s+-r\b|\b(userdel|usermod|useradd|passwd|visudo)\b|\biptables\s+-(F|X)\b|\bufw\s+(disable|reset)\b
+        BaudHoundTerm|\bagent\.json|credentials\.dat|known_hosts\.json|sessions\.json|authorized_keys
+        """;
+
+    /// <summary>
+    /// The command as the shell will see it: PowerShell takes en and em dashes as "-", and
+    /// cmd's ^, PowerShell's backtick and empty quotes split a word without changing it.
+    /// </summary>
+    internal static string Unescaped(string command)
+    {
+        var sb = new StringBuilder(command.Length);
+        foreach (var c in command)
+        {
+            switch (c)
+            {
+                case '\u2010' or '\u2011' or '\u2012' or '\u2013' or '\u2014' or '\u2015' or '\u2212':
+                    sb.Append('-');
+                    break;
+                case '^' or '`' or '\'' or '"':
+                    break;
+                default:
+                    sb.Append(c);
+                    break;
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static bool Matches(string patterns, string command)
+    {
+        foreach (var raw in patterns.Split('\n'))
         {
             var line = raw.Trim();
             if (line.Length == 0)
@@ -200,6 +258,8 @@ public sealed partial class AgentRunner
 
         _line.Clear();
         _lineUnknown = false;
+        _commandsRun.Clear();
+        _repeatEvents = 0;
     }
 
     /// <summary>
@@ -257,6 +317,8 @@ public sealed partial class AgentRunner
         _goalMessage = new JsonObject { ["role"] = "user", ["content"] = goal };
         _messages.Add(_goalMessage);
         _stopRun = null;
+        _commandsRun.Clear();   // the loop guard is per goal: a check repeated after a fix is not a loop
+        _repeatEvents = 0;
         await StartScreenGoalAsync(token);
 
         var emptyReplies = 0;
@@ -426,6 +488,7 @@ public sealed partial class AgentRunner
                 // Every call gets a reply, even when the run is stopped part way: a tool call left
                 // unanswered makes the server reject the whole conversation on the next goal.
                 var answered = 0;
+                var started = false;   // the call being answered had begun when the step was cut short
                 var skipRest = false;
                 try
                 {
@@ -439,6 +502,7 @@ public sealed partial class AgentRunner
                         var argText = argNode is JsonValue v && v.TryGetValue<string>(out var str) ? str : argNode?.ToJsonString() ?? "{}";
 
                         Log("tool_call", tool: name, arguments: argText);
+                        started = !skipRest;
                         string result;
                         try
                         {
@@ -464,6 +528,7 @@ public sealed partial class AgentRunner
                         Log("tool_result", tool: name, text: result);
                         _messages.Add(new JsonObject { ["role"] = "tool", ["tool_call_id"] = id, ["content"] = result });
                         answered++;
+                        started = false;
                     }
 
                     // A screen tool's picture rides in one user message after the tool replies:
@@ -472,6 +537,9 @@ public sealed partial class AgentRunner
                 }
                 catch (OperationCanceledException)
                 {
+                    // The first unanswered call may have run (a command sent, a click made) before
+                    // the wait after it was cut short; saying it did not would invite running it twice.
+                    var first = true;
                     foreach (var call in calls.OfType<JsonObject>().Skip(answered))
                     {
                         _messages.Add(new JsonObject
@@ -479,8 +547,11 @@ public sealed partial class AgentRunner
                             ["role"] = "tool", ["tool_call_id"] = call["id"]!.ToString(),
                             ["content"] = token.IsCancellationRequested
                                 ? "cancelled: the user stopped the run."
-                                : "not done: the user interrupted before this ran. Read their message."
+                                : first && started
+                                    ? "interrupted while this was running: it may already have happened. Check before doing it again, and read the user's message."
+                                    : "not done: the user interrupted before this ran. Read their message."
                         });
+                        first = false;
                     }
 
                     throw;
