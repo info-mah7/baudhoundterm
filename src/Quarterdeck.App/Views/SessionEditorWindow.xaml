@@ -291,12 +291,19 @@
           <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
                      Text="Shown on the terminal's right-click menu. Tick Confirm for anything that reboots or deletes; tick Enter to run it rather than just type it."/>
           <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
-            <Button Content="Add" Width="90" Click="OnAddCommand"/>
-            <Button Content="Remove" Width="90" Margin="8,0,0,0" Click="OnRemoveCommand"/>
-            <Button Content="Restore defaults" Width="130" Margin="8,0,0,0" Click="OnDefaultCommands"/>
+            <Button Content="Add" Width="80" Click="OnAddCommand"/>
+            <Button Content="Remove" Width="80" Margin="8,0,0,0" Click="OnRemoveCommand"/>
+            <Button Content="Move up" Width="80" Margin="8,0,0,0" Click="OnMoveCommandUp"
+                    ToolTip="Earlier on the right-click menu (Ctrl+Up). You can also drag a row by its left edge."/>
+            <Button Content="Move down" Width="86" Margin="8,0,0,0" Click="OnMoveCommandDown"
+                    ToolTip="Later on the right-click menu (Ctrl+Down)"/>
+            <Button Content="Restore defaults" Width="120" Margin="8,0,0,0" Click="OnDefaultCommands"/>
           </StackPanel>
-          <DataGrid x:Name="CommandGrid" AutoGenerateColumns="False" CanUserAddRows="False"
-                    Background="#10141C" RowBackground="#10141C" Foreground="#DFE4EE" GridLinesVisibility="Horizontal">
+          <DataGrid x:Name="CommandGrid" AutoGenerateColumns="False" CanUserAddRows="False" CanUserSortColumns="False"
+                    Background="#10141C" RowBackground="#10141C" Foreground="#DFE4EE" GridLinesVisibility="Horizontal"
+                    AllowDrop="True" PreviewKeyDown="OnCommandGridKey"
+                    PreviewMouseLeftButtonDown="OnCommandDragStart" PreviewMouseMove="OnCommandDragMove"
+                    DragOver="OnCommandDragOver" Drop="OnCommandDrop">
             <DataGrid.Columns>
               <DataGridTextColumn Header="Label" Binding="{Binding Label}" Width="200"/>
               <DataGridTextColumn Header="Command" Binding="{Binding Text}" Width="*"/>

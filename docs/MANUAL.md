@@ -152,7 +152,8 @@ for pan, tilt, zoom and stream lookup.
 Entries for the terminal's right-click menu. **Enter** runs the command rather than just typing
 it; **Confirm** asks first, for anything that reboots or deletes. **Restore defaults** adds back
 any missing default entries. Review the defaults before you use them; **Reboot** (`sudo reboot`) is
-marked Confirm.
+marked Confirm. The menu shows them in this order: rearrange with **Move up** and **Move down**,
+Ctrl+Up and Ctrl+Down, or by dragging a row by its left edge.
 
 ### Logging
 
