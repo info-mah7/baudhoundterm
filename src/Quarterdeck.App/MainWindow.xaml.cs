@@ -964,7 +964,7 @@ public partial class MainWindow : Window
             menu.Items.Add(cad);
         }
 
-        if (definition.Protocol is not (SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Sql))
+        if (definition.Protocol is not (SessionProtocol.Rtsp or SessionProtocol.Sql))
         {
             var agent = new MenuItem { Header = "_Agent on this tab" };
             agent.Click += (_, _) =>

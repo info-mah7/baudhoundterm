@@ -110,7 +110,7 @@ details.
 
 ## Agent on a remote desktop
 
-Attach the agent to a VNC tab and it works the desktop through that tab's own connection:
+Attach the agent to a VNC or RDP tab and it works the desktop through that tab's own connection:
 screenshots in, pointer and key events out. Nothing is installed on the remote machine.
 
 - **One model does everything**, so the endpoint's model must accept images and call tools.

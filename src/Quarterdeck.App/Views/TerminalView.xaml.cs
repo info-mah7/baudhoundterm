@@ -1015,10 +1015,10 @@ public partial class TerminalView : UserControl, ITerminalTarget
     public event EventHandler? AgentAttachedChanged;
 
     /// <summary>
-    /// Terminals get the text agent, VNC the screen agent (TerminalView.Screen.cs). A camera
-    /// has nothing to act on.
+    /// Terminals get the text agent, VNC and RDP the screen agent (TerminalView.Screen.cs). A
+    /// camera has nothing to act on.
     /// </summary>
-    public bool CanAttachAgent => Definition.Protocol is not (SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Sql);
+    public bool CanAttachAgent => Definition.Protocol is not (SessionProtocol.Rtsp or SessionProtocol.Sql);
 
     public void AttachAgent()
     {
