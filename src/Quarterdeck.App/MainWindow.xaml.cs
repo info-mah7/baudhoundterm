@@ -1680,6 +1680,14 @@ public partial class MainWindow : Window
                 var chosen = key;
                 var admin = elevated;
                 item.Click += (_, _) => LaunchShell(chosen, admin);
+                if (elevated && !IsElevated && Elevation.UnsafeInstall is { } where)
+                {
+                    item.IsEnabled = false;
+                    item.ToolTip = "Not from this folder: programs without administrator rights can change\n" + where +
+                                   "\nMove BaudHoundTerm into C:\\Program Files to open shells as administrator.";
+                    ToolTipService.SetShowOnDisabled(item, true);
+                }
+
                 menu.Items.Add(item);
             }
         }
@@ -1722,6 +1730,14 @@ public partial class MainWindow : Window
 
         if (answer != MessageBoxResult.Yes)
         {
+            return;
+        }
+
+        if (Elevation.UnsafeInstall is { } unsafeFolder)
+        {
+            MessageBox.Show(this, "BaudHoundTerm does not run as administrator from a folder that programs without " +
+                                  $"administrator rights can change:\n\n{unsafeFolder}", "BaudHoundTerm",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 

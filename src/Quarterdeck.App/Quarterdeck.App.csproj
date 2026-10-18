@@ -24,7 +24,10 @@
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- Native DLLs (WebView2Loader, libsodium, SQL Server's SNI...) ship beside the exe, not
+         inside it: self-extraction unpacked them under %TEMP%, a folder anything running as the
+         user can change, and an administrator copy then loaded them from there. -->
+    <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
     <DebugType>none</DebugType>
   </PropertyGroup>
 

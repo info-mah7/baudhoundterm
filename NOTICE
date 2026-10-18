@@ -22,7 +22,7 @@ Third-party components resolved at build time rather than vendored:
   Microsoft.Web.WebView2 - BSD-style Microsoft license
   System.IO.Ports, System.Security.Cryptography.ProtectedData - MIT License, Microsoft
   LibVLCSharp / LibVLCSharp.WPF 3.10.1 - LGPL-2.1-or-later - https://code.videolan.org/videolan/LibVLCSharp
-  libsodium 1.0.22 (native, packed into the executable; NaCl box for the KeePassXC protocol)
+  libsodium 1.0.22 (native, libsodium.dll beside the executable; NaCl box for the KeePassXC protocol)
     https://libsodium.org
     ISC License. Copyright (c) 2013-2026 Frank Denis <j at pureftpd dot org>
     Permission to use, copy, modify, and/or distribute this software for any purpose with or

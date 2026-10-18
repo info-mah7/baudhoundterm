@@ -78,6 +78,26 @@ forward. Tabs with no shortcut in view, such as quick connections, are listed un
 shortcut. The **(administrator)** entries need BaudHoundTerm itself to be elevated: if it is not,
 it offers to start a second, elevated copy through UAC and open the shell there.
 
+> [!IMPORTANT]
+> **Running as administrator needs BaudHoundTerm in a protected folder.** An elevated copy runs
+> its own `BaudHoundTerm.exe` and loads its pages and libraries from beside it, so if anything
+> running as you can change that folder, it can choose what runs as administrator. BaudHoundTerm
+> therefore checks its own folder, and everything under it, before elevating:
+>
+> - From a folder only administrators can change, such as `C:\Program Files\BaudHoundTerm`,
+>   everything works as described.
+> - From anywhere else, the **(administrator)** entries are greyed out and say why, and a copy
+>   started as administrator from there explains and closes.
+>
+> Unzip BaudHoundTerm into `C:\Program Files\BaudHoundTerm` (Windows asks for administrator
+> rights to write there, which is the point) to use the administrator shells. Everything else
+> works from any folder, including a USB stick.
+>
+> An elevated window keeps its browser profile in `%ProgramData%\BaudHoundTerm`, where programs
+> running as you cannot reach it, and does not run **Sync** (it would run git, git's configuration
+> and the sync repository's own settings, all of which you can change without administrator
+> rights). Sync runs in the normal window, wherever BaudHoundTerm and its data are kept.
+
 ## 3. Shortcut properties
 
 The properties window has seven tabs. **Save** keeps the changes.
