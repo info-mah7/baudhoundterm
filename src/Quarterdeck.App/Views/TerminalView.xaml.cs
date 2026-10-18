@@ -294,6 +294,40 @@ public partial class TerminalView : UserControl, ITerminalTarget
                 OnAgentReply(root);
                 break;
 
+            // VNC clipboard through the app, not navigator.clipboard: inside WebView2 the page's
+            // own clipboard read failed quietly, so Ctrl+V sent no text and the far end pasted
+            // whatever it held.
+            case "clipget":
+            {
+                string text = "";
+                try
+                {
+                    text = Clipboard.ContainsText() ? Clipboard.GetText() : "";
+                }
+                catch (System.Runtime.InteropServices.COMException)
+                {
+                    // Another program holds the clipboard open: paste nothing rather than fail.
+                }
+
+                Post(new { t = "clip", text });
+                break;
+            }
+
+            case "clipset":
+                try
+                {
+                    var text = root.GetProperty("text").GetString() ?? "";
+                    if (text.Length > 0)
+                    {
+                        Clipboard.SetText(text);
+                    }
+                }
+                catch (System.Runtime.InteropServices.COMException)
+                {
+                }
+
+                break;
+
             case "ready":
                 _webReady = true;
                 while (_pending.Count > 0)
