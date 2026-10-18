@@ -1,0 +1,25 @@
+{
+  "helpers": [
+    {
+      "name": "chess_read",
+      "url": "http://127.0.0.1:8771/chess_read",
+      "screenshot": true,
+      "description": "The exact chess position on screen, read by code: the game's moves so far, whose turn it is, and on your turn the legal moves. Call it after the game starts (it learns the pieces from the starting position), after each of your moves to confirm it, and while waiting for the bot.",
+      "parameters": "{\"type\": \"object\", \"required\": [\"board\"], \"properties\": {\"board\": {\"type\": \"object\", \"description\": \"The board's outer corners on the 0-1000 screen grid, found by zooming once per game.\", \"required\": [\"top_left\", \"bottom_right\"], \"properties\": {\"top_left\": {\"type\": \"array\", \"items\": {\"type\": \"integer\"}, \"description\": \"[x, y]\"}, \"bottom_right\": {\"type\": \"array\", \"items\": {\"type\": \"integer\"}, \"description\": \"[x, y]\"}}}}}"
+    },
+    {
+      "name": "chess_best",
+      "url": "http://127.0.0.1:8771/chess_best",
+      "screenshot": true,
+      "description": "A strong move for you in the position chess_read last saw (Stockfish), with the two points to click on the 0-1000 grid: click_from, then click_to.",
+      "parameters": "{\"type\": \"object\", \"required\": [\"board\"], \"properties\": {\"board\": {\"type\": \"object\", \"description\": \"The board's outer corners on the 0-1000 screen grid, found by zooming once per game.\", \"required\": [\"top_left\", \"bottom_right\"], \"properties\": {\"top_left\": {\"type\": \"array\", \"items\": {\"type\": \"integer\"}, \"description\": \"[x, y]\"}, \"bottom_right\": {\"type\": \"array\", \"items\": {\"type\": \"integer\"}, \"description\": \"[x, y]\"}}}, \"seconds\": {\"type\": \"number\", \"description\": \"Thinking time, default 0.5\"}, \"skill\": {\"type\": \"integer\", \"description\": \"Stockfish skill 0-20, default 20\"}}}"
+    },
+    {
+      "name": "ocr_read",
+      "url": "http://127.0.0.1:8771/ocr_read",
+      "screenshot": true,
+      "description": "The exact text in a region of the screen (Tesseract OCR), for small or thin text you might misread.",
+      "parameters": "{\"type\": \"object\", \"required\": [\"x\", \"y\", \"width\", \"height\"], \"properties\": {\"x\": {\"type\": \"integer\", \"description\": \"Left edge, 0-1000\"}, \"y\": {\"type\": \"integer\", \"description\": \"Top edge, 0-1000\"}, \"width\": {\"type\": \"integer\"}, \"height\": {\"type\": \"integer\"}}}"
+    }
+  ]
+}

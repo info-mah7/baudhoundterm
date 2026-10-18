@@ -421,7 +421,7 @@ public sealed partial class AgentRunner
         {
             ["model"] = _endpoint.Model,
             ["messages"] = _messages.DeepClone(),
-            ["tools"] = (_screen is null ? Tools : ScreenTools).DeepClone(),
+            ["tools"] = ToolsForRequest(),
             ["tool_choice"] = "auto",
             ["temperature"] = _endpoint.Temperature,
             ["max_tokens"] = maxTokens
@@ -474,6 +474,11 @@ public sealed partial class AgentRunner
 
     private async Task<string> ExecuteAsync(string name, JsonObject args, CancellationToken token)
     {
+        if (HelperNamed(name) is { } helper)
+        {
+            return await CallHelperAsync(helper, args, token);
+        }
+
         if (_screen is not null)
         {
             return await ExecuteScreenAsync(name, args, token);

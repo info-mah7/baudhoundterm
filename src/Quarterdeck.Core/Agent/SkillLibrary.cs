@@ -27,6 +27,9 @@ public sealed class AgentSkill
     /// <summary>Header "steps: 300": a task this long needs at least that many steps, whatever the endpoint allows.</summary>
     public int MinSteps { get; init; }
 
+    /// <summary>Header "helpers: chess_read, chess_best": helpers (agent.json) this skill uses.</summary>
+    public List<string> Helpers { get; init; } = new();
+
     /// <summary>
     /// True when the header has a protocols line. A line naming only unknown protocols (a typo
     /// such as "telnett") then applies nowhere instead of everywhere.
@@ -73,6 +76,7 @@ public static class SkillLibrary
         var protocols = new HashSet<SessionProtocol>();
         var restricted = false;
         var minSteps = 0;
+        var helpers = new List<string>();
         var body = text;
 
         var lines = text.Replace("\r\n", "\n").Split('\n');
@@ -97,9 +101,11 @@ public static class SkillLibrary
                         case "name": name = value; break;
                         case "description": description = value; break;
                         case "steps": minSteps = int.TryParse(value, out var n) ? Math.Clamp(n, 0, 1000) : 0; break;
+                        // Split(',', ' ', ...) would read ' ' as a count (32), not a second separator.
+                        case "helpers": helpers.AddRange(value.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)); break;
                         case "protocols":
                             restricted |= value.Length > 0;
-                            foreach (var word in value.Split(',', ' ', StringSplitOptions.RemoveEmptyEntries))
+                            foreach (var word in value.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                             {
                                 if (ProtocolWord(word) is { } p)
                                 {
@@ -115,7 +121,7 @@ public static class SkillLibrary
             }
         }
 
-        return new AgentSkill { Name = name, Description = description, Protocols = protocols, Restricted = restricted, Body = body, Path = path, MinSteps = minSteps };
+        return new AgentSkill { Name = name, Description = description, Protocols = protocols, Restricted = restricted, Body = body, Path = path, MinSteps = minSteps, Helpers = helpers };
     }
 
     private static SessionProtocol? ProtocolWord(string word) => word.Trim().ToLowerInvariant() switch
@@ -141,7 +147,8 @@ public static class SkillLibrary
             "bf2b69b9ea5463f03641eb0249f1cdfe7538e39eb0a223aad4ec8d58953cb933",   // build 41
             "9369f6fc4af92c70d77d37c88a15af7750b5d40df374248c8de053616c0107be",   // build 41, later asset, and 43
             "ea5dafc11bbfab3ae7232f396ae824e87b8085ac3589d83da30d7ab596dfcb61",   // build 44
-            "5d920d82f138afa085e7f2619922d8c48d2927ff13204f173d8d0b63fb30289e"    // builds 45 and 46
+            "5d920d82f138afa085e7f2619922d8c48d2927ff13204f173d8d0b63fb30289e",   // builds 45 and 46
+            "559bf8fd3f5b77d0a3186113c0e8103cab0bd0b31eeb7cdaf114fa18b36fe9a7"    // build 47
         ]
     };
 
