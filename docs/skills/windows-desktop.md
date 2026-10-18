@@ -6,8 +6,11 @@ protocols: vnc
 Prefer the keyboard on Windows: keys always land, while small icons and buttons are easy to miss
 and the click check often refuses them. Click only when no key will do.
 
-- Open an app: `key win`, `type` its name (notepad, calculator, settings, file explorer), `key enter`.
-  Never aim at taskbar or Start-menu icons.
+- Open an app: `key win`, `type` its name (notepad, calculator, settings, file explorer), `key enter`,
+  then maximize it: `key win+up`. Never aim at taskbar or Start-menu icons.
+- Always maximize the app you work in, also one that was already open when you switched to it:
+  `key win+up`, and check it fills the screen (if not, double-click its title bar). Bigger windows
+  mean bigger text and targets. Once per window, not before every step.
 - Settings: `key win+i`. File Explorer: `key win+e`.
 - Go to a folder in File Explorer: `key ctrl+l` (the address bar), `type` the full path with enter.
   The address bar shows the current folder's name (e.g. "This PC"), so a click on it is hard to check.

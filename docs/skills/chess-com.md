@@ -2,6 +2,8 @@
 name: chess.com
 description: Open chess.com in a browser and play a game against a bot
 protocols: vnc
+group: Games
+default: off
 steps: 300
 ---
 A whole game is long; this skill raises the step limit to 300.
