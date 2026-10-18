@@ -15,6 +15,10 @@ public sealed partial class AgentRunner
 {
     private readonly IScreenTarget? _screen;
     private (ScreenShot Shot, string Caption)? _pendingShot;
+
+    // Input already being sent finishes when the user interrupts (only Stop cuts it): an
+    // interruption cut "Ada Lovelace" to "Ada Lovelac" part way through typing it.
+    private CancellationToken _runToken;
     private int _imageChars;
 
     // A click on something with one of these names asks first under Risky, like a risky command.
@@ -281,7 +285,7 @@ public sealed partial class AgentRunner
 
                 Emit("action", what);
                 var before = await screen.ThumbnailAsync(token);
-                await ScreenInput.ClickAsync(screen, px, py, button, count, token);
+                await ScreenInput.ClickAsync(screen, px, py, button, count, _runToken);
                 return await SettleAsync(before, 4, what, token);
             }
 
@@ -298,10 +302,10 @@ public sealed partial class AgentRunner
 
                 Emit("action", shown);
                 var before = await screen.ThumbnailAsync(token);
-                await ScreenInput.TypeAsync(screen, text, token);
+                await ScreenInput.TypeAsync(screen, text, _runToken);
                 if (enter)
                 {
-                    await ScreenInput.ComboAsync(screen, "enter", token);
+                    await ScreenInput.ComboAsync(screen, "enter", _runToken);
                 }
 
                 return await SettleAsync(before, 4, "typed", token);
@@ -318,7 +322,7 @@ public sealed partial class AgentRunner
 
                 Emit("action", "key " + combo);
                 var before = await screen.ThumbnailAsync(token);
-                await ScreenInput.ComboAsync(screen, combo, token);
+                await ScreenInput.ComboAsync(screen, combo, _runToken);
                 return await SettleAsync(before, 4, "key " + combo, token);
             }
 
@@ -339,7 +343,7 @@ public sealed partial class AgentRunner
                 Emit("action", what);
                 var (px, py) = await PixelAsync(gx, gy, token);
                 var before = await screen.ThumbnailAsync(token);
-                await ScreenInput.ScrollAsync(screen, px, py, amount, token);
+                await ScreenInput.ScrollAsync(screen, px, py, amount, _runToken);
                 return await SettleAsync(before, 3, what, token);
             }
 
@@ -371,7 +375,7 @@ public sealed partial class AgentRunner
                 var (p2x, p2y) = await PixelAsync(x2, y2, token);
                 Emit("action", what);
                 var before = await screen.ThumbnailAsync(token);
-                await ScreenInput.DragAsync(screen, p1x, p1y, p2x, p2y, token);
+                await ScreenInput.DragAsync(screen, p1x, p1y, p2x, p2y, _runToken);
                 return await SettleAsync(before, 4, what, token);
             }
 

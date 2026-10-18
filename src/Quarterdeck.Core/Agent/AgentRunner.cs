@@ -48,6 +48,11 @@ public sealed partial class AgentRunner
     private volatile bool _lineUnknown;   // also set from the UI thread
     private JsonObject? _goalMessage;
 
+    // What the user says while a goal runs (Interrupt), and the token of the step it cuts short.
+    private readonly System.Collections.Concurrent.ConcurrentQueue<string> _interruptions = new();
+    private readonly object _interruptLock = new();
+    private CancellationTokenSource? _stepCts;
+
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
 
     public event Action<AgentEvent>? Event;
@@ -191,11 +196,58 @@ public sealed partial class AgentRunner
         _lineUnknown = false;
     }
 
+    /// <summary>
+    /// The user breaks in while a goal runs: the current step stops where it is (a model reply
+    /// being written, a wait, actions not yet done) and the message goes to the model before its
+    /// next step. The run goes on, in the same conversation.
+    /// </summary>
+    public void Interrupt(string text)
+    {
+        lock (_interruptLock)
+        {
+            _interruptions.Enqueue(text);
+            _stepCts?.Cancel();
+        }
+    }
+
+    /// <summary>
+    /// Hands what the user said during the run to the model, ahead of the goal. A redirected run
+    /// gets the step limit afresh from here: it is close to a new goal.
+    /// </summary>
+    private bool TakeInterruptions(ref int maxSteps, int step)
+    {
+        var said = new List<string>();
+        while (_interruptions.TryDequeue(out var text))
+        {
+            said.Add(text);
+        }
+
+        if (said.Count == 0)
+        {
+            return false;
+        }
+
+        var words = string.Join("\n", said);
+        Log("interrupt", text: words);
+        AttachPendingScreenshot();
+        _messages.Add(new JsonObject
+        {
+            ["role"] = "user",
+            ["content"] = "The user interrupts you: " + words + "\n\nThis comes before the goal: do what it says, " +
+                          "even if that means stopping or changing course. Your last step may have been cut short" +
+                          (_screen is not null ? ", so look at the screen before you act." : ", so check the terminal before you act.")
+        });
+        maxSteps = Math.Max(maxSteps, step + Math.Max(1, _endpoint.MaxSteps));
+        return true;
+    }
+
     /// <summary>Runs one goal. Follow-up goals continue the same conversation until <see cref="Reset"/>.</summary>
     public async Task<string> RunAsync(string goal, CancellationToken token)
     {
         _run = Guid.NewGuid().ToString("N")[..8];
         Log("goal", text: goal);
+        _runToken = token;
+        _interruptions.Clear();   // said after the last run ended: too late for it, and not this goal
         _goalMessage = new JsonObject { ["role"] = "user", ["content"] = goal };
         _messages.Add(_goalMessage);
         _stopRun = null;
@@ -210,202 +262,240 @@ public sealed partial class AgentRunner
         for (var step = 1; step <= maxSteps; step++)
         {
             token.ThrowIfCancellationRequested();
+            TakeInterruptions(ref maxSteps, step);
             Emit("status", $"Thinking (step {step})...");
 
-            TrimHistory();
-            JsonObject message;
+            // Each step has its own token, so the user can cut one short and talk to the model
+            // (Interrupt) without stopping the run.
+            using var stepCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var stepToken = stepCts.Token;
+            lock (_interruptLock)
+            {
+                _stepCts = stepCts;
+                if (!_interruptions.IsEmpty)
+                {
+                    stepCts.Cancel();
+                }
+            }
+
             try
             {
-                message = await CallModelAsync(token);
-            }
-            catch (HttpRequestException ex) when (ex.Message.Contains("context length", StringComparison.OrdinalIgnoreCase)
-                                                  || ex.Message.Contains("context window", StringComparison.OrdinalIgnoreCase))
-            {
-                // The model's window is smaller than the budget assumed: trim to a quarter and try once more.
-                Log("context_overflow", text: Truncate(ex.Message, 300));
-                TrimHistory(HistoryBudget / 4);
-                message = await CallModelAsync(token);
-            }
 
-            if (OnlyThought(message))
-            {
-                // Thinking used up the reply; once more with room to finish before giving up.
-                Log("empty_reply", text: "only thinking in 2048 tokens, retrying with 8192");
-                message = await CallModelAsync(token, 8192);
-            }
-            var content = TextOf(message["content"]);
-
-            // A model stuck in a loop writes one paragraph over and over until the token limit;
-            // a chess run ended on dozens of copies, taken as its final answer. Keep one copy in
-            // the history so the loop does not feed itself, and do not accept it as an answer.
-            var looped = Repeats(content);
-            if (looped)
-            {
-                content = Dedupe(content);
-                Log("repetition", text: Truncate(content, 400));
-            }
-
-            // Keep the assistant turn as returned so tool results can answer its ids; a call
-            // without an id gets one here, in the stored turn too, or the reply would not match.
-            var calls = (message["tool_calls"] as JsonArray)?.DeepClone() as JsonArray;
-            if (calls is not null)
-            {
-                foreach (var call in calls.OfType<JsonObject>())
+                TrimHistory();
+                JsonObject message;
+                try
                 {
-                    if (string.IsNullOrEmpty(call["id"]?.ToString()))
-                    {
-                        call["id"] = "call_" + Guid.NewGuid().ToString("N")[..12];
-                    }
-
-                    call["type"] ??= "function";
+                    message = await CallModelAsync(stepToken);
                 }
-            }
-
-            var assistant = new JsonObject { ["role"] = "assistant", ["content"] = content };
-            if (calls is { Count: > 0 })
-            {
-                assistant["tool_calls"] = calls.DeepClone();
-            }
-
-            _messages.Add(assistant);
-
-            if (!string.IsNullOrWhiteSpace(content))
-            {
-                Log("model", text: content);
-                if (calls is { Count: > 0 })
+                catch (HttpRequestException ex) when (ex.Message.Contains("context length", StringComparison.OrdinalIgnoreCase)
+                                                      || ex.Message.Contains("context window", StringComparison.OrdinalIgnoreCase))
                 {
-                    Emit("thought", content.Trim());
-                }
-            }
-
-            // A small model may write its call as text the server could not parse (Cosmos-Reason2
-            // sent "x": 377, 529). That is a broken call, not an answer: say so and let it retry.
-            if (calls is not { Count: > 0 } && content.Contains("<tool_call>", StringComparison.Ordinal) && ++brokenCalls <= 3)
-            {
-                Log("broken_tool_call", text: Truncate(content, 400));
-                Emit("status", "The model wrote a tool call the server could not read; asking it to send it again.");
-                _messages.Add(new JsonObject
-                {
-                    ["role"] = "user",
-                    ["content"] = "Your tool call was written as text and is not valid JSON, so nothing happened. Call the tool " +
-                                  "again properly: each argument once, with one whole number per coordinate."
-                });
-                continue;
-            }
-
-            if (calls is not { Count: > 0 } && looped)
-            {
-                if (++loops > 1)
-                {
-                    const string stuck = "Stopped: the model kept repeating itself instead of acting. Start the goal again, " +
-                                         "or give it a narrower one.";
-                    Log("final", text: stuck);
-                    Emit("final", stuck);
-                    return stuck;
+                    // The model's window is smaller than the budget assumed: trim to a quarter and try once more.
+                    Log("context_overflow", text: Truncate(ex.Message, 300));
+                    TrimHistory(HistoryBudget / 4);
+                    message = await CallModelAsync(stepToken);
                 }
 
-                Emit("status", "The model repeated itself; asking it to look again.");
-                _messages.Add(new JsonObject
-                {
-                    ["role"] = "user",
-                    ["content"] = "Your last reply repeated the same text many times and did nothing. Stop planning in text: " +
-                                  "look at the screen, then take one step with a tool."
-                });
-                continue;
-            }
-
-            if (calls is not { Count: > 0 })
-            {
                 if (OnlyThought(message))
                 {
-                    Log("final", text: ThinkingHint);
-                    Emit("final", ThinkingHint);
-                    return ThinkingHint;
+                    // Thinking used up the reply; once more with room to finish before giving up.
+                    Log("empty_reply", text: "only thinking in 2048 tokens, retrying with 8192");
+                    message = await CallModelAsync(stepToken, 8192);
+                }
+                var content = TextOf(message["content"]);
+
+                // A model stuck in a loop writes one paragraph over and over until the token limit;
+                // a chess run ended on dozens of copies, taken as its final answer. Keep one copy in
+                // the history so the loop does not feed itself, and do not accept it as an answer.
+                var looped = Repeats(content);
+                if (looped)
+                {
+                    content = Dedupe(content);
+                    Log("repetition", text: Truncate(content, 400));
                 }
 
-                if (string.IsNullOrWhiteSpace(content) && ++emptyReplies < 2)
+                // Keep the assistant turn as returned so tool results can answer its ids; a call
+                // without an id gets one here, in the stored turn too, or the reply would not match.
+                var calls = (message["tool_calls"] as JsonArray)?.DeepClone() as JsonArray;
+                if (calls is not null)
                 {
-                    // Some servers return nothing at all when a reasoning model spends its budget
-                    // thinking; ask once more rather than report an empty "done".
-                    Log("empty_reply");
+                    foreach (var call in calls.OfType<JsonObject>())
+                    {
+                        if (string.IsNullOrEmpty(call["id"]?.ToString()))
+                        {
+                            call["id"] = "call_" + Guid.NewGuid().ToString("N")[..12];
+                        }
+
+                        call["type"] ??= "function";
+                    }
+                }
+
+                var assistant = new JsonObject { ["role"] = "assistant", ["content"] = content };
+                if (calls is { Count: > 0 })
+                {
+                    assistant["tool_calls"] = calls.DeepClone();
+                }
+
+                _messages.Add(assistant);
+
+                if (!string.IsNullOrWhiteSpace(content))
+                {
+                    Log("model", text: content);
+                    if (calls is { Count: > 0 })
+                    {
+                        Emit("thought", content.Trim());
+                    }
+                }
+
+                // A small model may write its call as text the server could not parse (Cosmos-Reason2
+                // sent "x": 377, 529). That is a broken call, not an answer: say so and let it retry.
+                if (calls is not { Count: > 0 } && content.Contains("<tool_call>", StringComparison.Ordinal) && ++brokenCalls <= 3)
+                {
+                    Log("broken_tool_call", text: Truncate(content, 400));
+                    Emit("status", "The model wrote a tool call the server could not read; asking it to send it again.");
                     _messages.Add(new JsonObject
                     {
                         ["role"] = "user",
-                        ["content"] = "Your last reply was empty. Continue: call a tool, or answer in plain text."
+                        ["content"] = "Your tool call was written as text and is not valid JSON, so nothing happened. Call the tool " +
+                                      "again properly: each argument once, with one whole number per coordinate."
                     });
                     continue;
                 }
 
-                var answer = string.IsNullOrWhiteSpace(content) ? "(The model returned nothing.)" : content.Trim();
-                Log("final", text: answer);
-                Emit("final", answer);
-                return answer;
-            }
-
-            // Every call gets a reply, even when the run is stopped part way: a tool call left
-            // unanswered makes the server reject the whole conversation on the next goal.
-            var answered = 0;
-            var skipRest = false;
-            try
-            {
-                foreach (var call in calls.OfType<JsonObject>())
+                if (calls is not { Count: > 0 } && looped)
                 {
-                    token.ThrowIfCancellationRequested();
-
-                    var id = call["id"]!.ToString();
-                    var name = call["function"]?["name"]?.ToString() ?? "";
-                    var argNode = call["function"]?["arguments"];
-                    var argText = argNode is JsonValue v && v.TryGetValue<string>(out var str) ? str : argNode?.ToJsonString() ?? "{}";
-
-                    Log("tool_call", tool: name, arguments: argText);
-                    string result;
-                    try
+                    if (++loops > 1)
                     {
-                        // Most servers send arguments as a JSON string; some send the object itself.
-                        var args = argNode is JsonObject obj
-                            ? (JsonObject)obj.DeepClone()
-                            : JsonNode.Parse(string.IsNullOrWhiteSpace(argText) ? "{}" : argText) as JsonObject ?? new JsonObject();
-                        result = skipRest
-                            ? "skipped: an earlier action in this turn did not happen. Look at the screen and decide again."
-                            : await ExecuteAsync(name, args, token);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        result = $"error: {ex.Message}";
+                        const string stuck = "Stopped: the model kept repeating itself instead of acting. Start the goal again, " +
+                                             "or give it a narrower one.";
+                        Log("final", text: stuck);
+                        Emit("final", stuck);
+                        return stuck;
                     }
 
-                    skipRest |= _screen is not null && ScreenActionFailed(result);
-                    Log("tool_result", tool: name, text: result);
-                    _messages.Add(new JsonObject { ["role"] = "tool", ["tool_call_id"] = id, ["content"] = result });
-                    answered++;
-                }
-
-                // A screen tool's picture rides in one user message after the tool replies:
-                // most servers take images only in user turns.
-                AttachPendingScreenshot();
-            }
-            catch (OperationCanceledException)
-            {
-                foreach (var call in calls.OfType<JsonObject>().Skip(answered))
-                {
+                    Emit("status", "The model repeated itself; asking it to look again.");
                     _messages.Add(new JsonObject
                     {
-                        ["role"] = "tool", ["tool_call_id"] = call["id"]!.ToString(), ["content"] = "cancelled: the user stopped the run."
+                        ["role"] = "user",
+                        ["content"] = "Your last reply repeated the same text many times and did nothing. Stop planning in text: " +
+                                      "look at the screen, then take one step with a tool."
                     });
+                    continue;
                 }
 
-                throw;
-            }
+                if (calls is not { Count: > 0 })
+                {
+                    if (OnlyThought(message))
+                    {
+                        Log("final", text: ThinkingHint);
+                        Emit("final", ThinkingHint);
+                        return ThinkingHint;
+                    }
 
-            if (_stopRun is { } why)
+                    if (string.IsNullOrWhiteSpace(content) && ++emptyReplies < 2)
+                    {
+                        // Some servers return nothing at all when a reasoning model spends its budget
+                        // thinking; ask once more rather than report an empty "done".
+                        Log("empty_reply");
+                        _messages.Add(new JsonObject
+                        {
+                            ["role"] = "user",
+                            ["content"] = "Your last reply was empty. Continue: call a tool, or answer in plain text."
+                        });
+                        continue;
+                    }
+
+                    // The user broke in as it answered: their message comes first, the answer can wait.
+                    if (TakeInterruptions(ref maxSteps, step))
+                    {
+                        continue;
+                    }
+
+                    var answer = string.IsNullOrWhiteSpace(content) ? "(The model returned nothing.)" : content.Trim();
+                    Log("final", text: answer);
+                    Emit("final", answer);
+                    return answer;
+                }
+
+                // Every call gets a reply, even when the run is stopped part way: a tool call left
+                // unanswered makes the server reject the whole conversation on the next goal.
+                var answered = 0;
+                var skipRest = false;
+                try
+                {
+                    foreach (var call in calls.OfType<JsonObject>())
+                    {
+                        stepToken.ThrowIfCancellationRequested();
+
+                        var id = call["id"]!.ToString();
+                        var name = call["function"]?["name"]?.ToString() ?? "";
+                        var argNode = call["function"]?["arguments"];
+                        var argText = argNode is JsonValue v && v.TryGetValue<string>(out var str) ? str : argNode?.ToJsonString() ?? "{}";
+
+                        Log("tool_call", tool: name, arguments: argText);
+                        string result;
+                        try
+                        {
+                            // Most servers send arguments as a JSON string; some send the object itself.
+                            var args = argNode is JsonObject obj
+                                ? (JsonObject)obj.DeepClone()
+                                : JsonNode.Parse(string.IsNullOrWhiteSpace(argText) ? "{}" : argText) as JsonObject ?? new JsonObject();
+                            result = skipRest
+                                ? "skipped: an earlier action in this turn did not happen. Look at the screen and decide again."
+                                : await ExecuteAsync(name, args, stepToken);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
+                        }
+                        catch (Exception ex)
+                        {
+                            result = $"error: {ex.Message}";
+                        }
+
+                        skipRest |= _screen is not null && ScreenActionFailed(result);
+                        Log("tool_result", tool: name, text: result);
+                        _messages.Add(new JsonObject { ["role"] = "tool", ["tool_call_id"] = id, ["content"] = result });
+                        answered++;
+                    }
+
+                    // A screen tool's picture rides in one user message after the tool replies:
+                    // most servers take images only in user turns.
+                    AttachPendingScreenshot();
+                }
+                catch (OperationCanceledException)
+                {
+                    foreach (var call in calls.OfType<JsonObject>().Skip(answered))
+                    {
+                        _messages.Add(new JsonObject
+                        {
+                            ["role"] = "tool", ["tool_call_id"] = call["id"]!.ToString(),
+                            ["content"] = token.IsCancellationRequested
+                                ? "cancelled: the user stopped the run."
+                                : "not done: the user interrupted before this ran. Read their message."
+                        });
+                    }
+
+                    throw;
+                }
+
+                if (_stopRun is { } why)
+                {
+                    Log("final", text: why);
+                    Emit("final", why);
+                    return why;
+                }
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested && stepCts.IsCancellationRequested)
             {
-                Log("final", text: why);
-                Emit("final", why);
-                return why;
+                Log("interrupted", text: $"step {step} cut short");
+            }
+            finally
+            {
+                lock (_interruptLock)
+                {
+                    _stepCts = null;
+                }
             }
         }
 

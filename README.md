@@ -121,6 +121,8 @@ screenshots in, pointer and key events out. Nothing is installed on the remote m
 - **Clicks are checked first.** The model names what is under a crosshair on a close-up of the
   point, and that has to match what it said it was clicking. If not, nothing is clicked and it
   is told what is there instead.
+- **Interrupt** a run by typing in the goal box while it works: the agent reads your message
+  before its next step and carries on from there. Esc or Stop ends it.
 - Only the latest screenshot stays in the conversation. Each action carries a note of what the
   screen showed, so text the agent reports comes from the screen, not from memory.
 - **Approval:** under "Ask before risky", clicks on things like Delete, Uninstall or Shut down,
