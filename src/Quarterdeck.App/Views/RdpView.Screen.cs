@@ -14,7 +14,9 @@ namespace Quarterdeck.App.Views;
 /// the control centres it when it is smaller than the tab. Pictures are that part of the control
 /// (PrintWindow, or the screen under it when that comes back blank); pointer and key events are
 /// window messages to it, which it turns into RDP input as it does for the real mouse and
-/// keyboard, but only while it has the focus. Keys arrive as X11 keysyms, as on VNC, and become
+/// keyboard, but only while it believes it has the focus. The agent tells it so for its own events
+/// (WM_SETFOCUS, not the real focus), so what the user types meanwhile (an interruption) stays in
+/// the app and never reaches the remote desktop. Keys arrive as X11 keysyms, as on VNC, and become
 /// scan codes for the local keyboard layout, which RDP expects to match the remote one.
 /// </summary>
 internal sealed partial class RdpView
@@ -176,36 +178,107 @@ internal sealed partial class RdpView
         return true;
     }
 
-    /// <summary>The input window, given the focus first: it ignores input while it has none.</summary>
+    // The input window the agent has told it has the focus, while the real focus is elsewhere.
+    private IntPtr _told;
+
+    /// <summary>
+    /// The input window, ready for input. It ignores input unless it has the focus; a real focus
+    /// change would also hand it the user's own typing (and take keys still held with it when it
+    /// left), so it is only told it has the focus, which is all it checks.
+    /// </summary>
     private (IntPtr Input, int W, int H, int Ix, int Iy) Focused()
     {
         var (input, _, _, w, h, ix, iy) = Desktop();
-        if (GetFocus() != input)
+        if (_told != input && GetFocus() != input)
         {
-            SetFocus(input);
+            WithoutModifiers(() => SendMessage(input, WmSetFocus, GetFocus(), IntPtr.Zero));
+            _told = input;
         }
 
         return (input, w, h, ix, iy);
     }
 
+    /// <summary>
+    /// Runs a focus message with Shift, Ctrl, Alt and Win hidden from this thread's keyboard state:
+    /// the control copies the modifiers held on this PC into the session when its focus changes,
+    /// so a user holding Shift to type an interruption turned the agent's "Lovelace" into "LoveLace".
+    /// </summary>
+    private static void WithoutModifiers(Action send)
+    {
+        var state = new byte[256];
+        if (!GetKeyboardState(state))
+        {
+            send();
+            return;
+        }
+
+        var clean = (byte[])state.Clone();
+        foreach (var vk in new[] { 0x10, 0x11, 0x12, 0x5B, 0x5C, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5 })
+        {
+            clean[vk] &= 0x7F;
+        }
+
+        SetKeyboardState(clean);
+        try
+        {
+            send();
+        }
+        finally
+        {
+            SetKeyboardState(state);
+        }
+    }
+
+    /// <summary>
+    /// Takes the focus back from the input window once no key or button is down: telling it
+    /// mid-combination would make it let go of Ctrl before the C.
+    /// </summary>
+    private void GiveFocusBack()
+    {
+        if (_told == IntPtr.Zero || _held.Count > 0 || _buttons != 0)
+        {
+            return;
+        }
+
+        if (GetFocus() != _told)
+        {
+            var told = _told;
+            WithoutModifiers(() => SendMessage(told, WmKillFocus, GetFocus(), IntPtr.Zero));
+        }
+
+        _told = IntPtr.Zero;
+    }
+
     /// <summary>RFB-style pointer: position and button mask (1 left, 2 middle, 4 right, 8/16 wheel).</summary>
     public Task PointerAsync(int x, int y, int buttons) => Dispatcher.InvokeAsync(() =>
+    {
+        try
+        {
+            Pointer(x, y, buttons);
+        }
+        finally
+        {
+            GiveFocusBack();
+        }
+    }).Task;
+
+    private void Pointer(int x, int y, int buttons)
     {
         var (input, w, h, ix, iy) = Focused();
         x = Math.Clamp(x, 0, w - 1) + ix;
         y = Math.Clamp(y, 0, h - 1) + iy;
         var at = (IntPtr)((y << 16) | (x & 0xFFFF));
 
-        PostMessage(input, WmMouseMove, (IntPtr)Held(_buttons), at);
+        SendMessage(input, WmMouseMove, (IntPtr)Held(_buttons), at);
         foreach (var (bit, down, up) in new[] { (1, WmLButtonDown, WmLButtonUp), (2, WmMButtonDown, WmMButtonUp), (4, WmRButtonDown, WmRButtonUp) })
         {
             if ((buttons & bit) != 0 && (_buttons & bit) == 0)
             {
-                PostMessage(input, down, (IntPtr)Held(buttons & 7), at);
+                SendMessage(input, down, (IntPtr)Held(buttons & 7), at);
             }
             else if ((buttons & bit) == 0 && (_buttons & bit) != 0)
             {
-                PostMessage(input, up, (IntPtr)Held(buttons & 7), at);
+                SendMessage(input, up, (IntPtr)Held(buttons & 7), at);
             }
         }
 
@@ -215,21 +288,34 @@ internal sealed partial class RdpView
             var screen = new POINT { X = x, Y = y };
             ClientToScreen(input, ref screen);
             var delta = (buttons & 8) != 0 ? 120 : -120;
-            PostMessage(input, WmMouseWheel, (IntPtr)((delta << 16) | Held(buttons & 7)), (IntPtr)((screen.Y << 16) | (screen.X & 0xFFFF)));
+            SendMessage(input, WmMouseWheel, (IntPtr)((delta << 16) | Held(buttons & 7)), (IntPtr)((screen.Y << 16) | (screen.X & 0xFFFF)));
         }
 
         _buttons = buttons;
-    }).Task;
+    }
 
     private static int Held(int mask) => ((mask & 1) != 0 ? 0x1 : 0) | ((mask & 4) != 0 ? 0x2 : 0) | ((mask & 2) != 0 ? 0x10 : 0);
 
     /// <summary>RFB-style key event: a keysym pressed or released.</summary>
     public Task KeyAsync(uint keysym, bool down) => Dispatcher.InvokeAsync(() =>
     {
+        try
+        {
+            Key(keysym, down);
+        }
+        finally
+        {
+            GiveFocusBack();
+        }
+    }).Task;
+
+    private void Key(uint keysym, bool down)
+    {
+        // SendKeys needs the focus too: without it keys went missing and Shift did not apply.
         var (input, _, _, _, _) = Focused();
         if (Named(keysym) is { } key)
         {
-            Post(input, key.Vk, key.Extended, down);
+            Press(input, key.Vk, key.Extended, down);
             return;
         }
 
@@ -245,11 +331,11 @@ internal sealed partial class RdpView
         var vk = (ushort)(scan & 0xFF);
         if (!down)
         {
-            Post(input, vk, false, false);
+            Press(input, vk, false, false);
             // Modifiers a character needed are let go with it, not held for the next one.
             if (_added.Remove(vk, out var added))
             {
-                added.ForEach(m => Post(input, m, false, false));
+                added.ForEach(m => Press(input, m, false, false));
             }
 
             return;
@@ -260,12 +346,38 @@ internal sealed partial class RdpView
         if ((shifts & 1) != 0 && !_held.Contains(0x10)) mods.Add(0x10);
         if ((shifts & 2) != 0 && !_held.Contains(0x11)) mods.Add(0x11);
         if ((shifts & 4) != 0 && !_held.Contains(0x12)) mods.Add(0x12);
-        mods.ForEach(m => Post(input, m, false, true));
+        mods.ForEach(m => Press(input, m, false, true));
         _added[vk] = mods;
-        Post(input, vk, false, true);
-    }).Task;
+        Press(input, vk, false, true);
+    }
 
-    private void Post(IntPtr input, ushort vk, bool extended, bool down)
+    private IMsRdpClientNonScriptable? _keys;
+    private bool _keysTried;
+
+    /// <summary>
+    /// The control's own way to send keys: scan codes straight into the session. Key messages
+    /// work for letters, but the control ignores Shift and Ctrl being let go through them, which
+    /// left Ctrl held down on the remote desktop after Ctrl+A. Null on a control without it.
+    /// </summary>
+    private IMsRdpClientNonScriptable? Keys()
+    {
+        if (!_keysTried)
+        {
+            _keysTried = true;
+            try
+            {
+                _keys = (IMsRdpClientNonScriptable)_ax!.Ocx!;
+            }
+            catch (InvalidCastException)
+            {
+                // Key messages it is, with the trouble above.
+            }
+        }
+
+        return _keys;
+    }
+
+    private void Press(IntPtr input, ushort vk, bool extended, bool down)
     {
         if (down)
         {
@@ -276,11 +388,17 @@ internal sealed partial class RdpView
             _held.Remove(vk);
         }
 
-        var alt = _held.Contains(0x12) && vk != 0x12;
         var scan = MapVirtualKeyW(vk, 0);
+        if (Keys() is { } keys)
+        {
+            keys.SendKeys(1, [down ? (short)0 : (short)-1], [(int)scan | (extended ? 0x100 : 0)]);
+            return;
+        }
+
+        var alt = _held.Contains(0x12) && vk != 0x12;
         var lParam = 1u | (scan << 16) | (extended ? 1u << 24 : 0) | (alt ? 1u << 29 : 0) | (down ? 0 : 3u << 30);
         var msg = alt || vk == 0x12 ? (down ? WmSysKeyDown : WmSysKeyUp) : (down ? WmKeyDown : WmKeyUp);
-        PostMessage(input, msg, (IntPtr)vk, (IntPtr)(int)lParam);
+        SendMessage(input, msg, (IntPtr)vk, (IntPtr)(int)lParam);
     }
 
     /// <summary>Virtual key for a named X11 keysym, and whether it is an extended key.</summary>
@@ -316,6 +434,7 @@ internal sealed partial class RdpView
     };
 
     private const uint PwRenderFullContent = 2;
+    private const uint WmSetFocus = 0x7, WmKillFocus = 0x8;
     private const uint WmKeyDown = 0x100, WmKeyUp = 0x101, WmSysKeyDown = 0x104, WmSysKeyUp = 0x105;
     private const uint WmMouseMove = 0x200, WmLButtonDown = 0x201, WmLButtonUp = 0x202, WmRButtonDown = 0x204, WmRButtonUp = 0x205;
     private const uint WmMButtonDown = 0x207, WmMButtonUp = 0x208, WmMouseWheel = 0x20A;
@@ -341,7 +460,10 @@ internal sealed partial class RdpView
     private static extern IntPtr GetFocus();
 
     [DllImport("user32.dll")]
-    private static extern IntPtr SetFocus(IntPtr hwnd);
+    private static extern bool GetKeyboardState(byte[] state);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetKeyboardState(byte[] state);
 
     [DllImport("user32.dll")]
     private static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
@@ -353,7 +475,7 @@ internal sealed partial class RdpView
     private static extern int GetClassName(IntPtr hwnd, StringBuilder name, int max);
 
     [DllImport("user32.dll")]
-    private static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+    private static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll")]
     private static extern bool ClientToScreen(IntPtr hwnd, ref POINT point);
@@ -363,4 +485,27 @@ internal sealed partial class RdpView
 
     [DllImport("user32.dll")]
     private static extern uint MapVirtualKeyW(uint code, uint type);
+}
+
+/// <summary>The part of mstscax's IMsRdpClientNonScriptable used here, in vtable order.</summary>
+[ComImport, Guid("2F079C4C-87B2-4AFD-97AB-20CDB43038AE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IMsRdpClientNonScriptable
+{
+    // IMsTscNonScriptable
+    void put_ClearTextPassword([MarshalAs(UnmanagedType.BStr)] string value);
+    void put_PortablePassword([MarshalAs(UnmanagedType.BStr)] string value);
+    [return: MarshalAs(UnmanagedType.BStr)] string get_PortablePassword();
+    void put_PortableSalt([MarshalAs(UnmanagedType.BStr)] string value);
+    [return: MarshalAs(UnmanagedType.BStr)] string get_PortableSalt();
+    void put_BinaryPassword([MarshalAs(UnmanagedType.BStr)] string value);
+    [return: MarshalAs(UnmanagedType.BStr)] string get_BinaryPassword();
+    void put_BinarySalt([MarshalAs(UnmanagedType.BStr)] string value);
+    [return: MarshalAs(UnmanagedType.BStr)] string get_BinarySalt();
+    void ResetPassword();
+
+    // IMsRdpClientNonScriptable
+    void NotifyRedirectDeviceChange(IntPtr wParam, IntPtr lParam);
+
+    /// <summary>Scan codes (0x100 for an extended key), each with its key-up flag as a VARIANT_BOOL.</summary>
+    void SendKeys(int numKeys, [In, MarshalAs(UnmanagedType.LPArray)] short[] keyUp, [In, MarshalAs(UnmanagedType.LPArray)] int[] keyData);
 }
