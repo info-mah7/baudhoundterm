@@ -224,7 +224,8 @@ internal sealed class AgentPanel : DockPanel
                 ? new AgentRunner(endpoint, apiKey, screen, skills, _log)
                 : new AgentRunner(endpoint, apiKey, (ITerminalTarget)_target, skills, _log);
             // Helpers: only those enabled in agent.json and named by a ticked skill.
-            _runner.Helpers = AgentHelper.ForRun(AgentConfig.Load().Helpers, skills, _runner.BuiltInToolNames);
+            _runner.Helpers = AgentHelper.ForRun(AgentConfig.Load().Helpers, skills, _runner.BuiltInToolNames,
+                screen: _protocol == Core.Model.SessionProtocol.Vnc);
             foreach (var h in AgentConfig.Load().Helpers.Where(h => skills.Any(s => s.Helpers.Contains(h.Name))))
             {
                 if (h.Problem(_runner.BuiltInToolNames) is { } why)
