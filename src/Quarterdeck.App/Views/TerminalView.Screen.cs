@@ -8,17 +8,23 @@ namespace Quarterdeck.App.Views;
 /// <summary>
 /// The VNC tab as the agent's screen: requests go to vnc.html with an id, which answers with a
 /// picture from the framebuffer or after sending an RFB key or pointer event. Nothing here
-/// parses RFB; the page's noVNC connection is the only one there is.
+/// parses RFB; the page's noVNC connection is the only one there is. An RDP tab hands the same
+/// calls to its Remote Desktop control (RdpView.Screen.cs).
 /// </summary>
 public partial class TerminalView : IScreenTarget
 {
     private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _agentCalls = new();
     private int _agentCallId;
 
-    public bool ViewOnly => Definition.ViewOnly;
+    public bool ViewOnly => Definition.Protocol == SessionProtocol.Vnc && Definition.ViewOnly;
 
     public async Task<ScreenShot> CaptureAsync(ScreenRegion? region, int maxWidth, ScreenMark? mark, CancellationToken token)
     {
+        if (_rdp is not null)
+        {
+            return await _rdp.CaptureAsync(region, maxWidth, mark);
+        }
+
         var r = region ?? new ScreenRegion(0, 0, 0, 0);
         var reply = await AskPageAsync(new Dictionary<string, object?>
         {
@@ -34,15 +40,20 @@ public partial class TerminalView : IScreenTarget
 
     public async Task<byte[]> ThumbnailAsync(CancellationToken token)
     {
+        if (_rdp is not null)
+        {
+            return await _rdp.ThumbnailAsync();
+        }
+
         var reply = await AskPageAsync(new Dictionary<string, object?> { ["t"] = "thumb" }, token);
         return reply.GetProperty("grey").EnumerateArray().Select(v => (byte)v.GetInt32()).ToArray();
     }
 
     public Task PointerAsync(int x, int y, int buttons, CancellationToken token) =>
-        AskPageAsync(new Dictionary<string, object?> { ["t"] = "ptr", ["x"] = x, ["y"] = y, ["mask"] = buttons }, token);
+        _rdp is not null ? _rdp.PointerAsync(x, y, buttons) : AskPageAsync(new Dictionary<string, object?> { ["t"] = "ptr", ["x"] = x, ["y"] = y, ["mask"] = buttons }, token);
 
     public Task KeyAsync(uint keysym, bool down, CancellationToken token) =>
-        AskPageAsync(new Dictionary<string, object?> { ["t"] = "key", ["keysym"] = keysym, ["down"] = down }, token);
+        _rdp is not null ? _rdp.KeyAsync(keysym, down) : AskPageAsync(new Dictionary<string, object?> { ["t"] = "key", ["keysym"] = keysym, ["down"] = down }, token);
 
     /// <summary>One request to the page, answered by a {t:'agent', id} message or failed after 10 s.</summary>
     private async Task<JsonElement> AskPageAsync(Dictionary<string, object?> message, CancellationToken token)

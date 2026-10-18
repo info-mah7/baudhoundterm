@@ -7,7 +7,7 @@ namespace Quarterdeck.Core.Agent;
 
 /// <summary>
 /// The agent on a remote desktop: it sees screenshots and drives the pointer and keyboard over
-/// the tab's own VNC connection. One model does all of it, so the endpoint must take images.
+/// the tab's own VNC or RDP connection. One model does all of it, so the endpoint must take images.
 /// Positions are on a 0-1000 grid over the whole screen, which is what vision models are
 /// trained to give and does not depend on the screen's resolution.
 /// </summary>
@@ -34,7 +34,7 @@ public sealed partial class AgentRunner
     private string ScreenSystemPrompt()
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"You operate one remote desktop over VNC: {_target.Describe}.");
+        sb.AppendLine($"You operate one remote desktop: {_target.Describe}.");
         sb.AppendLine("Everything you do happens on that machine for real.");
         sb.AppendLine("You see the screen as pictures. Positions are on a 0-1000 grid over the WHOLE screen: x=0 is the left " +
                       "edge, x=1000 the right edge, y=0 the top, y=1000 the bottom, whatever size the picture is. Give " +

@@ -17,7 +17,7 @@ namespace Quarterdeck.App.Views;
 /// State comes from polling the control's Connected property; that avoids an event sink
 /// for its COM events, which differ between control versions.
 /// </summary>
-internal sealed class RdpView : Grid, IDisposable
+internal sealed partial class RdpView : Grid, IDisposable
 {
     // MsRdpClient9..12 "not safe for scripting": the variants that let the host set the
     // password. Newest first; Windows 10 and 11 register all of them.
