@@ -31,6 +31,17 @@ internal sealed class RdpView : Grid, IDisposable
     private readonly Action<SessionState, string?> _report;
     private readonly Func<string, string, string?> _promptForSecret;
     private readonly WindowsFormsHost _host = new();
+    private readonly TextBlock _notice = new()
+    {
+        Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xDF, 0xE4, 0xEE)),
+        FontSize = 14,
+        TextWrapping = TextWrapping.Wrap,
+        TextAlignment = TextAlignment.Center,
+        HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Center,
+        MaxWidth = 560,
+        Visibility = Visibility.Collapsed
+    };
     private readonly DispatcherTimer _poll = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private readonly DispatcherTimer _resize = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private RdpAxHost? _ax;
@@ -43,10 +54,27 @@ internal sealed class RdpView : Grid, IDisposable
     {
         _definition = definition;
         _vault = vault;
-        _report = report;
         _promptForSecret = promptForSecret;
-        Background = System.Windows.Media.Brushes.Black;
+        Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x10, 0x14, 0x1C));
         Children.Add(_host);
+        Children.Add(_notice);
+
+        // The Remote Desktop control is a window of its own drawn over the tab, and it paints plain
+        // white while it has no session: a failed login left a blank white tab with the reason only
+        // in the status bar. Hide it unless connecting or connected, and say what happened instead.
+        _report = (state, message) =>
+        {
+            var live = state is SessionState.Connecting or SessionState.Connected;
+            _host.Visibility = live ? Visibility.Visible : Visibility.Collapsed;
+            _notice.Visibility = live ? Visibility.Collapsed : Visibility.Visible;
+            if (!live)
+            {
+                _notice.Text = (message ?? state.ToString()) +
+                               (message?.Contains("Reconnect", StringComparison.Ordinal) == true ? "" : "\n\nPress Reconnect to try again.");
+            }
+
+            report(state, message);
+        };
 
         _poll.Tick += (_, _) => Poll();
         _resize.Tick += (_, _) =>
@@ -139,6 +167,9 @@ internal sealed class RdpView : Grid, IDisposable
     public async Task ConnectAsync()
     {
         _userDisconnect = false;
+        // Visible again before the control is (re)created: a hidden host may not give it a window.
+        _host.Visibility = Visibility.Visible;
+        _notice.Visibility = Visibility.Collapsed;
         if (string.IsNullOrWhiteSpace(_definition.Host))
         {
             _report(SessionState.Failed, "No host set. Add one in Properties.");
