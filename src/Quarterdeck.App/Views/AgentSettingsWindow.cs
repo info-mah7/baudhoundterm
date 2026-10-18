@@ -342,7 +342,8 @@ internal sealed class AgentSettingsWindow : Window
         ep.Temperature = double.TryParse(_temperature.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var t) ? t : 0.2;
         ep.MaxSteps = int.TryParse(_steps.Text, out var s) && s > 0 ? s : new AgentEndpoint().MaxSteps;
         ep.ExtraJson = _extra.Text.Trim();
-        ep.Approval = (AgentApproval)Math.Max(0, _approval.SelectedIndex);
+        // Nothing selected (an unknown value in agent.json) keeps the strictest mode, not Free.
+        ep.Approval = _approval.SelectedIndex < 0 ? AgentApproval.Always : (AgentApproval)_approval.SelectedIndex;
         ep.RiskyPatterns = _risky.Text.Trim().Length > 0 ? _risky.Text.Trim() : AgentEndpoint.DefaultRiskyPatterns;
         ep.NeverOnLocalShells = _noLocal.IsChecked == true;
         ep.ScreenshotWidth = int.TryParse(_shotWidth.Text, out var sw) ? Math.Clamp(sw, 320, 2560) : 1280;

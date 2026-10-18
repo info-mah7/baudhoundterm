@@ -182,12 +182,32 @@ public partial class TerminalView : UserControl, ITerminalTarget
         // anyone for, and the prompt appears in the middle of a paste.
         core.PermissionRequested += (_, args) =>
         {
-            if (args.PermissionKind is CoreWebView2PermissionKind.ClipboardRead)
+            if (args.PermissionKind is CoreWebView2PermissionKind.ClipboardRead
+                && args.Uri.StartsWith(AssetOrigin, StringComparison.OrdinalIgnoreCase))
             {
                 args.State = CoreWebView2PermissionState.Allow;
                 args.Handled = true;
             }
         };
+
+        // The page never leaves our own assets, and opens no windows of its own: a page from
+        // anywhere else would get the bridge that types into the session (as administrator, in
+        // an elevated window). Links go through OpenLink instead.
+        core.NavigationStarting += (_, args) =>
+        {
+            if (!args.Uri.StartsWith(AssetOrigin, StringComparison.OrdinalIgnoreCase))
+            {
+                args.Cancel = true;
+            }
+        };
+        core.FrameNavigationStarting += (_, args) =>
+        {
+            if (!args.Uri.StartsWith(AssetOrigin, StringComparison.OrdinalIgnoreCase) && args.Uri != "about:blank")
+            {
+                args.Cancel = true;
+            }
+        };
+        core.NewWindowRequested += (_, args) => args.Handled = true;
 
         core.WebMessageReceived += OnWebMessage;
         core.NavigationCompleted += OnNavigated;
@@ -198,6 +218,55 @@ public partial class TerminalView : UserControl, ITerminalTarget
     }
 
     private LocalSocketBridge? _bridge;
+
+    /// <summary>
+    /// A link clicked in the terminal, in the default browser: http and https only, never a
+    /// file, UNC path or other protocol. An OSC 8 link's text is chosen by the server and can
+    /// differ from where it goes, so its address is shown first.
+    /// </summary>
+    /// <summary>
+    /// A paste of more than one line, shown before it goes in: each line break runs a command,
+    /// and the text may have been put on the clipboard by a web page or a VNC server.
+    /// </summary>
+    private void ConfirmPaste(string text, int lines)
+    {
+        var shown = string.Join("\n", text.Split('\n').Take(8).Select(l => l.TrimEnd('\r') is var t && t.Length > 100 ? t[..100] + "..." : t));
+        if (lines > 8)
+        {
+            shown += $"\n... and {lines - 8} more";
+        }
+
+        if (MessageBox.Show(Window.GetWindow(this)!,
+                $"Paste {lines} lines into {Definition.Name}? Each line break runs it as a command.\n\n{shown}",
+                "BaudHoundTerm: paste", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes)
+        {
+            Post(new { t = "pasteok", d = text });
+        }
+    }
+
+    private void OpenLink(string uri, bool osc8)
+    {
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out var link) || link.Scheme is not ("http" or "https") || link.IsUnc)
+        {
+            SetStatus("Not opened: only http and https links open from the terminal.");
+            return;
+        }
+
+        if (osc8 && MessageBox.Show(Window.GetWindow(this)!, $"Open this address in your browser?\n\n{link.AbsoluteUri}",
+                "BaudHoundTerm: open link", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(link.AbsoluteUri) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            SetStatus("The link could not be opened: " + ex.Message);
+        }
+    }
 
     private void OnNavigated(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
@@ -282,10 +351,33 @@ public partial class TerminalView : UserControl, ITerminalTarget
         _rows = root.GetProperty("r").GetInt32();
     }
 
+    private const string AssetOrigin = "https://baudhound.assets/";
+
+    /// <summary>
+    /// Messages from the page. Only our own page may send them: they type into the session and
+    /// use the clipboard. A malformed one is ignored; it used to throw on the UI thread and end
+    /// the whole app.
+    /// </summary>
     private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
-        using var doc = JsonDocument.Parse(e.TryGetWebMessageAsString());
-        var root = doc.RootElement;
+        if (!e.Source.StartsWith(AssetOrigin, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(e.TryGetWebMessageAsString());
+            HandleWebMessage(doc.RootElement);
+        }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException or FormatException or ArgumentException)
+        {
+            // Not a message this page sends; drop it.
+        }
+    }
+
+    private void HandleWebMessage(JsonElement root)
+    {
         var kind = root.GetProperty("t").GetString();
 
         switch (kind)
@@ -313,11 +405,21 @@ public partial class TerminalView : UserControl, ITerminalTarget
                 break;
             }
 
+            case "pasteask":
+                ConfirmPaste(root.GetProperty("d").GetString() ?? "", root.GetProperty("n").GetInt32());
+                break;
+
+            case "link":
+                OpenLink(root.GetProperty("uri").GetString() ?? "",
+                         root.TryGetProperty("osc8", out var osc8) && osc8.ValueKind == JsonValueKind.True);
+                break;
+
             case "clipset":
                 try
                 {
                     var text = root.GetProperty("text").GetString() ?? "";
-                    if (text.Length > 0)
+                    // What a VNC server copies lands here; a megabyte is far more than a real copy.
+                    if (text.Length > 0 && text.Length <= 1_000_000)
                     {
                         Clipboard.SetText(text);
                     }
@@ -417,9 +519,10 @@ public partial class TerminalView : UserControl, ITerminalTarget
     {
         var candidates = new[]
         {
+            // Not the current directory: whatever folder the app was started from would have
+            // supplied the page that types into the session.
             Path.GetDirectoryName(Environment.ProcessPath),
-            AppContext.BaseDirectory,
-            Directory.GetCurrentDirectory()
+            AppContext.BaseDirectory
         };
 
         foreach (var root in candidates)

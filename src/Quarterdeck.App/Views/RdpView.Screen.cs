@@ -156,12 +156,37 @@ internal sealed partial class RdpView
             g.ReleaseHdc(dc);
             if (!ok || Flat(all))
             {
+                // Reading the screen shows whatever is on top: only do it when that is the remote
+                // desktop, or another window's contents (a password manager) would go to the model.
                 var at = _ax.PointToScreen(System.Drawing.Point.Empty);
+                if (!OnTop(hwnd, at.X + dx, at.Y + dy, w, h))
+                {
+                    throw new InvalidOperationException(
+                        "the remote desktop is covered by another window, so no picture could be taken; bring BaudHoundTerm to the front");
+                }
+
                 g.CopyFromScreen(at.X, at.Y, 0, 0, all.Size);
             }
         }
 
         return all.Clone(new Rectangle(dx, dy, Math.Min(w, all.Width - dx), Math.Min(h, all.Height - dy)), PixelFormat.Format24bppRgb);
+    }
+
+    /// <summary>Whether the control's own windows are what the screen shows across this rectangle.</summary>
+    private static bool OnTop(IntPtr control, int x, int y, int w, int h)
+    {
+        for (var i = 0; i < 9; i++)
+        {
+            var px = x + w * (1 + i % 3 * 2) / 6;
+            var py = y + h * (1 + i / 3 * 2) / 6;
+            var there = WindowFromPoint(new POINT { X = px, Y = py });
+            if (there != control && !IsChild(control, there))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool Flat(Bitmap b)
@@ -455,6 +480,12 @@ internal sealed partial class RdpView
 
     [DllImport("user32.dll")]
     private static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(POINT point);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsChild(IntPtr parent, IntPtr child);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetFocus();

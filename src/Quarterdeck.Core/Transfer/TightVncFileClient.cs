@@ -111,6 +111,11 @@ public sealed class TightVncFileClient : IRemoteFiles
 
         // Tight security: tunnels (we take none), then authentication types.
         var tunnels = await ReadU32Async(token);
+        if (tunnels > 256)
+        {
+            throw new InvalidDataException($"The server offered {tunnels} tunnels.");
+        }
+
         await ReadAsync((int)tunnels * 16, token);
         if (tunnels > 0)
         {
@@ -153,7 +158,7 @@ public sealed class TightVncFileClient : IRemoteFiles
 
         // ServerInit: size, pixel format, name; then the Tight capability lists.
         await ReadAsync(4 + 16, token);
-        await ReadAsync((int)await ReadU32Async(token), token);
+        await ReadAsync(await ReadLengthAsync(token), token);
         var header = await ReadAsync(8, token);
         var serverMsgs = BinaryPrimitives.ReadUInt16BigEndian(header);
         var clientMsgs = BinaryPrimitives.ReadUInt16BigEndian(header.AsSpan(2));
@@ -447,7 +452,7 @@ public sealed class TightVncFileClient : IRemoteFiles
                     var type = (uint)(0xFC << 24 | rest[0] << 16 | rest[1] << 8 | rest[2]);
                     if (type == 0xFC000200)   // UTF-8 clipboard
                     {
-                        await ReadAsync((int)await ReadU32Async(token), token);
+                        await ReadAsync(await ReadLengthAsync(token), token);
                         continue;
                     }
 
@@ -458,7 +463,7 @@ public sealed class TightVncFileClient : IRemoteFiles
 
                 case 3:   // ServerCutText: 3 padding bytes, length, text
                     await ReadAsync(3, token);
-                    await ReadAsync((int)await ReadU32Async(token), token);
+                    await ReadAsync(await ReadLengthAsync(token), token);
                     continue;
 
                 default:
@@ -471,8 +476,8 @@ public sealed class TightVncFileClient : IRemoteFiles
     private async Task<byte[]> ReadCompressedAsync(CancellationToken token)
     {
         var level = (await ReadAsync(1, token))[0];
-        var compressed = (int)await ReadU32Async(token);
-        var uncompressed = (int)await ReadU32Async(token);
+        var compressed = await ReadLengthAsync(token);
+        var uncompressed = await ReadLengthAsync(token);
         var data = await ReadAsync(compressed, token);
         if (level == 0)
         {
@@ -495,8 +500,18 @@ public sealed class TightVncFileClient : IRemoteFiles
     private async Task<uint> ReadU32Async(CancellationToken token) =>
         BinaryPrimitives.ReadUInt32BigEndian(await ReadAsync(4, token));
 
+    // Lengths come from the server: one of 0x7FFFFFFF made a 2 GB buffer, and anything above that
+    // overflowed the int cast. No message or file chunk this client handles comes near 16 MB.
+    private const int MaxLength = 16 * 1024 * 1024;
+
+    private async Task<int> ReadLengthAsync(CancellationToken token)
+    {
+        var length = await ReadU32Async(token);
+        return length <= MaxLength ? (int)length : throw new InvalidDataException($"The server sent a length of {length} bytes.");
+    }
+
     private async Task<string> ReadStringAsync(CancellationToken token) =>
-        Encoding.UTF8.GetString(await ReadAsync((int)await ReadU32Async(token), token)).TrimEnd('\0').Trim();
+        Encoding.UTF8.GetString(await ReadAsync(await ReadLengthAsync(token), token)).TrimEnd('\0').Trim();
 
     private Task WriteAsync(byte[] data, CancellationToken token) => _stream.WriteAsync(data, token).AsTask();
 

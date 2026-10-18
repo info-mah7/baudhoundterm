@@ -61,6 +61,9 @@ internal sealed class AgentPanel : DockPanel
 
     public event EventHandler? CloseRequested;
 
+    /// <summary>A local shell in an elevated BaudHoundTerm: it runs as administrator.</summary>
+    private bool Elevated => _protocol == Core.Model.SessionProtocol.LocalShell && Elevation.IsCurrentProcessElevated;
+
     /// <summary>A remote desktop (VNC or RDP): the screen agent, not the terminal one.</summary>
     private bool Desktop => _protocol is Core.Model.SessionProtocol.Vnc or Core.Model.SessionProtocol.Rdp;
 
@@ -165,6 +168,10 @@ internal sealed class AgentPanel : DockPanel
 
         Reload();
         Append($"Attached to {_target.Describe}. Every step is logged; what needs your approval first depends on the endpoint's Approval setting (⚙).");
+        if (Elevated)
+        {
+            Append("This shell runs as administrator: every command the agent wants to type asks you first, whatever the endpoint's Approval setting.");
+        }
         if (Desktop)
         {
             Append($"This is a remote desktop: the agent sees screenshots and clicks and types over {(_protocol == Core.Model.SessionProtocol.Rdp ? "RDP" : "VNC")}, so the endpoint's " +
@@ -306,6 +313,14 @@ internal sealed class AgentPanel : DockPanel
         if (_runner is null || key != _runnerKey)
         {
             var apiKey = _vault.Get(endpoint.Id, "apikey")?.Trim();
+            // A local shell in the elevated window runs as administrator: every command asks,
+            // whatever the endpoint says (agent.json is writable by anything running as the user).
+            if (Elevated)
+            {
+                endpoint = endpoint.Copy();
+                endpoint.Approval = AgentApproval.Always;
+            }
+
             _runner = Desktop && _target is IScreenTarget screen
                 ? new AgentRunner(endpoint, apiKey, screen, skills, _log)
                 : new AgentRunner(endpoint, apiKey, (ITerminalTarget)_target, skills, _log);
@@ -323,7 +338,8 @@ internal sealed class AgentPanel : DockPanel
             _runner.Event += e => Dispatcher.BeginInvoke(() => Show(e));
             _runner.Approve = command => Dispatcher.InvokeAsync(() => MessageBox.Show(
                 Window.GetWindow(this)!,
-                $"The agent wants to {(Desktop ? "do this" : "run")}:\n\n{command}\n\nin {_target.Describe}.\n\nAllow it?",
+                $"The agent wants to {(Desktop ? "do this" : "run")}:\n\n{command}\n\nin {_target.Describe}" +
+                (Elevated ? ", which runs as ADMINISTRATOR" : "") + ".\n\nAllow it?",
                 "BaudHoundTerm: agent approval", MessageBoxButton.YesNo, MessageBoxImage.Question,
                 MessageBoxResult.No) == MessageBoxResult.Yes).Task;
             _runnerKey = key;

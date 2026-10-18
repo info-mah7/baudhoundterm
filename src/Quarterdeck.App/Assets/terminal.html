@@ -107,7 +107,12 @@
     term.loadAddon(fit);
     term.loadAddon(search);
     term.loadAddon(serialize);
-    term.loadAddon(new WebLinksAddon.WebLinksAddon());
+    // Links open through the host, in the default browser and only for http(s). The addon's own
+    // handler called window.open: a popup outside the app's control, owned by a process that
+    // may be running as administrator. OSC 8 links (whose text can differ from the address)
+    // are marked, so the host can show the real address first.
+    term.loadAddon(new WebLinksAddon.WebLinksAddon((ev, uri) => send({ t: 'link', uri: uri })));
+    term.options.linkHandler = { activate: (ev, uri) => send({ t: 'link', uri: uri, osc8: true }), allowNonHttpProtocols: false };
 
     term.open(document.getElementById('term'));
     fit.fit();
@@ -133,16 +138,25 @@
         if (sel) { navigator.clipboard.writeText(sel); }
         return false;
       }
-      if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyV') {
+      if (ev.ctrlKey && ev.shiftKey && (ev.code === 'KeyV' || ev.keyCode === 86)) {
         ev.preventDefault();
         navigator.clipboard.readText()
-          .then(t => t ? term.paste(t) : send({ t: 'pasteimg' }))
+          .then(t => t ? safePaste(t) : send({ t: 'pasteimg' }))
           .catch(() => send({ t: 'pasteimg' }));
         return false;
       }
       if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyF') { ev.preventDefault(); openFind(); return false; }
       return true;
     });
+
+    // The browser's own paste (from any key or menu) reached xterm directly and skipped
+    // safePaste; take it first, in the capture phase, and send it the same way.
+    document.addEventListener('paste', ev => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      const text = ev.clipboardData ? ev.clipboardData.getData('text/plain') : '';
+      if (text) safePaste(text);
+    }, true);
 
     // Right-click hands off to the host, which shows the real menu (copy, paste, and this
     // session's command shortcuts). Shift+right-click keeps the old one-gesture paste.
@@ -152,7 +166,7 @@
       if (ev.shiftKey) {
         const sel = term.getSelection();
         if (sel) { navigator.clipboard.writeText(sel); term.clearSelection(); }
-        else { navigator.clipboard.readText().then(t => t && term.paste(t)); }
+        else { navigator.clipboard.readText().then(t => t && safePaste(t)); }
         return;
       }
 
@@ -227,6 +241,22 @@
 
   function closeMenu() { menuEl.style.display = 'none'; }
 
+  // Every paste comes through here. Escape characters are dropped: pasted text ending a
+  // bracketed paste early (ESC[201~) would run the rest as typed commands. More than one
+  // line asks first, since each line break runs a command, possibly in an admin shell.
+  function safePaste(text) {
+    if (!term || !text) return;
+    const clean = text.replace(/\x1b/g, '');
+    const lines = clean.replace(/(\r\n|\r|\n)$/, '').split(/\r\n|\r|\n/);
+    if (lines.length > 1) {
+      // The app asks (a real dialog: confirm() inside WebView2 did not stop the paste) and
+      // answers with 'pasteok' only on Yes.
+      send({ t: 'pasteask', d: clean, n: lines.length });
+      return;
+    }
+    term.paste(clean);
+  }
+
   function openMenu(x, y) {
     const sel = term.getSelection() || '';
     const rows = [
@@ -234,7 +264,7 @@
           navigator.clipboard.writeText(sel); term.clearSelection(); } },
       { label: 'Paste', hint: 'Ctrl+Shift+V', run: () => {
           navigator.clipboard.readText()
-            .then(t => t ? term.paste(t) : send({ t: 'pasteimg' }))
+            .then(t => t ? safePaste(t) : send({ t: 'pasteimg' }))
             .catch(() => send({ t: 'pasteimg' })); } },
       { label: 'Paste image as file', run: () => send({ t: 'pasteimg' }) },
       { label: 'Clear screen', run: () => term.clear() }
@@ -309,7 +339,8 @@
       case 'focus':      term && term.focus(); break;
       case 'fit':        try { fit.fit(); } catch (e) {} break;
       case 'selectAll':  term && term.selectAll(); break;
-      case 'paste':      term && term.paste(m.d); break;
+      case 'paste':      term && safePaste(m.d); break;
+      case 'pasteok':    term && term.paste(m.d); break;
       case 'dump':       send({ t: 'dump', d: serialize.serialize() }); break;
     }
   });

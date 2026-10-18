@@ -23,7 +23,8 @@ public partial class MainWindow
     private static bool IsAdminShellInstance =>
         Environment.GetCommandLineArgs().Contains(AdminShellSwitch, StringComparer.OrdinalIgnoreCase);
 
-    private bool AutoSync => _sync.IsConnected && _sync.Automatic && !IsAdminShellInstance;
+    // Not while the shortcut list failed to load: the user should see that first.
+    private bool AutoSync => _sync.IsConnected && _sync.Automatic && !IsAdminShellInstance && _store.LoadProblem is null;
 
     private void InitSync()
     {
@@ -117,9 +118,20 @@ public partial class MainWindow
             var copies = _sessions.Select(Clone).ToList();
             var foldersBefore = _folders.ToList();
 
-            var outcome = await Task.Run(() => connect
-                ? engine.ConnectAsync(copies, foldersBefore, CancellationToken.None)
-                : engine.SyncAsync(copies, foldersBefore, CancellationToken.None));
+            SyncOutcome outcome;
+            try
+            {
+                outcome = await Task.Run(() => connect
+                    ? engine.ConnectAsync(copies, foldersBefore, CancellationToken.None)
+                    : engine.SyncAsync(copies, foldersBefore, CancellationToken.None));
+            }
+            catch (Exception ex)
+            {
+                // A missing git or an unexpected error used to escape from the timer as an
+                // unhandled exception, with an error box every five minutes.
+                _sync.LastResult = "Sync failed: " + ex.Message;
+                return null;
+            }
 
             ApplySync(outcome, before, foldersBefore);
             return outcome;
