@@ -46,7 +46,7 @@ public sealed partial class SessionLogger : IDisposable
             : _settings.Directory;
         Directory.CreateDirectory(dir);
 
-        CurrentPath = NotFull(Path.Combine(dir, ExpandPattern(_settings.FileNamePattern)));
+        CurrentPath = NotFull(LogPath(dir, ExpandPattern(_settings.FileNamePattern)));
         _writer = new StreamWriter(
             new FileStream(CurrentPath, FileMode.Append, FileAccess.Write, FileShare.Read),
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
@@ -79,6 +79,39 @@ public sealed partial class SessionLogger : IDisposable
         }
 
         return candidate;
+    }
+
+    /// <summary>
+    /// The log file for a pattern, kept inside the log folder and ending in .log or .txt. The
+    /// pattern used to be taken as a path: "..\..\Start Menu\Programs\Startup\x.bat", or an
+    /// absolute one, appended what a server sent to a file that runs at the next sign-in.
+    /// </summary>
+    internal static string LogPath(string dir, string name)
+    {
+        // Only the last part counts, split on both separators and with ':' (a drive, or an
+        // alternate data stream such as "x.log:run") made harmless, the same on every OS.
+        var trimmed = name.TrimEnd('\\', '/');
+        var file = trimmed[(trimmed.LastIndexOfAny(['\\', '/']) + 1)..].Replace(':', '_');
+        file = string.Concat(file.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).Trim().TrimEnd('.');
+        if (file.Length == 0 || file.Trim('.').Length == 0)
+        {
+            file = "session";
+        }
+
+        var ext = Path.GetExtension(file);
+        if (!ext.Equals(".log", StringComparison.OrdinalIgnoreCase) && !ext.Equals(".txt", StringComparison.OrdinalIgnoreCase))
+        {
+            file += ".log";
+        }
+
+        // Device names (CON, NUL, COM1...) are not files, with or without an extension.
+        var stem = file.Split('.')[0];
+        if (stem.ToUpperInvariant() is "CON" or "PRN" or "AUX" or "NUL" || System.Text.RegularExpressions.Regex.IsMatch(stem, "^(?i:COM|LPT)[0-9]$"))
+        {
+            file = "_" + file;
+        }
+
+        return Path.Combine(Path.GetFullPath(dir), file);
     }
 
     private static string Safe(string text) =>

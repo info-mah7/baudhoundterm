@@ -304,7 +304,7 @@ internal sealed class PageantTransport : IAgentTransport
                 var header = new byte[4];
                 Marshal.Copy(view, header, 0, 4);
                 var length = BinaryPrimitives.ReadUInt32BigEndian(header);
-                if (length is 0 || length + 4 > MaxMessage)
+                if (length is 0 || length > MaxMessage - 4)   // length + 4 wrapped for values near uint.MaxValue
                 {
                     throw new InvalidDataException($"Pageant reply of {length} bytes.");
                 }

@@ -211,7 +211,7 @@ public sealed class SshTerminalSession : ITerminalSession
     /// "Verification code" or a token must not be answered with the password, which would burn
     /// a login attempt and hand the password to a prompt that did not ask for it.
     /// </summary>
-    private static bool IsPasswordPrompt(string request)
+    internal static bool IsPasswordPrompt(string request)
     {
         if (!request.Contains("password", StringComparison.OrdinalIgnoreCase))
         {
@@ -244,7 +244,10 @@ public sealed class SshTerminalSession : ITerminalSession
 
     private string? ResolveSecret(string name)
     {
-        var key = IsPasswordPrompt(name) ? "password" : name;
+        // The server writes the prompt text, so it must not pick the vault entry: a prompt of
+        // "passphrase" was answered with the key passphrase saved for this shortcut. Answers to
+        // other prompts are kept under their own names.
+        var key = IsPasswordPrompt(name) ? "password" : "kbd:" + name.Trim();
         return _vault.Get(_definition.Id, key) ?? _promptForSecret?.Invoke(name, key);
     }
 

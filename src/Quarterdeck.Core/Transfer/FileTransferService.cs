@@ -83,7 +83,8 @@ public sealed class FileTransferService : IRemoteFiles
                 {
                     foreach (var prompt in e.Prompts)
                     {
-                        prompt.Response = prompt.Request.Contains("password", StringComparison.OrdinalIgnoreCase) ? password : string.Empty;
+                        // The same test as the terminal: "New password" or an OTP gets nothing.
+                        prompt.Response = Terminal.SshTerminalSession.IsPasswordPrompt(prompt.Request) ? password : string.Empty;
                     }
                 };
 

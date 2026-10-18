@@ -59,17 +59,28 @@ public static class ScreenInput
 {
     private const int Gap = 15;   // ms between events: some servers drop a press and release in the same frame
 
+    // Stopped part way, a press is still let go (with CancellationToken.None): otherwise a
+    // mouse button or Ctrl stayed held down on the remote desktop after the user pressed Stop.
+
     public static async Task ClickAsync(IScreenTarget t, int x, int y, string button, int count, CancellationToken token)
     {
         var mask = button switch { "right" => 4, "middle" => 2, _ => 1 };
         await t.PointerAsync(x, y, 0, token);
         await Task.Delay(Gap * 3, token);
-        for (var i = 0; i < Math.Clamp(count, 1, 3); i++)
+        try
         {
-            await t.PointerAsync(x, y, mask, token);
-            await Task.Delay(Gap * 3, token);
-            await t.PointerAsync(x, y, 0, token);
-            await Task.Delay(Gap * 4, token);
+            for (var i = 0; i < Math.Clamp(count, 1, 3); i++)
+            {
+                await t.PointerAsync(x, y, mask, token);
+                await Task.Delay(Gap * 3, token);
+                await t.PointerAsync(x, y, 0, token);
+                await Task.Delay(Gap * 4, token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            await t.PointerAsync(x, y, 0, CancellationToken.None);
+            throw;
         }
     }
 
@@ -77,16 +88,24 @@ public static class ScreenInput
     {
         await t.PointerAsync(x1, y1, 0, token);
         await Task.Delay(Gap * 3, token);
-        await t.PointerAsync(x1, y1, 1, token);
-        const int steps = 12;
-        for (var i = 1; i <= steps; i++)
+        try
         {
-            await Task.Delay(Gap * 2, token);
-            await t.PointerAsync(x1 + (x2 - x1) * i / steps, y1 + (y2 - y1) * i / steps, 1, token);
-        }
+            await t.PointerAsync(x1, y1, 1, token);
+            const int steps = 12;
+            for (var i = 1; i <= steps; i++)
+            {
+                await Task.Delay(Gap * 2, token);
+                await t.PointerAsync(x1 + (x2 - x1) * i / steps, y1 + (y2 - y1) * i / steps, 1, token);
+            }
 
-        await Task.Delay(Gap * 3, token);
-        await t.PointerAsync(x2, y2, 0, token);
+            await Task.Delay(Gap * 3, token);
+            await t.PointerAsync(x2, y2, 0, token);
+        }
+        catch (OperationCanceledException)
+        {
+            await t.PointerAsync(x2, y2, 0, CancellationToken.None);
+            throw;
+        }
     }
 
     /// <summary>Wheel notches at a point; negative scrolls up.</summary>
@@ -115,8 +134,15 @@ public static class ScreenInput
             // Press, hold briefly, release, and leave room before the next key. Sent back to back,
             // Windows over TightVNC lost the key after each space ("agent test" arrived as "gent est").
             await t.KeyAsync(keysym, true, token);
-            await Task.Delay(Gap, token);
-            await t.KeyAsync(keysym, false, token);
+            try
+            {
+                await Task.Delay(Gap, token);
+            }
+            finally
+            {
+                await t.KeyAsync(keysym, false, CancellationToken.None);
+            }
+
             await Task.Delay(rune.Value == ' ' ? Gap * 5 : Gap * 2, token);
         }
     }
@@ -125,16 +151,24 @@ public static class ScreenInput
     public static async Task ComboAsync(IScreenTarget t, string combo, CancellationToken token)
     {
         var keys = ParseCombo(combo);
-        foreach (var k in keys)
+        var down = 0;
+        try
         {
-            await t.KeyAsync(k, true, token);
-            await Task.Delay(Gap, token);
+            foreach (var k in keys)
+            {
+                await t.KeyAsync(k, true, token);
+                down++;
+                await Task.Delay(Gap, token);
+            }
         }
-
-        for (var i = keys.Count - 1; i >= 0; i--)
+        finally
         {
-            await t.KeyAsync(keys[i], false, token);
-            await Task.Delay(Gap, token);
+            // Released in reverse whether or not the run was stopped mid-way.
+            for (var i = down - 1; i >= 0; i--)
+            {
+                await t.KeyAsync(keys[i], false, CancellationToken.None);
+                await Task.Delay(Gap, CancellationToken.None);
+            }
         }
     }
 

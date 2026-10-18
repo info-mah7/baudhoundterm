@@ -139,7 +139,9 @@ public sealed class TelnetTerminalSession : ITerminalSession
                 var count = _decoder.GetChars(clean, 0, kept, _chars, 0);
                 if (count > 0)
                 {
-                    DataReceived?.Invoke(this, new TerminalDataEventArgs(new string(_chars, 0, count)));
+                    var heard = new string(_chars, 0, count);
+                    _editor?.Heard(heard);
+                    DataReceived?.Invoke(this, new TerminalDataEventArgs(heard));
                 }
             }
 

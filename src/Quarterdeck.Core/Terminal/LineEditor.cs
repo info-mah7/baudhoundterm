@@ -10,6 +10,7 @@ namespace Quarterdeck.Core.Terminal;
 public sealed class LineEditor
 {
     private readonly StringBuilder _line = new();
+    private readonly StringBuilder _heard = new();   // the far end's current output line
     private bool _afterCr;
     private Escape _escape;
 
@@ -24,6 +25,10 @@ public sealed class LineEditor
     {
         var send = new StringBuilder();
         var echo = new StringBuilder();
+
+        // At a password prompt the echo is '*': otherwise the password showed on screen and went
+        // into the session log and the agent's transcript, typed or sent by auto-login alike.
+        var masked = AtSecretPrompt;
 
         foreach (var c in input)
         {
@@ -80,13 +85,13 @@ public sealed class LineEditor
                     break;
                 case '\t':
                     _line.Append(c);
-                    echo.Append(c);
+                    echo.Append(masked ? '*' : c);
                     break;
                 default:
                     if (!char.IsControl(c))
                     {
                         _line.Append(c);
-                        echo.Append(c);
+                        echo.Append(masked ? '*' : c);
                     }
 
                     break;
@@ -96,10 +101,31 @@ public sealed class LineEditor
         return (send.ToString(), echo.ToString());
     }
 
+    /// <summary>Output from the far end, so the editor knows when it is at a password prompt.</summary>
+    public void Heard(string output)
+    {
+        foreach (var c in output)
+        {
+            if (c is '\n' or '\r')
+            {
+                _heard.Clear();
+            }
+            else if (!char.IsControl(c) && _heard.Length < 200)
+            {
+                _heard.Append(c);
+            }
+        }
+    }
+
+    private bool AtSecretPrompt => System.Text.RegularExpressions.Regex.IsMatch(_heard.ToString(),
+        @"\b(password|passphrase|passcode|pin|secret)\b[^:]{0,30}:\s*$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50));
+
     /// <summary>A fresh connection starts with an empty line.</summary>
     public void Reset()
     {
         _line.Clear();
+        _heard.Clear();
         _afterCr = false;
         _escape = Escape.None;
     }

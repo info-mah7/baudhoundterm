@@ -148,8 +148,6 @@ public sealed class CredentialVault
             return;
         }
 
-        var temp = _path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(_entries));
-        File.Move(temp, _path, overwrite: true);
+        Quarterdeck.Core.Model.AtomicFile.Write(_path, JsonSerializer.Serialize(_entries));
     }
 }

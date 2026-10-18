@@ -106,9 +106,14 @@ public sealed class OnvifClient : IDisposable
                   ?? throw new IOException("The camera returned no stream address.");
 
         // The stream address often names the camera's own idea of its IP; use the one we reached.
-        return Uri.TryCreate(uri, UriKind.Absolute, out var u)
-            ? new UriBuilder(u) { Host = _host }.Uri.AbsoluteUri   // ToString() would unescape %26, %3D...
-            : uri;
+        // Only stream schemes: file:// or smb:// from a camera made the player open a share and
+        // sign in to it as the user, handing the camera a password hash.
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out var u) || u.Scheme is not ("rtsp" or "rtsps" or "http" or "https"))
+        {
+            throw new IOException($"The camera returned a stream address this app does not open: {uri}");
+        }
+
+        return new UriBuilder(u) { Host = _host }.Uri.AbsoluteUri;   // ToString() would unescape %26, %3D...
     }
 
     /// <summary>Starts moving: each axis -1..1 (left/down/out to right/up/in). Stop with <see cref="StopAsync"/>.</summary>
@@ -172,7 +177,10 @@ public sealed class OnvifClient : IDisposable
         XElement reply;
         try
         {
-            reply = XElement.Parse(text);
+            // No DTDs: a camera's reply is untrusted, and entity expansion could exhaust memory.
+            using var reader = System.Xml.XmlReader.Create(new StringReader(text),
+                new System.Xml.XmlReaderSettings { DtdProcessing = System.Xml.DtdProcessing.Prohibit, XmlResolver = null });
+            reply = XElement.Load(reader);
         }
         catch (System.Xml.XmlException)
         {

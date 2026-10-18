@@ -111,7 +111,13 @@ public sealed class ConPtyTerminalSession : ITerminalSession
 
             var command = string.IsNullOrWhiteSpace(_definition.ShellCommand)
                 ? "powershell.exe"
-                : _definition.ShellCommand;
+                : _definition.ShellCommand.Trim();
+
+            // A program path with spaces, unquoted, makes CreateProcess try C:\Program.exe first.
+            if (!command.StartsWith('"') && command.Contains(' ') && File.Exists(command))
+            {
+                command = $"\"{command}\"";
+            }
 
             if (!ConPty.CreateProcessW(
                     null, command, IntPtr.Zero, IntPtr.Zero, false,

@@ -196,7 +196,9 @@ A rejected password or key is never retried.
 | Reconnect a dropped tab | Press Enter in it, or **Reconnect** on the toolbar |
 | Run a saved command | Right-click > the command's name |
 
-Links in the output are clickable. **Paste image as file** (right-click) puts an image from the
+Links in the output are clickable and open in your default browser (http and https only; a link
+whose text was set by the server shows its real address first). Pasting more than one line asks
+first, since each line break runs a command. **Paste image as file** (right-click) puts an image from the
 clipboard on the far end and types its path: on SSH it is uploaded to `/tmp`, in a local shell it
 is a temporary file. Other tab types do not support it.
 
@@ -363,6 +365,18 @@ run without losing what the agent has seen. **Stop** (with the box empty) or **E
 
 When an action needs approval, a box shows exactly what it wants to run and in which tab, with No
 as the default. A refused action is not retried.
+
+Under *Ask before risky commands* a built-in list applies on top of the endpoint's own patterns
+and cannot be removed: deleting recursively or by wildcard (del /s, rmdir /s, Remove-Item -r or
+-Force), deleting shadow copies, adding users or administrators, `iex` and `-EncodedCommand`,
+piping a download into a shell, turning off Defender or the firewall, stopping services and
+processes, scheduled tasks, registry and permission changes, disk changes, and any command that
+touches BaudHoundTerm's own settings, the credential store or `authorized_keys`. Shell escapes
+(`^`, backticks, quotes, look-alike dashes) do not hide a command from it.
+
+In a BaudHoundTerm opened as administrator, an agent on a local shell asks before **every**
+command, whatever the endpoint's Approval setting, and the box says the shell runs as
+administrator.
 
 On a VNC or RDP tab the agent checks each click before it happens: it names what is under the
 point and must match what it meant to click, or nothing is clicked. Clicks on things like Delete or
