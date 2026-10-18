@@ -355,12 +355,30 @@ RDP tab it sees screenshots and clicks and types.
 
 - **Name**, **Base URL** (up to `/v1`), **Model** (**Fetch models** asks the server), **API key**.
 - **Temperature** and **Max steps per goal** (150 by default; on a remote desktop every click and key is a step).
-- **Extra request JSON**: merged into every request. For Qwen models on vLLM,
-  `{"chat_template_kwargs":{"enable_thinking":false}}` keeps replies fast, and remote desktops
-  need it: with thinking on, the click check on a busy screen can use up its reply thinking and
-  return nothing, and the run stops saying so. **Test** notices a model that thinks, tries the
-  known switches for other servers (DeepSeek, OpenRouter, Ollama, OpenAI-style `reasoning_effort`)
-  and puts the first that works into this box; **Save** keeps it.
+- **Extra request JSON**: merged into every request, for anything the settings do not cover.
+- **Thinking**: *as the server has it*, *off*, or *on*. Thinking models plan before answering,
+  which helps on hard steps and costs time on **every** step; on a remote desktop the click check
+  waits for it too, and on a busy screen it can spend its whole reply thinking and return nothing,
+  which stops the run. There is no standard switch, so BaudHoundTerm learns the one this server
+  takes (Qwen, DeepSeek, OpenRouter, Ollama, OpenAI-style `reasoning_effort`) and sends it with
+  every request.
+- **Context window in tokens**: how much conversation to keep. 0 uses a safe default of about
+  32k tokens.
+
+**Tune for this model** measures the model on your own server rather than guessing, and fills both
+in:
+
+- the real context window, as the server reports it;
+- which switch turns thinking off and on here, and how long a short answer takes each way;
+- how long the model takes to re-read the conversation, which is the part people miss. The model
+  reads the whole history on **every** step, so the window the server allows is not the window
+  worth using. On a 27B measured here, reading costs about 0.4 s per 1,000 tokens: a full
+  131,072-token conversation would add about a minute to every step, so Tune suggests about
+  18,000 tokens, which keeps that share near 8 seconds. A faster server (the 80B here, about
+  0.1 s per 1,000) is offered nearly its whole 65k window.
+
+Raise the context for a long task that genuinely needs the history, and expect slower steps.
+**Save** keeps what Tune found.
 - **Approval**: *Run freely*, *Ask before risky commands* (the default; the patterns are listed
   below it and you can edit them), or *Ask before every command*.
 - **Never on local shells**: a local shell runs as you, and you can read the credential vault.

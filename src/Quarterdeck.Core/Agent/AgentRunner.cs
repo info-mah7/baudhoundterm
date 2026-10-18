@@ -28,9 +28,19 @@ public sealed partial class AgentRunner
 {
     private const int MaxToolOutput = 6000;
 
-    // Roughly what fits a 32k-token context with room for the reply. Older goals go first,
-    // then the bodies of older tool results in the current goal.
+    // The conversation is measured in characters of request JSON; about 2.8 of them make a
+    // token. 90k characters is roughly a 32k-token window, which is the default when the
+    // endpoint does not say how big its model's window is.
     private const int HistoryBudget = 90_000;
+    private const double CharsPerToken = 2.8;
+
+    /// <summary>
+    /// How much conversation to keep, in characters. From the endpoint's context window when it
+    /// is known, less a sixth for the reply and what the server adds of its own.
+    /// </summary>
+    private int Budget => _endpoint.ContextTokens > 0
+        ? Math.Max(8_000, (int)(_endpoint.ContextTokens * CharsPerToken * 5 / 6))
+        : HistoryBudget;
 
     private readonly AgentEndpoint _endpoint;
     private readonly string? _apiKey;
@@ -87,6 +97,31 @@ public sealed partial class AgentRunner
         var plain = Unescaped(command);
         return Matches(endpoint.RiskyPatterns, command) || Matches(endpoint.RiskyPatterns, plain)
                || Matches(BaselineRiskyPatterns, command) || Matches(BaselineRiskyPatterns, plain);
+    }
+
+    /// <summary>
+    /// The request JSON for the endpoint's thinking setting, or null to leave the model alone.
+    /// Tune finds the switch this server takes; without one the most common is used, and a
+    /// server that does not know it ignores it.
+    /// </summary>
+    internal static JsonObject? ThinkingJson(AgentEndpoint endpoint)
+    {
+        const string defaultOn = @"{""chat_template_kwargs"":{""enable_thinking"":true}}";
+        var json = endpoint.Thinking switch
+        {
+            AgentThinking.Off => endpoint.ThinkingOffJson is { Length: > 0 } off ? off : EndpointTest.ThinkingSwitches[0],
+            AgentThinking.On => endpoint.ThinkingOnJson is { Length: > 0 } onJson ? onJson : defaultOn,
+            _ => null
+        };
+
+        try
+        {
+            return json is null ? null : JsonNode.Parse(json) as JsonObject;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -360,7 +395,7 @@ public sealed partial class AgentRunner
                 {
                     // The model's window is smaller than the budget assumed: trim to a quarter and try once more.
                     Log("context_overflow", text: Truncate(ex.Message, 300));
-                    TrimHistory(HistoryBudget / 4);
+                    TrimHistory(Budget / 4);
                     message = await CallModelAsync(stepToken);
                 }
 
@@ -598,6 +633,16 @@ public sealed partial class AgentRunner
         if (AgentConfig.ParseExtra(_endpoint.ExtraJson) is { } extra)
         {
             foreach (var (key, value) in extra)
+            {
+                body[key] = value?.DeepClone();
+            }
+        }
+
+        // The thinking setting is applied after Extra request JSON, so the switch wins over an
+        // older copy of it someone left in there.
+        if (ThinkingJson(_endpoint) is { } thinking)
+        {
+            foreach (var (key, value) in thinking)
             {
                 body[key] = value?.DeepClone();
             }
@@ -897,8 +942,13 @@ public sealed partial class AgentRunner
     /// last few tool results of the current goal, then the current goal's oldest steps. The system
     /// prompt and the goal stay.
     /// </summary>
-    private void TrimHistory(int budget = HistoryBudget)
+    private void TrimHistory(int budget = 0)
     {
+        if (budget <= 0)
+        {
+            budget = Budget;
+        }
+
         var trimmed = false;
         while (HistoryLength() > budget && _messages.Count > 2 && !ReferenceEquals(_messages[1], _goalMessage))
         {

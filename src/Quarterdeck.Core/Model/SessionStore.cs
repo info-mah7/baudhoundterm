@@ -165,13 +165,28 @@ public static class AtomicFile
                 stream.Flush(flushToDisk: true);
             }
 
-            if (File.Exists(path))
+            // Two instances (a normal window and an elevated one) can save the same file at the
+            // same moment, and then one of them finds the file replaced between the check and the
+            // move. Nothing is lost by trying again: the temp file is this process's own.
+            for (var attempt = 0; ; attempt++)
             {
-                File.Replace(temp, path, destinationBackupFileName: null);
-            }
-            else
-            {
-                File.Move(temp, path);
+                try
+                {
+                    if (File.Exists(path))
+                    {
+                        File.Replace(temp, path, destinationBackupFileName: null);
+                    }
+                    else
+                    {
+                        File.Move(temp, path);
+                    }
+
+                    break;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < 10)
+                {
+                    Thread.Sleep(20 * (attempt + 1));
+                }
             }
         }
         finally
