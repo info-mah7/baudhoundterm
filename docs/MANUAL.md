@@ -388,23 +388,20 @@ opens chess.com in a browser on a VNC tab and plays a bot; it raises the step li
 
 ### Helpers
 
-A helper is a small service the agent calls with JSON for work code does better than a model:
-reading a chess position exactly, choosing a chess move, OCR of a screen region. Helpers are listed
-under `"helpers"` in `agent.json`; a skill names the ones it uses in its header
-(`helpers: chess_read, chess_best`), and a run gets only helpers that are both enabled there and
-named by a ticked skill. The model cannot add one.
+A helper is a tool the agent can call for work code does better than a model.
 
-Each helper has a `name` (the tool the model calls), a `url` the arguments are POSTed to, a
-`description`, the JSON Schema of its `parameters`, and optionally `screenshot` (send the current
-remote-desktop screenshot with each call), `ask` (approve every call) and `allowRemote`. Helpers
-must be on this PC unless `allowRemote` is set: arguments, and screenshots if sent, leave the
-machine otherwise. Calls follow the endpoint's Approval setting and are logged like other steps.
+**Built in:** on remote desktops the agent always has `ocr_read`, the exact text in a region of the
+screen, read by Windows' own OCR (Windows 10 2004 and later; it uses the languages installed in
+Windows). Models misread small and thin text; this gives the agent a way to quote it exactly.
 
-[helpers/screen_helpers.py](../helpers/screen_helpers.py) is an example service with three
-helpers: `chess_read` and `chess_best` (a board reader and Stockfish, used by the chess.com skill)
-and `ocr_read` (the text of a screen region). [helpers/agent-helpers.example.json](../helpers/agent-helpers.example.json)
-has their definitions to paste into `agent.json`. With them the agent won a game against a
-chess.com bot in 19 moves; without them it reads the game well but plays its own weak moves.
+**Your own:** a helper can also be a small service on this PC that takes JSON over HTTP. List it
+under `"helpers"` in `agent.json` with a `name` (the tool the model calls), the `url` the arguments
+are POSTed to, a `description`, the JSON Schema of its `parameters`, and optionally `screenshot`
+(send the current remote-desktop screenshot with each call), `ask` (approve every call) and
+`allowRemote`. A skill names the helpers it uses in its header (`helpers: name1, name2`), and a run
+gets only those both enabled there and named by a ticked skill: the model cannot add one. Helpers
+must be on this PC unless `allowRemote` is set, since arguments, and screenshots if sent, would
+leave the machine. Calls follow the endpoint's Approval setting and are logged like other steps.
 
 ### Logs
 
