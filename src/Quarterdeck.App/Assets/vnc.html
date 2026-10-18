@@ -144,8 +144,7 @@ document.addEventListener('keydown', e => {
   e.preventDefault();
   e.stopImmediatePropagation();
   if (e.repeat) return;
-  navigator.clipboard.readText()
-    .catch(err => { log('clipboard read failed: ' + (err && err.message || err)); return ''; })
+  readLocalClipboard()
     .then(text => {
       if (!rfb) return;
       if (text) rfb.clipboardPasteFrom(text);
@@ -174,22 +173,35 @@ window.addEventListener('blur', () => { ctrlHeld = false; });
 // written on the next focus only if it is a few seconds old: written later, it overwrote what the
 // user had copied on this PC in the meantime, and Ctrl+V pasted a stale far-end line instead of
 // their URL.
+// The app does the clipboard work: navigator.clipboard read and wrote nothing inside WebView2.
+let clipWaiter = null;
+function readLocalClipboard() {
+  if (!host) return Promise.resolve('');
+  return new Promise(resolve => {
+    clipWaiter = resolve;
+    send({ t: 'clipget' });
+    setTimeout(() => { if (clipWaiter === resolve) { clipWaiter = null; log('clipboard: no answer from the app'); resolve(''); } }, 1500);
+  });
+}
+
 let pendingClip = null, pendingAt = 0;
 function toLocal(text) {
+  if (document.hasFocus()) { send({ t: 'clipset', text }); pendingClip = null; return; }
   pendingClip = text;
   pendingAt = Date.now();
-  navigator.clipboard.writeText(text).then(() => { if (pendingClip === text) pendingClip = null; }, () => {});
 }
 window.addEventListener('focus', () => {
   if (pendingClip === null) return;
-  if (Date.now() - pendingAt < 3000) toLocal(pendingClip);
-  else { log('far-end copy from ' + Math.round((Date.now() - pendingAt) / 1000) + ' s ago not written over this PC\'s clipboard'); pendingClip = null; }
+  if (Date.now() - pendingAt < 3000) send({ t: 'clipset', text: pendingClip });
+  else log('far-end copy from ' + Math.round((Date.now() - pendingAt) / 1000) + ' s ago not written over this PC\'s clipboard');
+  pendingClip = null;
 });
 
 host && host.addEventListener('message', ev => {
   const m = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
   switch (m.t) {
     case 'vncinit':  log('host sent vncinit'); probe(m); break;
+    case 'clip':     if (clipWaiter) { const w = clipWaiter; clipWaiter = null; w(m.text || ''); } break;
     case 'note':     log('bridge: ' + m.d); break;
     case 'viewonly': if (rfb) rfb.viewOnly = !!m.on; say(m.on ? 'View only.' : 'Input enabled.', false); break;
     case 'cad':      if (rfb) rfb.sendCtrlAltDel(); break;
