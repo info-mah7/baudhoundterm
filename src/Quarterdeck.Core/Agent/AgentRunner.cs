@@ -48,6 +48,12 @@ public sealed partial class AgentRunner
     private volatile bool _lineUnknown;   // also set from the UI thread
     private JsonObject? _goalMessage;
 
+    // Terminal commands already run this goal, and how many times a command was repeated: a model
+    // that re-runs commands (one review run grepped a file 30+ times, another walked a directory
+    // tree in circles) is nudged, then stopped, instead of burning the step limit.
+    private readonly Dictionary<string, int> _commandsRun = new();
+    private int _repeatEvents;
+
     // What the user says while a goal runs (Interrupt), and the token of the step it cuts short.
     private readonly System.Collections.Concurrent.ConcurrentQueue<string> _interruptions = new();
     private readonly object _interruptLock = new();
@@ -454,6 +460,7 @@ public sealed partial class AgentRunner
                         }
 
                         skipRest |= _screen is not null && ScreenActionFailed(result);
+                        result = GuardRepeat(name, argText, result);
                         Log("tool_result", tool: name, text: result);
                         _messages.Add(new JsonObject { ["role"] = "tool", ["tool_call_id"] = id, ["content"] = result });
                         answered++;
@@ -986,6 +993,45 @@ public sealed partial class AgentRunner
         "vLLM, put {\"chat_template_kwargs\":{\"enable_thinking\":false}} in Extra request JSON (Agent endpoints).";
 
     /// <summary>Set when the run cannot go on (the click check gets no answers); ends it after this turn.</summary>
+    /// <summary>
+    /// A terminal command the model has already run this goal is a loop or a cycle: on the 2nd and
+    /// 3rd time it is told plainly, and once that has happened a few times the run stops. Keyed on
+    /// the command text, so re-running the exact same command counts however the steps are ordered;
+    /// read_terminal, wait and send_key are not commands and are never counted.
+    /// </summary>
+    private string GuardRepeat(string name, string argText, string result)
+    {
+        if (name != "send_input")
+        {
+            return result;
+        }
+
+        var cmd = argText.Trim();
+        if (cmd.Length == 0)
+        {
+            return result;
+        }
+
+        var seen = _commandsRun.GetValueOrDefault(cmd) + 1;
+        _commandsRun[cmd] = seen;
+        if (seen == 1)
+        {
+            _repeatEvents = 0;   // real progress; a stray re-run later is not a loop on its own
+            return result;
+        }
+
+        _repeatEvents++;
+        if (_repeatEvents >= 4)
+        {
+            _stopRun = "Stopped: the agent kept re-running commands it had already run, so it was going in " +
+                       "circles instead of finishing. Give it a narrower goal, or ask for the summary of what it found.";
+            return result;
+        }
+
+        return result + "\n\n[You already ran this exact command earlier this task and the system has not changed. " +
+               "Running it again tells you nothing new. Do something different, or stop gathering and write your summary now.]";
+    }
+
     private string? _stopRun;
 
     private static int Clamp(int v, int lo, int hi) => Math.Min(hi, Math.Max(lo, v));
