@@ -403,9 +403,10 @@ The app also ships skills from [docs/skills](skills/), added to the folder and k
 - **Office apps** (off): Word, Excel and PowerPoint, and the ArtCraft alternatives WordCraft,
   GridCraft and DeckCraft, which follow the same shortcuts.
 - **chess.com** (off): opens chess.com in a browser and plays a bot; it raises the step limit to 300.
-- **FortiGate review** (off, terminal): read-only review of a FortiGate config over a console, flagging
-  risky rules and settings.
-- **Security review** (off, terminal): read-only security review and incident triage of a host over SSH.
+- **Linux admin** (off, terminal): operate and troubleshoot a Linux or BSD host over SSH, the way a
+  sysadmin would, with changes made carefully and verified.
+- **Network device** (off, terminal): operate and troubleshoot switches, routers and firewalls
+  (Cisco, FortiGate and similar) over a console.
 
 ### Helpers
 

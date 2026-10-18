@@ -45,10 +45,7 @@ Shipped beside the executable (libvlc\win-x64), unmodified, as separate DLLs:
 Agent skills adapted from third-party work (the shipped skills are rewritten, condensed
 instructions, not the original files):
 
-  docs/skills/fortigate-review.md draws on "parsing-fortinet-configs" from
+  docs/skills/network-device.md draws on "parsing-fortinet-configs" from
   github.com/mechubsec/fwskillsshare - MIT License, Copyright (c) 2026 fwskillsshare contributors.
-
-  docs/skills/security-review.md draws on the defensive portions of
-  github.com/Masriyan/Claude-Code-CyberSecurity-Skill - MIT License, Copyright (c) 2026 Riyan Pratama.
 
 This is AI-assisted work.
