@@ -168,14 +168,23 @@ for (const type of ['keydown', 'keyup']) {
 }
 window.addEventListener('blur', () => { ctrlHeld = false; });
 
-// A copy on the far end lands here. Writing needs the page focused; if it is not, the text
-// waits for the next focus rather than being lost.
-let pendingClip = null;
+// A copy on the far end lands here. Writing needs the page focused. A copy the user makes in
+// this tab happens while it is focused and is written at once; one that arrives while the tab is
+// not focused came from something else (an agent, another viewer, a program over there). It is
+// written on the next focus only if it is a few seconds old: written later, it overwrote what the
+// user had copied on this PC in the meantime, and Ctrl+V pasted a stale far-end line instead of
+// their URL.
+let pendingClip = null, pendingAt = 0;
 function toLocal(text) {
   pendingClip = text;
+  pendingAt = Date.now();
   navigator.clipboard.writeText(text).then(() => { if (pendingClip === text) pendingClip = null; }, () => {});
 }
-window.addEventListener('focus', () => { if (pendingClip !== null) toLocal(pendingClip); });
+window.addEventListener('focus', () => {
+  if (pendingClip === null) return;
+  if (Date.now() - pendingAt < 3000) toLocal(pendingClip);
+  else { log('far-end copy from ' + Math.round((Date.now() - pendingAt) / 1000) + ' s ago not written over this PC\'s clipboard'); pendingClip = null; }
+});
 
 host && host.addEventListener('message', ev => {
   const m = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
