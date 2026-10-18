@@ -325,6 +325,111 @@ public partial class SessionEditorWindow : Window
         }
     }
 
+    // The order here is the order on the terminal's right-click menu.
+    private void OnMoveCommandUp(object sender, RoutedEventArgs e) => MoveCommand(-1);
+
+    private void OnMoveCommandDown(object sender, RoutedEventArgs e) => MoveCommand(1);
+
+    private void MoveCommand(int by)
+    {
+        if (CommandGrid.SelectedItem is not CommandShortcut command)
+        {
+            return;
+        }
+
+        CommandGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        var from = _commands.IndexOf(command);
+        var to = from + by;
+        if (from < 0 || to < 0 || to >= _commands.Count)
+        {
+            return;
+        }
+
+        _commands.Move(from, to);
+        CommandGrid.SelectedItem = command;
+        CommandGrid.ScrollIntoView(command);
+    }
+
+    private void OnCommandGridKey(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (System.Windows.Input.Keyboard.Modifiers != System.Windows.Input.ModifierKeys.Control
+            || e.Key is not (System.Windows.Input.Key.Up or System.Windows.Input.Key.Down))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        MoveCommand(e.Key == System.Windows.Input.Key.Up ? -1 : 1);
+    }
+
+    // Drag a row by its header (the bar at its left edge), so a press in a cell still edits it.
+    private CommandShortcut? _dragCommand;
+    private Point _dragFrom;
+
+    private void OnCommandDragStart(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _dragCommand = Ancestor<System.Windows.Controls.Primitives.DataGridRowHeader>(e.OriginalSource as DependencyObject) is not null
+            ? Ancestor<DataGridRow>(e.OriginalSource as DependencyObject)?.Item as CommandShortcut
+            : null;
+        _dragFrom = e.GetPosition(CommandGrid);
+    }
+
+    private void OnCommandDragMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_dragCommand is not { } command || e.LeftButton != System.Windows.Input.MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        var moved = e.GetPosition(CommandGrid) - _dragFrom;
+        if (Math.Abs(moved.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        _dragCommand = null;
+        CommandGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        DragDrop.DoDragDrop(CommandGrid, new DataObject(typeof(CommandShortcut), command), DragDropEffects.Move);
+    }
+
+    private void OnCommandDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(typeof(CommandShortcut)) ? DragDropEffects.Move : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void OnCommandDrop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetData(typeof(CommandShortcut)) is not CommandShortcut command)
+        {
+            return;
+        }
+
+        var from = _commands.IndexOf(command);
+        // Dropped on a row: take its place. Below the last row: go to the end.
+        var target = Ancestor<DataGridRow>(e.OriginalSource as DependencyObject)?.Item as CommandShortcut;
+        var to = target is null ? _commands.Count - 1 : _commands.IndexOf(target);
+        if (from >= 0 && to >= 0 && from != to)
+        {
+            _commands.Move(from, to);
+        }
+
+        CommandGrid.SelectedItem = command;
+        e.Handled = true;
+    }
+
+    private static T? Ancestor<T>(DependencyObject? node) where T : DependencyObject
+    {
+        while (node is not null and not T)
+        {
+            node = node is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+                ? System.Windows.Media.VisualTreeHelper.GetParent(node)
+                : LogicalTreeHelper.GetParent(node);
+        }
+
+        return node as T;
+    }
+
     private void OnDefaultCommands(object sender, RoutedEventArgs e)
     {
         foreach (var command in CommandShortcut.Defaults())
