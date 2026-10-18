@@ -586,6 +586,16 @@ public sealed partial class AgentRunner
 
         var have = Words(found);
         var want = Words(target);
+
+        // A long target ("Close button (X) of File Explorer window") holds a short, right answer
+        // ("Close window button") that misses the half-of-the-target rule below. Accept it when
+        // every naming word the check saw, at least two, is in the target.
+        var seenNaming = have.Where(w => !KindWords.Contains(w)).ToList();
+        if (seenNaming.Count >= 2 && seenNaming.All(want.Contains))
+        {
+            return true;
+        }
+
         var naming = want.Where(w => !KindWords.Contains(w)).ToHashSet();
         if (naming.Count > 0)
         {

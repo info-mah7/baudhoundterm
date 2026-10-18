@@ -112,9 +112,12 @@ public static class ScreenInput
                 continue;
             }
 
+            // Press, hold briefly, release, and leave room before the next key. Sent back to back,
+            // Windows over TightVNC lost the key after each space ("agent test" arrived as "gent est").
             await t.KeyAsync(keysym, true, token);
-            await t.KeyAsync(keysym, false, token);
             await Task.Delay(Gap, token);
+            await t.KeyAsync(keysym, false, token);
+            await Task.Delay(rune.Value == ' ' ? Gap * 5 : Gap * 2, token);
         }
     }
 
