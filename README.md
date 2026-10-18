@@ -129,6 +129,13 @@ screenshots in, pointer and key events out. Nothing is installed on the remote m
   typed text matching the risky patterns, and combinations such as Win+R, Ctrl+Alt+Del and
   Alt+F4 need a yes. A view-only session can be looked at but not driven.
 
+## What it connects to
+
+Nothing of its own: no telemetry, no analytics, no update check. Every connection is one you ask
+for, the hosts in your shortcuts, your sync repository, and the AI endpoint you configure.
+WebView2's own background traffic is switched off at startup. Verified on Windows with the app
+idle: no outbound connection, no name resolved, and no request in Chromium's network log.
+
 ## Where things are stored
 
 `%APPDATA%\BaudHoundTerm\`

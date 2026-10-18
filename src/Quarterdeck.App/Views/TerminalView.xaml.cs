@@ -31,6 +31,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         _vault = vault;
 
         BuildLamps();
+        _flush.Tick += (_, _) => FlushIncoming();
         Loaded += OnLoaded;
     }
 
@@ -419,6 +420,11 @@ public partial class TerminalView : UserControl, ITerminalTarget
                 ConfirmPaste(root.GetProperty("d").GetString() ?? "", root.GetProperty("n").GetInt32());
                 break;
 
+            case "slowrule":
+                SetStatus($"Highlight \"{root.GetProperty("name").GetString()}\" took {root.GetProperty("ms").GetInt32()} ms and was switched off for this tab. " +
+                          "Simplify the pattern in Properties > Highlight.");
+                break;
+
             case "link":
                 OpenLink(root.GetProperty("uri").GetString() ?? "",
                          root.TryGetProperty("osc8", out var osc8) && osc8.ValueKind == JsonValueKind.True);
@@ -791,7 +797,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         controller.DataReceived += (_, e) =>
         {
             Transcript.Append(e.Text);   // the agent's view of the screen, kept off the UI thread
-            Dispatcher.BeginInvoke(() => Write(e.Text));
+            Buffer(e.Text);
         };
         controller.StateChanged += (_, e) => Dispatcher.BeginInvoke(() =>
         {
@@ -850,6 +856,60 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
     /// <summary>VNC tabs: Ctrl+Alt+Del on the remote desktop (noVNC refuses it on a view-only session).</summary>
     public void SendCtrlAltDel() => Post(new { t = "cad" });
+
+    // A server can send faster than the terminal can draw. Output used to go to the UI thread one
+    // chunk at a time, and a flood grew that queue without limit until the window stopped
+    // answering. It is gathered here instead and flushed a few times a second; past the cap the
+    // oldest is dropped, which is what a terminal with a scrollback limit does anyway.
+    private const int BufferCap = 4 * 1024 * 1024;
+    private readonly System.Text.StringBuilder _incoming = new();
+    private readonly DispatcherTimer _flush = new() { Interval = TimeSpan.FromMilliseconds(30) };
+    private long _dropped;
+
+    private void Buffer(string text)
+    {
+        lock (_incoming)
+        {
+            _incoming.Append(text);
+            if (_incoming.Length > BufferCap)
+            {
+                var cut = _incoming.Length - BufferCap;
+                _incoming.Remove(0, cut);
+                _dropped += cut;
+            }
+        }
+
+        if (!_flush.IsEnabled)
+        {
+            Dispatcher.BeginInvoke(() => _flush.Start());
+        }
+    }
+
+    private void FlushIncoming()
+    {
+        string text;
+        long dropped;
+        lock (_incoming)
+        {
+            if (_incoming.Length == 0)
+            {
+                _flush.Stop();
+                return;
+            }
+
+            text = _incoming.ToString();
+            _incoming.Clear();
+            dropped = _dropped;
+            _dropped = 0;
+        }
+
+        if (dropped > 0)
+        {
+            Write($"\r\n[baudhoundterm] {dropped:N0} characters dropped: the far end sent faster than this tab could show.\r\n");
+        }
+
+        Write(text);
+    }
 
     private void Write(string text)
     {
@@ -1178,6 +1238,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         }
 
         _released = true;
+        _flush.Stop();
         _lampTimer?.Stop();
         if (Web.CoreWebView2 is { } core)
         {
