@@ -21,7 +21,17 @@ internal sealed class AgentPanel : DockPanel
     private readonly AgentLog _log = new();
 
     private readonly ComboBox _endpoints = new() { Margin = new Thickness(0, 0, 4, 0) };
-    private readonly WrapPanel _skills = new() { Margin = new Thickness(0, 4, 0, 4) };
+    // Skills in a collapsible tree, by group; the header lists the ticked ones.
+    private static readonly Brush Light = new SolidColorBrush(Color.FromRgb(0xDF, 0xE4, 0xEE));
+    private readonly Expander _skillsBox = new() { Margin = new Thickness(0, 4, 0, 4), Foreground = Light };
+    private readonly TreeView _skills = new()
+    {
+        Background = Brushes.Transparent,
+        BorderThickness = new Thickness(0),
+        MaxHeight = 240,
+        Foreground = Light
+    };
+    private readonly List<CheckBox> _skillChecks = new();
     private readonly TextBox _transcript = new()
     {
         IsReadOnly = true,
@@ -96,7 +106,8 @@ internal sealed class AgentPanel : DockPanel
 
         var setup = new StackPanel { Margin = new Thickness(8, 0, 8, 4) };
         setup.Children.Add(_endpoints);
-        setup.Children.Add(_skills);
+        _skillsBox.Content = _skills;
+        setup.Children.Add(_skillsBox);
         DockPanel.SetDock(setup, Dock.Top);
         Children.Add(setup);
 
@@ -175,24 +186,73 @@ internal sealed class AgentPanel : DockPanel
 
         _endpoints.SelectedItem = config.Endpoints.FirstOrDefault(e => e.Id == selected) ?? config.Endpoints.FirstOrDefault();
 
-        var shown = _skills.Children.OfType<CheckBox>().Select(c => ((AgentSkill)c.Tag).Path).ToHashSet();
-        var ticked = _skills.Children.OfType<CheckBox>().Where(c => c.IsChecked == true)
-            .Select(c => ((AgentSkill)c.Tag).Path).ToHashSet();
-        var first = _skills.Children.Count == 0;
-
-        _skills.Children.Clear();
-        foreach (var skill in SkillLibrary.Load().Where(s => s.AppliesTo(_protocol)))
+        // Groups keep whether they were open; skills are ticked as the user last left them,
+        // or as their header says ("default: off" for a game or a whole suite of apps).
+        var open = _skills.Items.OfType<TreeViewItem>().ToDictionary(i => (string)((CheckBox)i.Header).Content, i => i.IsExpanded);
+        _skills.Items.Clear();
+        _skillChecks.Clear();
+        foreach (var group in SkillLibrary.Load().Where(s => s.AppliesTo(_protocol)).GroupBy(s => s.Group)
+                     .OrderBy(g => g.Key == "General" ? 1 : 0).ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
         {
-            _skills.Children.Add(new CheckBox
+            var groupBox = new CheckBox { Content = group.Key, FontWeight = FontWeights.SemiBold, ToolTip = "Tick or untick every skill in " + group.Key };
+            var item = new TreeViewItem
             {
-                Content = skill.Name,
-                Tag = skill,
-                ToolTip = string.IsNullOrEmpty(skill.Description) ? skill.Path : skill.Description,
-                // A skill new since the list was last built (copied in, or added by the app) starts ticked.
-                IsChecked = first || ticked.Contains(skill.Path) || !shown.Contains(skill.Path),
-                Margin = new Thickness(0, 0, 10, 2)
-            });
+                Header = groupBox,
+                IsExpanded = open.GetValueOrDefault(group.Key, true),
+                Focusable = false,
+                Foreground = Light,
+                Background = Brushes.Transparent
+            };
+            var children = new List<CheckBox>();
+            foreach (var skill in group.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                var file = System.IO.Path.GetFileName(skill.Path);
+                var box = new CheckBox
+                {
+                    Content = skill.Name,
+                    Tag = skill,
+                    ToolTip = string.IsNullOrEmpty(skill.Description) ? skill.Path : skill.Description,
+                    IsChecked = config.SkillChoices.TryGetValue(file, out var on) ? on : skill.DefaultOn,
+                    Margin = new Thickness(0, 1, 0, 1)
+                };
+                // The state, not Click: keyboard, screen readers and UI Automation tick boxes too.
+                RoutedEventHandler changed = (_, _) =>
+                {
+                    if (_building)
+                    {
+                        return;
+                    }
+
+                    RememberSkills([box]);
+                    ShowGroup(groupBox, children);
+                };
+                box.Checked += changed;
+                box.Unchecked += changed;
+                children.Add(box);
+                _skillChecks.Add(box);
+                item.Items.Add(new TreeViewItem { Header = box, Focusable = false, Foreground = Light, Background = Brushes.Transparent });
+            }
+
+            // Mixed (null) is only ever shown, never chosen: from it a click ticks the whole group.
+            RoutedEventHandler all = (_, _) =>
+            {
+                if (_building || _showing)
+                {
+                    return;
+                }
+
+                var on = groupBox.IsChecked == true;
+                children.ForEach(c => c.IsChecked = on);
+            };
+            groupBox.Checked += all;
+            groupBox.Unchecked += all;
+            _building = true;
+            ShowGroup(groupBox, children);
+            _building = false;
+            _skills.Items.Add(item);
         }
+
+        ShowSkills();
 
         if (config.Endpoints.Count == 0)
         {
@@ -238,7 +298,7 @@ internal sealed class AgentPanel : DockPanel
             return;
         }
 
-        var skills = _skills.Children.OfType<CheckBox>().Where(c => c.IsChecked == true)
+        var skills = _skillChecks.Where(c => c.IsChecked == true)
             .Select(c => (AgentSkill)c.Tag).ToList();
 
         // A different endpoint or skill set is a different agent: start its conversation fresh.
@@ -337,6 +397,54 @@ internal sealed class AgentPanel : DockPanel
     {
         Directory.CreateDirectory(path);
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = true });
+    }
+
+    /// <summary>A group's box: ticked when all its skills are, empty when none are, mixed otherwise.</summary>
+    private void ShowGroup(CheckBox group, List<CheckBox> children)
+    {
+        var on = children.Count(c => c.IsChecked == true);
+        _showing = true;
+        group.IsChecked = on == children.Count ? true : on == 0 ? false : null;
+        _showing = false;
+        ShowSkills();
+    }
+
+    // Set while the tree is built or a group box only shows its skills' state, so neither
+    // counts as the user ticking something.
+    private bool _building;
+    private bool _showing;
+
+    /// <summary>The collapsed tree still says which skills are on.</summary>
+    private void ShowSkills()
+    {
+        var on = _skillChecks.Where(c => c.IsChecked == true).Select(c => (string)c.Content).ToList();
+        _skillsBox.Header = new TextBlock
+        {
+            Text = _skillChecks.Count == 0 ? "Skills: none for this kind of tab"
+                : "Skills: " + (on.Count == 0 ? "none ticked" : string.Join(", ", on)),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = Light
+        };
+        _skillsBox.ToolTip = "Open to choose which skills the agent gets. Your choices are kept.";
+    }
+
+    /// <summary>Ticks are kept in agent.json, so the next pane and the next start of the app have them.</summary>
+    private static void RememberSkills(IEnumerable<CheckBox> boxes)
+    {
+        try
+        {
+            var config = AgentConfig.Load();
+            foreach (var box in boxes)
+            {
+                config.SkillChoices[System.IO.Path.GetFileName(((AgentSkill)box.Tag).Path)] = box.IsChecked == true;
+            }
+
+            config.Save();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Kept for this pane only.
+        }
     }
 
     /// <summary>What the user types while the agent works goes to it now, not after the run.</summary>

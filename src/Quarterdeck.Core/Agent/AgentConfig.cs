@@ -19,8 +19,11 @@ public sealed class AgentEndpoint
     public string Model { get; set; } = "";
     public double Temperature { get; set; } = 0.2;
 
-    /// <summary>Model turns allowed per goal before the agent stops and says so.</summary>
-    public int MaxSteps { get; set; } = 30;
+    /// <summary>
+    /// Model turns allowed per goal before the agent stops and says so. 30 until build 55: too few
+    /// for most remote desktop tasks, where every click and key is a step.
+    /// </summary>
+    public int MaxSteps { get; set; } = 150;
 
     /// <summary>
     /// Raw JSON merged into every request, for what only some servers take, e.g.
@@ -97,6 +100,12 @@ public sealed class AgentConfig
     /// <summary>Helper services skills may use (see <see cref="AgentHelper"/>). Edited in agent.json.</summary>
     public List<AgentHelper> Helpers { get; set; } = new();
 
+    /// <summary>Skills ticked or unticked in the agent pane, by file name; others follow their header.</summary>
+    public Dictionary<string, bool> SkillChoices { get; set; } = new();
+
+    /// <summary>Endpoints still at the old default of 30 steps have been raised to the new one.</summary>
+    public bool StepsRaised { get; set; }
+
     public static string DefaultPath => Path.Combine(AppPaths.DataDirectory, "agent.json");
     public static string SkillsDirectory => Path.Combine(AppPaths.DataDirectory, "skills");
     public static string LogDirectory => Path.Combine(AppPaths.DataDirectory, "agent-logs");
@@ -106,9 +115,32 @@ public sealed class AgentConfig
         try
         {
             var file = path ?? DefaultPath;
-            return File.Exists(file)
-                ? JsonSerializer.Deserialize<AgentConfig>(File.ReadAllText(file), JsonOptions) ?? new()
-                : new();
+            if (!File.Exists(file))
+            {
+                return new() { StepsRaised = true };
+            }
+
+            var config = JsonSerializer.Deserialize<AgentConfig>(File.ReadAllText(file), JsonOptions) ?? new();
+            if (!config.StepsRaised)
+            {
+                // 30 was the default, not a choice; anything else the user set stays.
+                foreach (var ep in config.Endpoints.Where(e => e.MaxSteps == 30))
+                {
+                    ep.MaxSteps = new AgentEndpoint().MaxSteps;
+                }
+
+                config.StepsRaised = true;
+                try
+                {
+                    config.Save(file);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Raised in memory anyway; the next save writes it.
+                }
+            }
+
+            return config;
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {
