@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Quarterdeck.App.Views;
@@ -24,7 +25,14 @@ public partial class MainWindow
         Environment.GetCommandLineArgs().Contains(AdminShellSwitch, StringComparer.OrdinalIgnoreCase);
 
     // Not while the shortcut list failed to load: the user should see that first.
-    private bool AutoSync => _sync.IsConnected && _sync.Automatic && !IsAdminShellInstance && _store.LoadProblem is null;
+    private bool AutoSync => _sync.IsConnected && _sync.Automatic && !IsElevated && _store.LoadProblem is null;
+
+    // An elevated window runs no git: git.exe, sync.json's git path and the repository's own
+    // .git/config (hooks, fsmonitor, sshCommand) can all be changed by programs running as the
+    // user, and would run as administrator. The normal window syncs, from wherever it is.
+    private const string ElevatedSyncNote =
+        "Sync runs in the normal BaudHoundTerm window, not in one opened as administrator. " +
+        "Shortcuts it brings in show up here after a restart.";
 
     private void InitSync()
     {
@@ -56,8 +64,16 @@ public partial class MainWindow
         }
     }
 
-    private void OnSyncSettings(object sender, RoutedEventArgs e) =>
+    private void OnSyncSettings(object sender, RoutedEventArgs e)
+    {
+        if (IsElevated)
+        {
+            MessageBox.Show(this, ElevatedSyncNote, "BaudHoundTerm: sync", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
         new SyncWindow(_sync, this) { Owner = this }.ShowDialog();
+    }
 
     /// <summary>Called by the sync window when the settings changed (connected, disconnected, automatic toggled).</summary>
     internal void SyncSettingsChanged()
@@ -94,6 +110,13 @@ public partial class MainWindow
     /// </summary>
     internal async Task<SyncOutcome?> SyncNowAsync(bool connect = false)
     {
+        if (IsElevated)
+        {
+            _sync.LastResult = ElevatedSyncNote;
+            UpdateSyncButton();
+            return null;
+        }
+
         if (_syncing)
         {
             _syncAgain = true;
@@ -252,8 +275,11 @@ public partial class MainWindow
         SyncButton.Foreground = failed && _sync.IsConnected
             ? new SolidColorBrush(Color.FromRgb(0xE5, 0xC0, 0x7B))
             : new SolidColorBrush(Color.FromRgb(0xDF, 0xE4, 0xEE));
-        SyncButton.ToolTip = !_sync.IsConnected
+        SyncButton.ToolTip = IsElevated ? ElevatedSyncNote
+            : !_sync.IsConnected
             ? "Share shortcuts between PCs through a private git repository"
             : $"{_sync.RepoUrl}\n{(_sync.LastSync is { } at ? $"Last sync {at:g}: " : "")}{_sync.LastResult}";
+        SyncButton.IsEnabled = !IsElevated;
+        ToolTipService.SetShowOnDisabled(SyncButton, true);
     }
 }

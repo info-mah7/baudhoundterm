@@ -78,7 +78,7 @@
                 ToolTip="Disconnect the active tab, leaving it open">Disconnect</Button>
         <Button x:Name="CloseButton" Click="OnCloseTab" ToolTip="Disconnect and close the active tab">Close</Button>
         <Rectangle/>
-        <Button Click="OnShellMenu" ToolTip="A local shell in a new tab, without saving a shortcut: PowerShell or Command Prompt, as you or as administrator. Administrator relaunches BaudHoundTerm through UAC when it is not already elevated.">Shell ▾</Button>
+        <Button Click="OnShellMenu" ToolTip="A local shell in a new tab, without saving a shortcut: PowerShell or Command Prompt, as you or as administrator. Administrator relaunches BaudHoundTerm through UAC when it is not already elevated, and needs BaudHoundTerm installed in a folder only administrators can change.">Shell ▾</Button>
         <Rectangle/>
         <Button x:Name="FilesButton" Click="OnFilesButton" ToolTip="Move files to and from the active tab's device or server: SFTP over SSH, typed text files for any terminal">Files ▾</Button>
         <Button x:Name="FindButton" Click="OnFind" ToolTip="Find in scrollback (Ctrl+Shift+F)">Find</Button>
