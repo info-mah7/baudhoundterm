@@ -340,7 +340,7 @@ internal sealed class AgentSettingsWindow : Window
         ep.BaseUrl = _url.Text.Trim();
         ep.Model = _model.Text.Trim();
         ep.Temperature = double.TryParse(_temperature.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var t) ? t : 0.2;
-        ep.MaxSteps = int.TryParse(_steps.Text, out var s) && s > 0 ? s : 30;
+        ep.MaxSteps = int.TryParse(_steps.Text, out var s) && s > 0 ? s : new AgentEndpoint().MaxSteps;
         ep.ExtraJson = _extra.Text.Trim();
         ep.Approval = (AgentApproval)Math.Max(0, _approval.SelectedIndex);
         ep.RiskyPatterns = _risky.Text.Trim().Length > 0 ? _risky.Text.Trim() : AgentEndpoint.DefaultRiskyPatterns;

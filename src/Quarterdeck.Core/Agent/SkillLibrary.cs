@@ -14,7 +14,8 @@ namespace Quarterdeck.Core.Agent;
 /// ---
 /// (instructions)
 /// </code>
-/// No protocols line means every protocol.
+/// No protocols line means every protocol. "group: Office" files it under that heading in the
+/// agent pane, and "default: off" leaves it unticked until the user ticks it.
 /// </summary>
 public sealed class AgentSkill
 {
@@ -23,6 +24,12 @@ public sealed class AgentSkill
     public HashSet<SessionProtocol> Protocols { get; init; } = new();
     public string Body { get; init; } = "";
     public string Path { get; init; } = "";
+
+    /// <summary>Header "group: Office": its heading in the agent pane. Without one, Desktop, Terminal or General.</summary>
+    public string Group { get; init; } = "General";
+
+    /// <summary>Header "default: off": unticked until the user ticks it (a game, or a whole suite of apps).</summary>
+    public bool DefaultOn { get; init; } = true;
 
     /// <summary>Header "steps: 300": a task this long needs at least that many steps, whatever the endpoint allows.</summary>
     public int MinSteps { get; init; }
@@ -79,6 +86,8 @@ public static class SkillLibrary
         var restricted = false;
         var minSteps = 0;
         var helpers = new List<string>();
+        var group = "";
+        var defaultOn = true;
         var body = text;
 
         var lines = text.Replace("\r\n", "\n").Split('\n');
@@ -102,6 +111,8 @@ public static class SkillLibrary
                     {
                         case "name": name = value; break;
                         case "description": description = value; break;
+                        case "group": group = value; break;
+                        case "default": defaultOn = value.ToLowerInvariant() is not ("off" or "no" or "false"); break;
                         case "steps": minSteps = int.TryParse(value, out var n) ? Math.Clamp(n, 0, 1000) : 0; break;
                         // Split(',', ' ', ...) would read ' ' as a count (32), not a second separator.
                         case "helpers": helpers.AddRange(value.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)); break;
@@ -123,7 +134,18 @@ public static class SkillLibrary
             }
         }
 
-        return new AgentSkill { Name = name, Description = description, Protocols = protocols, Restricted = restricted, Body = body, Path = path, MinSteps = minSteps, Helpers = helpers };
+        if (group.Length == 0)
+        {
+            group = protocols.Contains(SessionProtocol.Vnc) || protocols.Contains(SessionProtocol.Rdp) ? "Desktop"
+                : restricted ? "Terminal"
+                : "General";
+        }
+
+        return new AgentSkill
+        {
+            Name = name, Description = description, Protocols = protocols, Restricted = restricted, Body = body, Path = path,
+            MinSteps = minSteps, Helpers = helpers, Group = group, DefaultOn = defaultOn
+        };
     }
 
     private static SessionProtocol? ProtocolWord(string word) => word.Trim().ToLowerInvariant() switch
@@ -152,7 +174,13 @@ public static class SkillLibrary
             "ea5dafc11bbfab3ae7232f396ae824e87b8085ac3589d83da30d7ab596dfcb61",   // build 44
             "5d920d82f138afa085e7f2619922d8c48d2927ff13204f173d8d0b63fb30289e",   // builds 45 and 46
             "559bf8fd3f5b77d0a3186113c0e8103cab0bd0b31eeb7cdaf114fa18b36fe9a7",   // build 47
-            "62d02a3c940c9e932a8e4aca3924a06f2d4e30d48b410a1809a65d377d3c63f1"    // build 48
+            "62d02a3c940c9e932a8e4aca3924a06f2d4e30d48b410a1809a65d377d3c63f1",   // build 48
+            "559bf8fd3f5b77d0a3186113c0e8103cab0bd0b31eeb7cdaf114fa18b36fe9a7"    // builds 49 to 54
+        ],
+        ["windows-desktop.md"] =
+        [
+            "0f34a1f019122c0cdad203aeaf102be48efacc38d4efd6d9dbee89bde10988cb",   // build 49
+            "f36359cbffde750d78acb7c88aab867ea1435076f9bd50b3cebeb4a951c25a36"    // builds 50 to 54
         ]
     };
 

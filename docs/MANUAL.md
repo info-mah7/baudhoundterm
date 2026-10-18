@@ -331,7 +331,7 @@ RDP tab it sees screenshots and clicks and types.
 **Terminal > Agent endpoints and skills...**, then **New**:
 
 - **Name**, **Base URL** (up to `/v1`), **Model** (**Fetch models** asks the server), **API key**.
-- **Temperature** and **Max steps per goal**.
+- **Temperature** and **Max steps per goal** (150 by default; on a remote desktop every click and key is a step).
 - **Extra request JSON**: merged into every request. For Qwen models on vLLM,
   `{"chat_template_kwargs":{"enable_thinking":false}}` keeps replies fast, and remote desktops
   need it: with thinking on, the click check on a busy screen can use up its reply thinking and
@@ -376,7 +376,9 @@ expects to match the remote one; a character this layout cannot type stops the a
 
 Skills are notes the agent reads with every goal, such as house rules or how a device works. Each
 is a `.md` file in `%APPDATA%\BaudHoundTerm\skills\` (**Skills folder** in the endpoints window).
-An optional header sets where it applies:
+In the agent pane, **Skills** opens a tree of the skills for this kind of tab, by group: tick the
+ones the agent should get, or a group's box for all of them. Your ticks are kept. An optional
+header sets where a skill applies:
 
 ```
 ---
@@ -388,12 +390,19 @@ Always run "terminal length 0" first. Never write memory without asking.
 ```
 
 `protocols` takes `ssh`, `serial`, `telnet`, `local`, `vnc` and `rdp`. A `vnc` skill is a
-desktop skill and applies to RDP tabs too. Without it, the skill applies everywhere. `steps: 300` raises the step limit for runs that use the skill, for long tasks.
+desktop skill and applies to RDP tabs too. Without it, the skill applies everywhere. `steps: 300`
+raises the step limit for runs that use the skill, for long tasks. `group: Office` files it under
+that heading (without one: Desktop, Terminal or General), and `default: off` leaves it unticked
+until you tick it.
 
 The app also ships skills from [docs/skills](skills/), added to the folder and kept up to date (a file
 `.builtin` lists them: one you delete stays deleted, and one you edit is never overwritten).
-**Restore built-in skills** in the endpoints window puts back any that are missing. **chess.com**
-opens chess.com in a browser on a VNC tab and plays a bot; it raises the step limit to 300.
+**Restore built-in skills** in the endpoints window puts back any that are missing:
+
+- **Windows desktop** (on): keyboard-first ways to open, maximize and use apps on Windows.
+- **Office apps** (off): Word, Excel and PowerPoint, and the ArtCraft alternatives WordCraft,
+  GridCraft and DeckCraft, which follow the same shortcuts.
+- **chess.com** (off): opens chess.com in a browser and plays a bot; it raises the step limit to 300.
 
 ### Helpers
 
