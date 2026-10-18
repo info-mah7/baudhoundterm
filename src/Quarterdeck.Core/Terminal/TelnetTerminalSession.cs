@@ -239,11 +239,23 @@ public sealed class TelnetTerminalSession : ITerminalSession
         return kept;
     }
 
+    private readonly SemaphoreSlim _writing = new(1, 1);
+
     private async Task SendRawAsync(byte[] bytes, CancellationToken token)
     {
-        if (_stream is not null)
+        if (_stream is null)
+        {
+            return;
+        }
+
+        await _writing.WaitAsync(token).ConfigureAwait(false);
+        try
         {
             await _stream.WriteAsync(bytes.AsMemory(), token).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writing.Release();
         }
     }
 
@@ -271,8 +283,18 @@ public sealed class TelnetTerminalSession : ITerminalSession
 
         var bytes = Encoding.UTF8.GetBytes(text);
         _counters?.AddSent(bytes.Length);
-        await _stream.WriteAsync(bytes.AsMemory(), cancellationToken).ConfigureAwait(false);
-        await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        // One writer at a time: the read pump answers negotiation on the same stream, and an
+        // SslStream throws when two writes overlap.
+        await _writing.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _stream.WriteAsync(bytes.AsMemory(), cancellationToken).ConfigureAwait(false);
+            await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writing.Release();
+        }
     }
 
     /// <summary>A telnet console has no window-size channel unless NAWS is negotiated.</summary>

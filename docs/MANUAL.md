@@ -503,6 +503,34 @@ Everything is in `%APPDATA%\BaudHoundTerm\`:
 
 Camera snapshots go to `Pictures\BaudHoundTerm`. **Help > Open log folder** opens the transcripts.
 
+An elevated window keeps its browser profile in `%ProgramData%\BaudHoundTerm` instead, where
+programs running as you cannot reach it.
+
+### What BaudHoundTerm connects to
+
+**Nothing of its own.** There is no telemetry, no analytics, no update check and no licence
+check. Every connection it makes is one you asked for:
+
+| Connection | When |
+|---|---|
+| SSH, telnet, serial, VNC, RDP, SQL, RTSP | A shortcut or Quick connect you open |
+| A git remote | Only while sync runs, to the repository you configured |
+| An AI endpoint, and helpers you declare | Only while an agent runs, to the URL you set |
+| KeePassXC, the SSH agent | Local pipes, when a session needs a secret |
+| UDP broadcast on the local network | Only while the BaudHound window searches for devices |
+| TFTP | Only while you run the built-in server |
+
+The terminal and VNC views are drawn by Microsoft's WebView2, which is Chromium and would
+otherwise contact Microsoft on its own (component updates, field trials, SmartScreen, and
+DNS-over-HTTPS to a public resolver). All of that is switched off when the browser starts, and
+the pages are served from BaudHoundTerm's own files, not the web.
+
+Checked on Windows 11 for build 60, with a local shell tab open and no session connected: over
+several minutes the app and its whole process tree made **no outbound connection and looked up no
+name**, and Chromium's own network log recorded **no request attempted**. The only name it looks
+up is `wpad`, which is Windows' proxy auto-discovery, part of the system's proxy settings rather
+than anything BaudHoundTerm sends.
+
 ## 11. Keyboard shortcuts
 
 | Keys | Action |

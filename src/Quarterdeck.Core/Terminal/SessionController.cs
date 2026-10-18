@@ -72,7 +72,14 @@ public sealed class SessionController : IAsyncDisposable
         _userInitiatedClose = false;
         _life = new CancellationTokenSource();
         _attempt = 0;
+        _retry = null;
         await ConnectOnceAsync(_life.Token).ConfigureAwait(false);
+        if (_retry is { } reason)
+        {
+            // The first attempt failed: keep trying in the background, not nested in this call.
+            var token = _life.Token;
+            _ = Task.Run(() => ScheduleReconnectAsync(reason, token), token);
+        }
     }
 
     private async Task ConnectOnceAsync(CancellationToken token)
@@ -148,9 +155,15 @@ public sealed class SessionController : IAsyncDisposable
                 return;
             }
 
-            await ScheduleReconnectAsync(ex.Message, token).ConfigureAwait(false);
+            _retry = ex.Message;   // the loop in ScheduleReconnectAsync tries again
         }
     }
+
+    // Set by a failed connect so the reconnect loop goes round again, instead of the connect
+    // awaiting the next attempt: each retry then nested inside the last, and the chain (and its
+    // memory) grew for as long as the far end stayed down.
+    private string? _retry;
+    private int _reconnecting;
 
     /// <summary>
     /// Typed into the login shell after connect. exec replaces the shell, so leaving tmux ends
@@ -230,42 +243,64 @@ public sealed class SessionController : IAsyncDisposable
 
     private async Task ScheduleReconnectAsync(string? reason, CancellationToken token)
     {
-        var policy = Definition.Reconnect;
-
-        if (!policy.Enabled || _userInitiatedClose)
+        if (Interlocked.Exchange(ref _reconnecting, 1) == 1)
         {
-            SetState(SessionState.Failed, reason);
-            return;
+            return;   // one chain of attempts at a time
         }
-
-        if (policy.MaxAttempts > 0 && _attempt >= policy.MaxAttempts)
-        {
-            SetState(SessionState.Failed, $"Giving up after {_attempt} attempts: {reason}");
-            return;
-        }
-
-        _attempt++;
-
-        var delay = Math.Min(
-            policy.InitialDelayMs * Math.Pow(policy.BackoffFactor, _attempt - 1),
-            policy.MaxDelayMs);
-
-        SetState(SessionState.Reconnecting,
-            $"Reconnecting in {delay / 1000:F0}s (attempt {_attempt}"
-            + (policy.MaxAttempts > 0 ? $" of {policy.MaxAttempts}" : "") + ")...");
-
-        await DetachTransportAsync().ConfigureAwait(false);
 
         try
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(delay), token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
+            while (true)
+            {
+                var policy = Definition.Reconnect;
 
-        await ConnectOnceAsync(token).ConfigureAwait(false);
+                if (!policy.Enabled || _userInitiatedClose)
+                {
+                    SetState(SessionState.Failed, reason);
+                    return;
+                }
+
+                if (policy.MaxAttempts > 0 && _attempt >= policy.MaxAttempts)
+                {
+                    SetState(SessionState.Failed, $"Giving up after {_attempt} attempts: {reason}");
+                    return;
+                }
+
+                _attempt++;
+
+                var delay = Math.Min(
+                    policy.InitialDelayMs * Math.Pow(policy.BackoffFactor, _attempt - 1),
+                    policy.MaxDelayMs);
+
+                SetState(SessionState.Reconnecting,
+                    $"Reconnecting in {delay / 1000:F0}s (attempt {_attempt}"
+                    + (policy.MaxAttempts > 0 ? $" of {policy.MaxAttempts}" : "") + ")...");
+
+                await DetachTransportAsync().ConfigureAwait(false);
+
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(delay), token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                _retry = null;
+                await ConnectOnceAsync(token).ConfigureAwait(false);
+                if (_retry is not { } again)
+                {
+                    return;   // connected, or a failure that will not fix itself
+                }
+
+                reason = again;
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _reconnecting, 0);
+        }
     }
 
     public Task WriteAsync(string text) =>

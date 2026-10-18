@@ -22,6 +22,15 @@ public sealed class TftpServer : IAsyncDisposable
     private UdpClient? _listener;
     private CancellationTokenSource? _cts;
 
+    // TFTP has no authentication, so a request can come from anyone who can reach the port, with
+    // a forged sender address. Without limits a few requests tied up all the memory, and a large
+    // blksize made the server a packet amplifier aimed at whoever the sender claimed to be.
+    private const int MaxBlockSize = 1468;       // one Ethernet frame, unfragmented
+    private const int MaxTransfers = 16;
+    private const long MaxFileBytes = 2L * 1024 * 1024 * 1024;
+    private const long MaxUploadBytes = 512L * 1024 * 1024;
+    private int _transfers;
+
     public TftpServer(string root, IPEndPoint bind, bool allowUploads)
     {
         _root = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
@@ -111,7 +120,24 @@ public sealed class TftpServer : IAsyncDisposable
                 continue;
             }
 
-            _ = Task.Run(() => HandleRequestAsync(request, peer, local, token), token);
+            if (Interlocked.Increment(ref _transfers) > MaxTransfers)
+            {
+                Interlocked.Decrement(ref _transfers);
+                Write($"{peer.Address}  refused: {MaxTransfers} transfers already running");
+                continue;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await HandleRequestAsync(request, peer, local, token);
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _transfers);
+                }
+            }, token);
         }
     }
 
@@ -195,8 +221,42 @@ public sealed class TftpServer : IAsyncDisposable
             return null;
         }
 
+        // Device names are not files: a request for CON or COM1 (with or without an extension,
+        // and whatever trailing dots or spaces) must not open a device.
+        foreach (var part in name.Split('/'))
+        {
+            var stem = part.Split('.')[0].Trim().TrimEnd('.');
+            if (stem.ToUpperInvariant() is "CON" or "PRN" or "AUX" or "NUL"
+                || System.Text.RegularExpressions.Regex.IsMatch(stem, "^(?i:COM|LPT)[0-9]$"))
+            {
+                return null;
+            }
+        }
+
         var full = Path.GetFullPath(Path.Combine(_root, name.Replace('/', Path.DirectorySeparatorChar)));
-        return full.StartsWith(_root, StringComparison.OrdinalIgnoreCase) ? full : null;
+        if (!full.StartsWith(_root, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        // A junction or symbolic link inside the folder can point anywhere, and the check above
+        // compares the path as written, not where it leads.
+        for (var walk = full; walk.Length > _root.Length; walk = Path.GetDirectoryName(walk) ?? "")
+        {
+            var info = new FileInfo(walk);
+            if (info.Exists && info.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                return null;
+            }
+
+            var dir = new DirectoryInfo(walk);
+            if (dir.Exists && dir.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                return null;
+            }
+        }
+
+        return full;
     }
 
     private async Task SendFileAsync(UdpClient socket, IPEndPoint peer, string name, string path, bool netascii,
@@ -206,6 +266,14 @@ public sealed class TftpServer : IAsyncDisposable
         {
             Write($"{peer.Address}  GET {name}: not found");
             await SendErrorAsync(socket, peer, 1, "File not found");
+            return;
+        }
+
+        var onDisk = new FileInfo(path).Length;
+        if (onDisk > MaxFileBytes)
+        {
+            Write($"{peer.Address}  GET {name}: {Size(onDisk)} is larger than this server sends");
+            await SendErrorAsync(socket, peer, 3, "File too large");
             return;
         }
 
@@ -348,6 +416,21 @@ public sealed class TftpServer : IAsyncDisposable
                 }
 
                 var payload = got.Value.Buffer.AsMemory(4);
+                if (payload.Length > blockSize)
+                {
+                    // More than the agreed block size: not a transfer this server accepts.
+                    Write($"{peer.Address}  PUT {name}: a block of {payload.Length} bytes is larger than the agreed {blockSize}");
+                    await SendErrorAsync(socket, peer, 4, "Illegal TFTP operation");
+                    break;
+                }
+
+                if (written + payload.Length > MaxUploadBytes)
+                {
+                    Write($"{peer.Address}  PUT {name}: larger than the {Size(MaxUploadBytes)} upload limit");
+                    await SendErrorAsync(socket, peer, 3, "Disk full or allocation exceeded");
+                    break;
+                }
+
                 await file.WriteAsync(payload, token);
                 written += payload.Length;
                 answer = Ack(expect);
@@ -456,8 +539,9 @@ public sealed class TftpServer : IAsyncDisposable
 
         if (options.TryGetValue("blksize", out var b) && int.TryParse(b, out var requested))
         {
-            // 1468 fits an Ethernet frame without fragmentation; larger asks are honoured to 65464.
-            blockSize = Math.Clamp(requested, 8, 65464);
+            // 1468 fits an Ethernet frame without fragmentation. Bigger blocks are not granted:
+            // one request with a forged sender address would answer it with 64 KB packets.
+            blockSize = Math.Clamp(requested, 8, MaxBlockSize);
             accepted["blksize"] = blockSize.ToString();
         }
 
