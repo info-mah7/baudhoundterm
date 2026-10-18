@@ -169,23 +169,35 @@ public sealed class SerialTerminalSession : ITerminalSession
         DataReceived?.Invoke(this, new TerminalDataEventArgs($"\r\n\u001b[2m[baudhoundterm] serial line error: {e.EventType}\u001b[0m\r\n"));
     }
 
-    public Task WriteAsync(string text, CancellationToken cancellationToken = default)
+    // One writer at a time, off the caller's thread: SerialPort.Write blocks until the port
+    // takes the bytes, and a device holding CTS low froze the window for the write timeout.
+    private readonly SemaphoreSlim _writing = new(1, 1);
+
+    public async Task WriteAsync(string text, CancellationToken cancellationToken = default)
     {
         var port = _port;
+        if (port?.IsOpen != true)
+        {
+            return;
+        }
+
+        await _writing.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (port?.IsOpen == true)
+            await Task.Run(() =>
             {
                 port.Write(text);
                 _counters?.AddSent(port.Encoding.GetByteCount(text));
-            }
+            }, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException or TimeoutException)
         {
             RaiseClosed("Serial port closed: " + ex.Message);
         }
-
-        return Task.CompletedTask;
+        finally
+        {
+            _writing.Release();
+        }
     }
 
     /// <summary>Serial has no window-size concept; the far end never learns the geometry.</summary>

@@ -712,6 +712,39 @@ public sealed partial class AgentRunner
     }
 
     /// <summary>
+    /// The lines as the shell will run them: one ending in a continuation (PowerShell's backtick,
+    /// cmd's ^, a shell's backslash) carries on into the next, so "Remove-Item C:\x `" and then
+    /// "-Recurse" is one command and is checked as one. Each line is still checked on its own too.
+    /// </summary>
+    private static List<string> Joined(IReadOnlyList<string> lines)
+    {
+        var all = new List<string>(lines);
+        var run = "";
+        foreach (var line in lines)
+        {
+            var trimmed = line.TrimEnd();
+            if (trimmed.EndsWith('`') || trimmed.EndsWith('^') || trimmed.EndsWith('\\'))
+            {
+                run += trimmed[..^1] + " ";
+                continue;
+            }
+
+            if (run.Length > 0)
+            {
+                all.Add(run + trimmed);
+                run = "";
+            }
+        }
+
+        if (run.Length > 0)
+        {
+            all.Add(run);
+        }
+
+        return all;
+    }
+
+    /// <summary>
     /// Asks for approval when what is about to be typed would submit a line that needs it.
     /// The check sees the whole line: what was typed before (send_input with enter false) plus
     /// this text, each line of multi-line text, and, in Risky mode, any control character
@@ -759,7 +792,7 @@ public sealed partial class AgentRunner
         else
         {
             var recalled = submitted.Any(l => l.EndsWith("[line recalled from history]", StringComparison.Ordinal));
-            ask = editing || recalled || submitted.Any(l => NeedsApproval(_endpoint, l)) || NeedsApproval(_endpoint, typed);
+            ask = editing || recalled || Joined(submitted).Any(l => NeedsApproval(_endpoint, l)) || NeedsApproval(_endpoint, typed);
             shown = submitted.Count > 0 ? string.Join("\n", submitted) : typed;
             if (editing)
             {

@@ -184,9 +184,29 @@
   // every attribute the far end had set.
   const ESCAPES = /\u001b(?:\[[0-?]*[ -\/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g;
 
+  // A rule's pattern is compiled once, not per chunk, and a rule that takes too long is turned
+  // off for this tab: "(a+)+$" against the right output would otherwise hang the terminal.
+  const compiled = new Map();
+
+  function ruleRegex(h) {
+    const key = h.pattern + '\u0000' + (h.caseSensitive ? 'S' : 'i') + (h.isRegex ? 'R' : 'P');
+    if (compiled.has(key)) return compiled.get(key);
+    let re = null;
+    try {
+      const flags = h.caseSensitive ? 'g' : 'gi';
+      re = h.isRegex ? new RegExp(h.pattern, flags)
+                     : new RegExp(h.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
+    } catch (e) { re = null; }
+    compiled.set(key, re);
+    return re;
+  }
+
   function applyHighlights(text) {
-    const rules = highlights.filter(h => h.enabled && h.pattern && /^#[0-9a-fA-F]{6}$/.test(h.color || ''));
+    const rules = highlights.filter(h => h.enabled && h.pattern && !h.tooSlow && /^#[0-9a-fA-F]{6}$/.test(h.color || ''));
     if (!rules.length) return text;
+
+    // Colouring a huge chunk helps nobody and is where the slow cases bite.
+    if (text.length > 100000) return text;
 
     // An escape sequence cut off at the end of this read is left alone.
     let tail = '';
@@ -217,15 +237,21 @@
 
   function highlightOne(text, h) {
     if (!text) return text;
+    const re = ruleRegex(h);
+    if (!re) return text;   // a bad user regex must not stop output
     try {
-      const flags = h.caseSensitive ? 'g' : 'gi';
-      const re = h.isRegex ? new RegExp(h.pattern, flags)
-                           : new RegExp(h.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
       const on = (h.bold ? '\u001b[1m' : '') + '\u001b[38;2;' + hexToRgb(h.color) + 'm';
       const off = '\u001b[39m' + (h.bold ? '\u001b[22m' : '');
-      return text.replace(re, m => m ? on + m + off : m);
+      const started = performance.now();
+      const out = text.replace(re, m => m ? on + m + off : m);
+      const took = performance.now() - started;
+      if (took > 250) {
+        h.tooSlow = true;
+        send({ t: 'slowrule', name: h.name || h.pattern, ms: Math.round(took) });
+      }
+      return out;
     } catch (e) {
-      return text;   // a bad user regex must not stop output
+      return text;
     }
   }
 
@@ -330,7 +356,7 @@
     switch (m.t) {
       case 'init':       init(m); break;
       case 'out':        term && term.write(applyHighlights(m.d)); break;
-      case 'highlights': highlights = m.rules || []; break;
+      case 'highlights': highlights = m.rules || []; compiled.clear(); break;
       case 'commands':   commands = m.list || []; closeMenu(); break;
       case 'theme':      if (term) term.options.theme = themes[m.d] || themes["Quarterdeck Dark"]; break;
       case 'font':       if (term) { term.options.fontSize = m.size; fit.fit(); } break;
