@@ -21,7 +21,8 @@ serial, local shells, VNC desktops and RTSP cameras. This manual covers build 0.
    [releases page](https://github.com/info-mah7/baudhoundterm/releases). Builds are not code-signed
    yet, so check the zip before running it: `Get-FileHash -Algorithm SHA256 <file>` in PowerShell
    must print the hash in `SHA256SUMS` (or run `sha256sum -c SHA256SUMS` on Linux).
-2. Extract the whole archive. `BaudHoundTerm.exe` needs the `Assets` and `libvlc` folders next to it.
+2. Extract the whole archive. `BaudHoundTerm.exe` needs the `Assets`, `dll`, `libvlc` and
+   `runtimes` folders next to it; `dll` holds the libraries it loads at run time.
 3. Run `BaudHoundTerm.exe`. The build is unsigned, so Windows SmartScreen reports an unknown
    publisher: choose **More info**, then **Run anyway**.
 
@@ -126,7 +127,10 @@ The properties window has seven tabs. **Save** keeps the changes.
   (`bht`). After login the tab runs `tmux new-session -A -s <name>`, so a dropped link leaves the
   shell running on the host and the reconnect attaches to it again, mid-command. Leaving tmux
   (`exit`, or detaching with Ctrl+B D) ends the connection. The host needs tmux; without it the tab
-  says so and keeps the plain shell.
+  says so and keeps the plain shell. A tab whose shell really is in tmux shows a green **tmux**
+  chip next to its badge, and a red **no tmux** chip when it was asked for and the host has none,
+  which is the case where closing the tab loses the work. The chip is checked against the host, not
+  taken from this setting.
 
 **Serial**: **Port**, **Baud rate**, **Data bits**, **Parity**, **Stop bits**. Defaults are COM1,
 115200, 8, None, One.
@@ -157,6 +161,20 @@ certificate** for self-signed servers, **Read-only** and **Ask before statements
 or structure** (on by default). Read-only is enforced by PostgreSQL, MySQL and SQLite; for SQL
 Server the app refuses such statements itself. In the tab, F5 or Ctrl+Enter runs the query, or
 only the selected text.
+
+**KVM (agentkvm board)**: a KVM board running
+[agentkvm](https://github.com/magicsmokepress/agentkvm), which types on the machine over USB and
+watches its HDMI output. Nothing is installed on that machine and it need not be on the network;
+the board is. See [section 4](#kvm-tabs) for how to set one up.
+
+- **KVM board address** and **Daemon port** (9200): the keyboard and mouse.
+- **https**: required for anything that is not a private address, because the daemon key is the
+  ability to type on the machine. The certificate is checked against this PC's trust store, so the
+  board needs a real one for the name you reach it by. There is no certificate pinning.
+- **Daemon key**: the bearer key the board generated, kept encrypted on this PC.
+- **Picture from**, **Web interface username** and **Web interface password**: the board's own web
+  interface, which is where the picture comes from. Blank means the same board. A single `-` means
+  a board with no capture: it still types, and says so.
 
 **RTSP camera**: **Camera host**, **RTSP port** (554), **Stream path** (blank asks the camera over
 ONVIF), **Username**, **Password**, **RTP over TCP**, **Low latency**, and the **ONVIF port** used
@@ -234,6 +252,14 @@ is a temporary file. Other tab types do not support it.
   red failed. It blinks with traffic.
 - **Bot icon:** attaches or detaches the AI agent (section 8).
 
+### Ending a tmux session
+
+Closing a tab whose shell is in tmux leaves the session running on the host, which is the point of
+it. To end it instead, right-click the tab (or the connection in the session list) and choose
+**End the tmux session on the host**. It asks first: the session and everything running in it stop,
+and the connection ends with it. The command goes over its own channel, so a full-screen program
+in the session cannot swallow it.
+
 ### Link lamps
 
 Serial and telnet tabs show lamps at the bottom right: the connection state, **TX** (sent to the
@@ -247,6 +273,30 @@ The remote desktop scales to fit the tab. A password-protected server needs the 
 shortcut's properties. Right-click the tab > **Send Ctrl+Alt+Del** to send that key combination,
 which Windows otherwise keeps for itself. With **View only** set, nothing you or the agent do is
 sent to it.
+
+### KVM tabs
+
+A KVM tab shows what the board sees and sends what you type and click to the machine over USB,
+with no software on that machine.
+
+To set one up:
+
+1. Install agentkvm on the board and note the key it generates. Its README has the steps for each
+   supported board.
+2. In BaudHoundTerm, **New shortcut** > **Protocol: KVM (agentkvm board)**.
+3. Fill in the board's address and the **daemon key**. Leave the port at 9200 unless you changed
+   it. Tick **https** if the board is not on a private network.
+4. Fill in the board's own web interface login, which is where the picture comes from.
+5. Connect.
+
+There is no discovery yet: each board is added by hand, the same as any other shortcut.
+
+The keyboard is a **US layout**. The board sends key positions, not characters, so a machine set
+to another layout receives some characters wrong, and there is no way to read its layout through a
+USB keyboard.
+
+The agent attaches to a KVM tab as it does to VNC and RDP, with the same approval settings,
+skills and close-up check before a click (see [section 8](#the-ai-agent)).
 
 ### Camera tabs
 
