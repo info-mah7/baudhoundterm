@@ -13,9 +13,13 @@ public sealed class KvmException(string message) : Exception(message);
 /// One agentkvm daemon: the hands (USB HID reports to the gadget the target sees as a keyboard
 /// and mouse) and, where the board offers one, the eyes (a JPEG of the HDMI input).
 ///
-/// Everything needs the bearer key the board generated; there is no exemption, by design. The
-/// daemon speaks plain HTTP, so anything that is not on this machine's own network belongs in a
-/// tunnel: the key is the whole of the access control, and whoever has it can type on the target.
+/// Everything needs the bearer key the board generated; there is no exemption, by design.
+///
+/// The key is the whole of the access control, and whoever holds it can type on the target, so
+/// it must not cross a network in the clear. Over https the certificate is checked the ordinary
+/// way, against the machine's own trust store: the board needs a real certificate for the name
+/// it is reached by. Plain http is allowed only to this machine or a private address, where the
+/// traffic stays on a network the operator owns.
 /// </summary>
 public sealed class KvmClient : IDisposable
 {
@@ -29,6 +33,11 @@ public sealed class KvmClient : IDisposable
     {
         BaseUrl = baseUrl.TrimEnd('/');
         _key = key;
+
+        if (Refuse(BaseUrl) is { } why)
+        {
+            throw new KvmException(why);
+        }
 
         // One connection, kept alive: the board's README notes it drops SYNs now and then, so a
         // fresh connection per request occasionally waits a second where a kept one answers in
@@ -45,6 +54,56 @@ public sealed class KvmClient : IDisposable
     }
 
     public string BaseUrl { get; }
+
+    /// <summary>
+    /// Why this address may not be used, or null. Plain http is for a board on this machine or
+    /// on a private network; anywhere else the bearer key would cross a network someone else can
+    /// read, and that key is the ability to type on the target.
+    /// </summary>
+    public static string? Refuse(string baseUrl)
+    {
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+        {
+            return $"\"{baseUrl}\" is not an http or https address.";
+        }
+
+        if (uri.Scheme == "https")
+        {
+            return null;
+        }
+
+        return Local(uri.Host)
+            ? null
+            : $"{uri.Host} is not on a private network, so plain http would send the KVM's key across it in the clear. " +
+              "Use https (the board needs a certificate for the name you reach it by), or tunnel it.";
+    }
+
+    /// <summary>Loopback, or one of the private ranges, including IPv6 link-local and ULA.</summary>
+    private static bool Local(string host)
+    {
+        if (!IPAddress.TryParse(host.Trim('[', ']'), out var ip))
+        {
+            // A name could be anything; only an address can be judged here.
+            return false;
+        }
+
+        if (IPAddress.IsLoopback(ip))
+        {
+            return true;
+        }
+
+        if (ip.AddressFamily is System.Net.Sockets.AddressFamily.InterNetworkV6)
+        {
+            return ip.IsIPv6LinkLocal || ip.IsIPv6UniqueLocal;
+        }
+
+        var b = ip.GetAddressBytes();
+        return b[0] == 10
+               || (b[0] == 172 && b[1] >= 16 && b[1] <= 31)
+               || (b[0] == 192 && b[1] == 168)
+               || (b[0] == 169 && b[1] == 254)      // link-local
+               || (b[0] == 100 && b[1] >= 64 && b[1] <= 127);   // carrier NAT, as VPNs often use
+    }
 
     /// <summary>Whether the daemon is up. Unauthenticated, so it also works before a key is set.</summary>
     public async Task<bool> HealthyAsync(CancellationToken token = default)
