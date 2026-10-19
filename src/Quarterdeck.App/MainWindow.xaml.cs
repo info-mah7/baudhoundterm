@@ -59,7 +59,7 @@ public partial class MainWindow : Window
         Closing += async (_, e) =>
         {
             // Tabs are not restored, so closing ends every live session for good. Say so first.
-            var live = Tabs.Items.OfType<TabItem>().Select(t => t.Content).OfType<TerminalView>().Count(v => v.IsConnected);
+            var live = Tabs.Items.OfType<TabItem>().Select(ViewOf).OfType<TerminalView>().Count(v => v.IsConnected);
             if (live > 0 && !_closeConfirmed)
             {
                 var answer = MessageBox.Show(this,
@@ -76,11 +76,194 @@ public partial class MainWindow : Window
                 _closeConfirmed = true;
             }
 
-            foreach (var view in Tabs.Items.OfType<TabItem>().Select(t => t.Content).OfType<TerminalView>())
+            // Popped-out windows would otherwise keep the app running with the main window gone.
+            foreach (var popped in _live.Select(l => l.PoppedOut).OfType<PopOutWindow>().ToList())
+            {
+                popped.Returned = true;
+                popped.Content = null;   // the view leaves first, or closing the window destroys its native child
+                popped.Close();
+            }
+
+            foreach (var view in Tabs.Items.OfType<TabItem>().Select(ViewOf).OfType<TerminalView>())
             {
                 await view.DisconnectAsync();
             }
         };
+
+        _fullScreen = new FullScreenToggle(this);
+        PreviewKeyDown += OnWindowKey;
+    }
+
+    // ---------- tab navigation, full screen, pop-out ----------
+
+    private readonly FullScreenToggle _fullScreen;
+    private GridLength _listWidth;
+    private double _listMinWidth;
+
+    /// <summary>
+    /// Ctrl+Tab and Ctrl+PgDn go to the next tab, Ctrl+Shift+Tab and Ctrl+PgUp to the previous;
+    /// F11 is full screen. Seen here first (Preview), so a terminal or remote screen with the
+    /// keyboard does not swallow them. Ctrl+Left/Right stay with the session: shells use them
+    /// to move by word.
+    /// </summary>
+    private void OnWindowKey(object sender, KeyEventArgs e)
+    {
+        var mods = Keyboard.Modifiers;
+        int step = (e.Key, mods) switch
+        {
+            (Key.Tab, ModifierKeys.Control) or (Key.PageDown, ModifierKeys.Control) => 1,
+            (Key.Tab, ModifierKeys.Control | ModifierKeys.Shift) or (Key.PageUp, ModifierKeys.Control) => -1,
+            _ => 0
+        };
+
+        if (step != 0)
+        {
+            CycleTab(step);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.F11 && mods == ModifierKeys.None)
+        {
+            ToggleFullScreen();
+            e.Handled = true;
+        }
+    }
+
+    private void OnNextTab(object sender, RoutedEventArgs e) => CycleTab(1);
+
+    private void OnPreviousTab(object sender, RoutedEventArgs e) => CycleTab(-1);
+
+    private void CycleTab(int step)
+    {
+        var count = Tabs.Items.Count;
+        if (count < 2)
+        {
+            return;
+        }
+
+        Tabs.SelectedIndex = ((Tabs.SelectedIndex < 0 ? 0 : Tabs.SelectedIndex) + step + count) % count;
+    }
+
+    private void OnFullScreen(object sender, RoutedEventArgs e) => ToggleFullScreen();
+
+    /// <summary>Only the tabs: no menu, toolbar, quick connect or shortcut list, and no window frame.</summary>
+    private void ToggleFullScreen()
+    {
+        var entering = !_fullScreen.IsOn;
+        var chrome = entering ? Visibility.Collapsed : Visibility.Visible;
+        foreach (var part in new UIElement[] { MainMenu, ToolStrip, QuickBar, ListPanel, ListSplitter })
+        {
+            part.Visibility = chrome;
+        }
+
+        if (entering)
+        {
+            _listWidth = ListColumn.Width;
+            _listMinWidth = ListColumn.MinWidth;
+            ListColumn.MinWidth = 0;
+            ListColumn.Width = new GridLength(0);
+            SplitterColumn.Width = new GridLength(0);
+        }
+        else
+        {
+            ListColumn.Width = _listWidth;
+            ListColumn.MinWidth = _listMinWidth;
+            SplitterColumn.Width = new GridLength(4);
+        }
+
+        _fullScreen.Toggle();
+        ActiveView?.FocusTerminal();
+    }
+
+    private void OnPopOut(object sender, RoutedEventArgs e)
+    {
+        if ((Tabs.SelectedItem as TabItem) is { } tab && LiveFor(tab) is { } live)
+        {
+            TogglePopOut(live);
+        }
+    }
+
+    private void TogglePopOut(LiveTab live)
+    {
+        if (live.PoppedOut is null)
+        {
+            PopOut(live);
+        }
+        else
+        {
+            BringBack(live);
+        }
+    }
+
+    /// <summary>
+    /// Moves the live view into its own window. The tab stays, holding a note and the way back,
+    /// so the tab order, the list and the toolbar commands still reach the session.
+    /// </summary>
+    private void PopOut(LiveTab live)
+    {
+        live.Tab.Content = PoppedPlaceholder(live);
+        var window = new PopOutWindow(live.View, live.Title, this);
+        window.ReturnRequested += (_, _) => BringBack(live, closing: true);
+        live.PoppedOut = window;
+        window.Show();
+        RefreshTab(live);
+        UpdateConnectionToggle();
+    }
+
+    private void BringBack(LiveTab live, bool closing = false)
+    {
+        if (live.PoppedOut is not { } window)
+        {
+            return;
+        }
+
+        live.PoppedOut = null;
+        window.Returned = true;
+        window.Content = null;
+        if (!closing)
+        {
+            window.Close();
+        }
+
+        live.Tab.Content = live.View;
+        Tabs.SelectedItem = live.Tab;
+        Activate();
+        live.View.FocusTerminal();
+        RefreshTab(live);
+        UpdateConnectionToggle();
+    }
+
+    private UIElement PoppedPlaceholder(LiveTab live)
+    {
+        var grey = new SolidColorBrush(Color.FromRgb(0x8B, 0x94, 0xA7));
+        var panel = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "This tab is in its own window, still connected.",
+            Foreground = grey,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 10)
+        });
+
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+        var show = new Button { Content = "Show window", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 0, 8, 0) };
+        show.Click += (_, _) =>
+        {
+            if (live.PoppedOut is { } w)
+            {
+                if (w.WindowState == WindowState.Minimized)
+                {
+                    w.WindowState = WindowState.Normal;
+                }
+
+                w.Activate();
+            }
+        };
+        var back = new Button { Content = "Bring back", Padding = new Thickness(10, 4, 10, 4) };
+        back.Click += (_, _) => BringBack(live);
+        buttons.Children.Add(show);
+        buttons.Children.Add(back);
+        panel.Children.Add(buttons);
+        return panel;
     }
 
     private bool AskHostKey(HostKeyQuestion q)
@@ -507,7 +690,10 @@ public partial class MainWindow : Window
         DeleteMenu.IsEnabled = any;
     }
 
-    private TerminalView? ActiveView => (Tabs.SelectedItem as TabItem)?.Content as TerminalView;
+    private TerminalView? ActiveView => (Tabs.SelectedItem as TabItem) is { } tab ? ViewOf(tab) : null;
+
+    /// <summary>A tab's view, also while it is popped out and the tab only holds a placeholder.</summary>
+    private TerminalView? ViewOf(TabItem tab) => LiveFor(tab)?.View ?? tab.Content as TerminalView;
 
     private void OnFilterChanged(object sender, TextChangedEventArgs e) => RebuildTree();
 
@@ -704,6 +890,9 @@ public partial class MainWindow : Window
         public string ShellTitle { get; set; } = "";
         public string Colour { get; set; } = "";
         public SessionState State { get; set; } = SessionState.Connecting;
+
+        /// <summary>The window the view lives in while popped out; null while it is in its tab.</summary>
+        public PopOutWindow? PoppedOut { get; set; }
     }
 
     private readonly List<LiveTab> _live = new();
@@ -769,6 +958,10 @@ public partial class MainWindow : Window
     {
         SetTabHeader(live.Tab, live.Definition, live.Title, live.Colour, live.View);
         RefreshLiveRow(live);
+        if (live.PoppedOut is { } window)
+        {
+            window.Title = live.Title + " - BaudHoundTerm";
+        }
     }
 
     private void RefreshLiveRow(LiveTab live)
@@ -902,7 +1095,12 @@ public partial class MainWindow : Window
             return;   // a ComboBox inside a tab, not the tab strip
         }
 
-        ActiveView?.FocusTerminal();
+        // A popped-out tab's view is in its own window; focusing it would pull that window forward.
+        if ((Tabs.SelectedItem as TabItem) is { } tab && LiveFor(tab)?.PoppedOut is null)
+        {
+            ActiveView?.FocusTerminal();
+        }
+
         UpdateConnectionToggle();
     }
 
@@ -985,12 +1183,12 @@ public partial class MainWindow : Window
         if (definition.Protocol == SessionProtocol.Vnc)
         {
             var cad = new MenuItem { Header = "Send Ctrl+Alt+_Del", ToolTip = "Ctrl+Alt+Del on the remote desktop, which Windows keeps for itself if you press it here" };
-            cad.Click += (_, _) => (tab.Content as TerminalView)?.SendCtrlAltDel();
+            cad.Click += (_, _) => ViewOf(tab)?.SendCtrlAltDel();
             menu.Items.Add(new Separator());
             menu.Items.Add(cad);
         }
 
-        if (tab.Content is TerminalView tmuxView && tmuxView.Tmux == TmuxState.Live)
+        if (ViewOf(tab) is { Tmux: TmuxState.Live } tmuxView)
         {
             var end = new MenuItem
             {
@@ -1007,7 +1205,7 @@ public partial class MainWindow : Window
             var agent = new MenuItem { Header = "_Agent on this tab" };
             agent.Click += (_, _) =>
             {
-                if (tab.Content is TerminalView v)
+                if (ViewOf(tab) is { } v)
                 {
                     ToggleAgent(v);
                 }
@@ -1015,6 +1213,18 @@ public partial class MainWindow : Window
             menu.Items.Add(new Separator());
             menu.Items.Add(agent);
         }
+
+        var popOut = new MenuItem();
+        popOut.Click += (_, _) =>
+        {
+            if (LiveFor(tab) is { } live)
+            {
+                TogglePopOut(live);
+            }
+        };
+        menu.Opened += (_, _) => popOut.Header = LiveFor(tab)?.PoppedOut is null ? "_Pop out" : "_Bring back";
+        menu.Items.Add(new Separator());
+        menu.Items.Add(popOut);
 
         return menu;
     }
@@ -1140,7 +1350,7 @@ public partial class MainWindow : Window
             BorderBrush = Brushes.Transparent,
             BorderThickness = new Thickness(1),
             Focusable = false,   // closing must not pull the keyboard off the terminal first
-            ToolTip = "Close this tab (Ctrl+W). A connected session ends."
+            ToolTip = "Close this tab. A connected session ends."
         };
 
         System.Windows.Automation.AutomationProperties.SetName(button, "Close this tab");
@@ -1268,6 +1478,11 @@ public partial class MainWindow : Window
             control.IsEnabled = tab;
         }
 
+        var popped = (Tabs.SelectedItem as TabItem) is { } selected && LiveFor(selected)?.PoppedOut is not null;
+        PopOutButton.Content = popped ? "Bring back" : "Pop out";
+        PopOutMenu.Header = popped ? "_Bring tab back" : "_Pop out tab";
+        PopOutButton.IsEnabled = PopOutMenu.IsEnabled = tab;
+
         AgentMenu.IsEnabled = view is { CanAttachAgent: true };
         EmptyHint.Visibility = Tabs.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -1283,7 +1498,14 @@ public partial class MainWindow : Window
     /// <summary>Closes one tab, whichever it is: the X on its header and the menus all come here.</summary>
     private async Task CloseTabAsync(TabItem tab)
     {
-        if (tab.Content is TerminalView view)
+        if (LiveFor(tab)?.PoppedOut is { } window)
+        {
+            window.Returned = true;
+            window.Content = null;
+            window.Close();
+        }
+
+        if (ViewOf(tab) is { } view)
         {
             view.DetachAgent();
             await view.DisconnectAsync();
@@ -1298,7 +1520,7 @@ public partial class MainWindow : Window
 
         Tabs.Items.Remove(tab);
         UpdateConnectionToggle();
-        (tab.Content as TerminalView)?.Release();
+        ViewOf(tab)?.Release();
 
         if (LiveFor(tab) is { } live)
         {
@@ -1503,7 +1725,11 @@ public partial class MainWindow : Window
                 break;
 
             case LiveTab live:
-                menu.Items.Add(Item("_Show tab", () => Tabs.SelectedItem = live.Tab));
+                menu.Items.Add(Item("_Show tab", () =>
+                {
+                    Tabs.SelectedItem = live.Tab;
+                    live.PoppedOut?.Activate();
+                }));
                 if (live.View.CanAttachAgent)
                 {
                     menu.Items.Add(Item(live.View.IsAgentAttached ? "Detach _agent" : "Attach _agent...", () =>
