@@ -105,6 +105,51 @@ public sealed class KvmClient : IDisposable
                || (b[0] == 100 && b[1] >= 64 && b[1] <= 127);   // carrier NAT, as VPNs often use
     }
 
+    /// <summary>
+    /// Trades a signed-in web-portal session for the daemon's key, so setting up a board is one
+    /// login rather than copying the key by hand. No key is needed (this is how a client gets
+    /// one); the daemon proves the caller is a board admin by checking the token against the
+    /// board's own web interface. The same address rule as the rest: plain http only on a
+    /// private network, because the key comes back over it.
+    /// </summary>
+    public static async Task<string> PairAsync(string baseUrl, string vendorToken, CancellationToken token = default)
+    {
+        baseUrl = baseUrl.TrimEnd('/');
+        if (Refuse(baseUrl) is { } why)
+        {
+            throw new KvmException(why);
+        }
+
+        using var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false })
+        {
+            Timeout = TimeSpan.FromSeconds(20)
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, baseUrl + "/v1/pair")
+        {
+            Content = new StringContent(new JsonObject { ["vendor_token"] = vendorToken }.ToJsonString(), Encoding.UTF8, "application/json")
+        };
+
+        using var response = await http.SendAsync(request, token).ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new KvmException((int)response.StatusCode switch
+            {
+                (int)HttpStatusCode.Forbidden =>
+                    "The board would not accept that web-interface sign-in for pairing. Check the username and password and try again.",
+                (int)HttpStatusCode.NotFound =>
+                    "This board's agentkvmd is too old to pair (it has no /v1/pair). Update the daemon on the board, then try again.",
+                _ => $"Pairing failed: the daemon answered {(int)response.StatusCode}."
+            });
+        }
+
+        var key = JsonNode.Parse(body)?["key"]?.ToString();
+        return string.IsNullOrEmpty(key)
+            ? throw new KvmException("The daemon accepted the sign-in but returned no key.")
+            : key;
+    }
+
     /// <summary>Whether the daemon is up. Unauthenticated, so it also works before a key is set.</summary>
     public async Task<bool> HealthyAsync(CancellationToken token = default)
     {

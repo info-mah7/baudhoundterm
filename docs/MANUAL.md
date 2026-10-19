@@ -171,7 +171,8 @@ the board is. See [section 4](#kvm-tabs) for how to set one up.
 - **https**: required for anything that is not a private address, because the daemon key is the
   ability to type on the machine. The certificate is checked against this PC's trust store, so the
   board needs a real one for the name you reach it by. There is no certificate pinning.
-- **Daemon key**: the bearer key the board generated, kept encrypted on this PC.
+- **Daemon key**: the bearer key the board generated, kept encrypted on this PC. You rarely type
+  this: **Pair with portal** fetches it for you (see below).
 - **Picture from**, **Web interface username** and **Web interface password**: the board's own web
   interface, which is where the picture comes from. Blank means the same board. A single `-` means
   a board with no capture: it still types, and says so.
@@ -284,12 +285,17 @@ To set one up:
 1. Install agentkvm on the board and note the key it generates. Its README has the steps for each
    supported board.
 2. In BaudHoundTerm, **New shortcut** > **Protocol: KVM (agentkvm board)**.
-3. Fill in the board's address and the **daemon key**. Leave the port at 9200 unless you changed
-   it. Tick **https** if the board is not on a private network.
-4. Fill in the board's own web interface login, which is where the picture comes from.
+3. Fill in the board's address, the web interface username and password, and tick **https** if the
+   board is not on a private network. Leave the port at 9200 unless you changed it.
+4. Press **Pair with portal**. BHT signs in to the board's web interface with that login and
+   fetches the daemon key for you, so you never copy it by hand. The status line says when it is
+   paired.
 5. Connect.
 
-There is no discovery yet: each board is added by hand, the same as any other shortcut.
+Pairing is the whole of the setup: one login sets both the key (for the keyboard and mouse) and
+the picture. If you already have the daemon key, you can type it into **Daemon key** instead and
+skip pairing. Each board is added by hand, the same as any other shortcut; there is no discovery
+or DNS to configure.
 
 The keyboard is a **US layout**. The board sends key positions, not characters, so a machine set
 to another layout receives some characters wrong, and there is no way to read its layout through a
