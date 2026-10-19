@@ -211,6 +211,18 @@ internal sealed class KvmScreen : IScreenTarget, IDisposable
     }
 
     /// <summary>
+    /// Releases every held key and modifier. A paste types the clipboard as keystrokes, and a
+    /// Ctrl still held from the Ctrl+V that triggered it would turn every character into a Ctrl
+    /// combo, so the held set is cleared first.
+    /// </summary>
+    public async Task ClearHeldAsync(CancellationToken token)
+    {
+        _modifiers = 0;
+        _down.Clear();
+        await _hands.KeysAsync(0, _down, token);
+    }
+
+    /// <summary>
     /// A keysym pressed or released. The daemon's keyboard report replaces what is held, so the
     /// held set is kept here and sent whole each time.
     /// </summary>

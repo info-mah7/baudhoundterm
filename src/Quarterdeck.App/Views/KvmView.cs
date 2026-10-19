@@ -88,6 +88,12 @@ internal sealed class KvmView : Grid, IDisposable
         PreviewKeyDown += (s, e) => OnKey(e, true);
         PreviewKeyUp += (s, e) => OnKey(e, false);
         PreviewTextInput += OnText;
+
+        // A right-click is sent to the target (OnMouse carries the right button), so BaudHoundTerm's
+        // own tab menu must not open over it. Unlike the VNC and RDP tabs, whose hosted controls
+        // swallow the click, this tab is plain WPF, so the tab's context menu would otherwise show.
+        // The tab menu is still reachable by right-clicking the tab header.
+        ContextMenuOpening += (_, e) => e.Handled = true;
     }
 
     /// <summary>The agent's screen, once connected.</summary>
@@ -332,6 +338,22 @@ internal sealed class KvmView : Grid, IDisposable
 
         // Alt makes WPF report the key as Key.System, with the real one in SystemKey.
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
+
+        // Ctrl+V types the clipboard: a KVM has no shared clipboard, so the only way to get text
+        // from this PC onto the target is to type it through the keyboard. (Ctrl+Shift+V still
+        // passes through as a key combination, for apps that use it.) Both the press and release
+        // are swallowed so a bare "v" does not also reach the target.
+        if (key == Key.V && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            e.Handled = true;
+            if (down)
+            {
+                PasteToTarget(screen);
+            }
+
+            return;
+        }
+
         var control = Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
                       || Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)
                       || Keyboard.Modifiers.HasFlag(ModifierKeys.Windows);
@@ -343,6 +365,45 @@ internal sealed class KvmView : Grid, IDisposable
 
         e.Handled = true;
         Send(screen.KeyAsync(keysym, down, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// Pastes by typing: reads this PC's clipboard and sends it through the KVM keyboard, since
+    /// the board has no clipboard channel. A multi-line or long paste is confirmed first, because
+    /// on a desktop a line break presses Enter and can submit a form or run a command.
+    /// </summary>
+    private void PasteToTarget(KvmScreen screen)
+    {
+        string text;
+        try
+        {
+            text = Clipboard.ContainsText() ? Clipboard.GetText() : "";
+        }
+        catch (Exception)
+        {
+            _report(SessionState.Connected, "The clipboard could not be read.");
+            return;
+        }
+
+        if (text.Length == 0)
+        {
+            return;
+        }
+
+        var lines = text.Split('\n').Length;
+        if ((lines > 1 || text.Length > 200) && MessageBox.Show(Window.GetWindow(this)!,
+                $"Type {text.Length} characters ({lines} line{(lines == 1 ? "" : "s")}) into {_definition.Name} over the KVM?\n\n" +
+                "A line break presses Enter on the target.",
+                "BaudHoundTerm: paste", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        Send(Task.Run(async () =>
+        {
+            await screen.ClearHeldAsync(CancellationToken.None);
+            await Core.Agent.ScreenInput.TypeAsync(screen, text, CancellationToken.None);
+        }));
     }
 
     /// <summary>
