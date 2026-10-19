@@ -194,7 +194,7 @@ public partial class MainWindow : Window
 
             foreach (var session in members
                          .OrderBy(s => s.Protocol)
-                         .ThenBy(s => s.Port)
+                         .ThenBy(SessionPresentation.EffectivePort)
                          .ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
             {
                 // The name says nothing new when it is the group's title; the badge and target do.
@@ -316,11 +316,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        var siblings = SelectedHost?.Sessions
-                       ?? (Selected is { } one && SessionPresentation.HostKey(one) is not null
-                           ? new List<SessionDefinition> { one }
-                           : null);
-        if (siblings is null)
+        var siblings = (SelectedHost?.Sessions
+                        ?? (Selected is { } one && SessionPresentation.HostKey(one) is not null
+                            ? new List<SessionDefinition> { one }
+                            : null))
+                       ?.Where(m => m.Protocol != SessionProtocol.Kvm)   // a KVM's host is its board
+                       .ToList();
+        if (siblings is not { Count: > 0 })
         {
             return;
         }
@@ -716,6 +718,13 @@ public partial class MainWindow : Window
     /// saved session for a COM port or a local shell.</summary>
     private static bool SameTarget(SessionDefinition a, SessionDefinition b)
     {
+        // A KVM's host is the board, not the machine it drives: a KVM tab and an SSH tab to the
+        // board's address show two different machines, so they do not share a colour.
+        if ((a.Protocol == SessionProtocol.Kvm) != (b.Protocol == SessionProtocol.Kvm))
+        {
+            return false;
+        }
+
         var ka = SessionPresentation.HostKey(a);
         return ka is not null ? ka == SessionPresentation.HostKey(b) : a.Id == b.Id;
     }
@@ -853,7 +862,8 @@ public partial class MainWindow : Window
         {
             SessionProtocol.Serial => string.Equals(a.SerialPort, b.SerialPort, StringComparison.OrdinalIgnoreCase),
             SessionProtocol.LocalShell => false,
-            _ => SessionPresentation.HostKey(a) is { } k && k == SessionPresentation.HostKey(b) && a.Port == b.Port
+            _ => SessionPresentation.HostKey(a) is { } k && k == SessionPresentation.HostKey(b)
+                 && SessionPresentation.EffectivePort(a) == SessionPresentation.EffectivePort(b)
         };
 
     private TreeViewItem WithLiveRows(TreeViewItem row, SessionDefinition session, HashSet<LiveTab> placed)
@@ -1456,7 +1466,9 @@ public partial class MainWindow : Window
                 menu.Items.Add(new Separator());
                 menu.Items.Add(Item("_Properties...", () => OnEdit(this, none)));
                 menu.Items.Add(Item("_Move to folder...", () => OnMoveToFolder(this, none)));
-                if (SessionPresentation.HostKey(session) is not null)
+                // Not on a KVM: its host is the board, so "another protocol for this host" would
+                // point at the board rather than the machine behind it.
+                if (session.Protocol != SessionProtocol.Kvm && SessionPresentation.HostKey(session) is not null)
                 {
                     menu.Items.Add(AddProtocolMenu());
                 }
@@ -1467,7 +1479,7 @@ public partial class MainWindow : Window
 
             case HostNode host:
                 var connect = new MenuItem { Header = "_Connect" };
-                foreach (var session in host.Sessions.OrderBy(s => s.Protocol).ThenBy(s => s.Port))
+                foreach (var session in host.Sessions.OrderBy(s => s.Protocol).ThenBy(SessionPresentation.EffectivePort))
                 {
                     var (badge, _) = SessionPresentation.Badge(session);
                     var target = session;
@@ -1476,7 +1488,10 @@ public partial class MainWindow : Window
                 }
 
                 menu.Items.Add(connect);
-                menu.Items.Add(AddProtocolMenu());
+                if (host.Sessions.Any(m => m.Protocol != SessionProtocol.Kvm))
+                {
+                    menu.Items.Add(AddProtocolMenu());
+                }
                 break;
 
             case FolderNode folder:
