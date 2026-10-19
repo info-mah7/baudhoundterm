@@ -543,15 +543,18 @@ public partial class MainWindow : Window
 
     private void OnEdit(object sender, RoutedEventArgs e)
     {
-        if (Selected is null)
+        // Capture the selection once: Selected is recomputed from the tree on every read, and a
+        // tab reconnecting or retitling while the editor is open rebuilds the tree and clears the
+        // selection, so reading it again after the dialog returned null and crashed RefreshOpenTabsOf.
+        if (Selected is not { } definition)
         {
             return;
         }
 
-        var editor = new SessionEditorWindow(Selected, _vault) { Owner = this };
+        var editor = new SessionEditorWindow(definition, _vault) { Owner = this };
         if (editor.ShowDialog() == true)
         {
-            RefreshOpenTabsOf(Selected);
+            RefreshOpenTabsOf(definition);
             Save();
         }
     }
@@ -563,7 +566,12 @@ public partial class MainWindow : Window
     /// </summary>
     private void RefreshOpenTabsOf(SessionDefinition definition)
     {
-        foreach (var live in _live.Where(l => ReferenceEquals(l.Definition, definition) || l.Definition.Id == definition.Id))
+        if (definition is null)
+        {
+            return;
+        }
+
+        foreach (var live in _live.Where(l => l.Definition is { } d && (ReferenceEquals(d, definition) || d.Id == definition.Id)))
         {
             live.Title = definition.Name;
             if (definition.TabColor.Length > 0)
@@ -578,13 +586,16 @@ public partial class MainWindow : Window
 
     private void OnDelete(object sender, RoutedEventArgs e)
     {
-        if (Selected is null)
+        // Captured once: the selection can be cleared while the confirm dialog is open (a tab
+        // state change rebuilds the tree), so reading Selected again afterwards could be null or
+        // a different shortcut.
+        if (Selected is not { } session)
         {
             return;
         }
 
         var answer = MessageBox.Show(
-            this, $"Delete the shortcut \"{Selected.Name}\"? Open tabs from it stay open.", "BaudHoundTerm",
+            this, $"Delete the shortcut \"{session.Name}\"? Open tabs from it stay open.", "BaudHoundTerm",
             MessageBoxButton.YesNo, MessageBoxImage.Question);
 
         if (answer != MessageBoxResult.Yes)
@@ -592,8 +603,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        _vault.Remove(Selected.Id);
-        _sessions.Remove(Selected);
+        _vault.Remove(session.Id);
+        _sessions.Remove(session);
         Save();
     }
 
