@@ -5,7 +5,7 @@ an encrypted credential store, session logging, scripted logins, auto-reconnect,
 transfer, and an AI agent that can work in any tab. SSH, telnet, serial, local shells, VNC,
 RDP, SQL databases, cameras and KVM boards. One self-contained executable, no runtime to install.
 
-![BaudHoundTerm: the session tree on the left, a KVM tab driving a browser in the middle, and the AI agent panel working on the right](docs/screenshot.png)
+![BaudHoundTerm: the session tree on the left, a KVM tab driving a browser in the middle, and the AI agent panel working on the right](docs/overview.png)
 
 It is also the desktop console for [BaudHound](https://github.com/info-mah7/BaudHound),
 the pocket ESP32-S3 wireless serial tap: BaudHound puts a UART on the network over ssl, and
