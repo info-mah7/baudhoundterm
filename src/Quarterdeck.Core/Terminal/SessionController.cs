@@ -15,6 +15,19 @@ public enum SessionState
     Failed
 }
 
+/// <summary>Whether this session's shell is running inside tmux on the host.</summary>
+public enum TmuxState
+{
+    /// <summary>Not asked for, or not an SSH session.</summary>
+    Off,
+
+    /// <summary>The shell is in a tmux session that is still there: closing the tab leaves it running.</summary>
+    Live,
+
+    /// <summary>Asked for, but the host has no tmux or no longer has that session.</summary>
+    Missing
+}
+
 public sealed class SessionStateEventArgs(SessionState state, string? message) : EventArgs
 {
     public SessionState State { get; } = state;
@@ -66,6 +79,12 @@ public sealed class SessionController : IAsyncDisposable
 
     public event EventHandler<TerminalDataEventArgs>? DataReceived;
     public event EventHandler<SessionStateEventArgs>? StateChanged;
+
+    /// <summary>The marker changed: the shell entered tmux, or the session turned out not to be there.</summary>
+    public event EventHandler? TmuxChanged;
+
+    /// <summary>Whether this shell is inside tmux, which is what makes closing the tab harmless.</summary>
+    public TmuxState Tmux { get; private set; }
 
     public async Task ConnectAsync()
     {
@@ -136,6 +155,24 @@ public sealed class SessionController : IAsyncDisposable
             if (Definition is { Protocol: SessionProtocol.Ssh, Tmux: true })
             {
                 await _transport.WriteAsync(TmuxCommand(Definition.TmuxSession), token).ConfigureAwait(false);
+
+                // Asked for is not the same as running: a host without tmux keeps a plain shell,
+                // and the marker must say which of the two this is. The answer comes from the
+                // host, on a channel of its own, so nothing is guessed from the terminal's text.
+                _ = Task.Run(async () =>
+                {
+                    // A slow login shell can still be on its way to tmux, so a first "not there"
+                    // is asked again before the marker settles on it.
+                    foreach (var wait in (int[])[1200, 3000, 6000])
+                    {
+                        await Task.Delay(wait, token).ConfigureAwait(false);
+                        await RefreshTmuxAsync(token).ConfigureAwait(false);
+                        if (Tmux != TmuxState.Missing)
+                        {
+                            return;
+                        }
+                    }
+                }, token);
             }
         }
         catch (OperationCanceledException)
@@ -172,15 +209,16 @@ public sealed class SessionController : IAsyncDisposable
     /// </summary>
     internal static string TmuxCommand(string session)
     {
-        // tmux rejects '.' and ':' in names, and a safe name needs no quoting in any shell.
-        var name = new string(session.Where(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_').ToArray());
-        if (name.Length == 0)
-        {
-            name = "bht";
-        }
-
+        var name = TmuxName(session);
         return $" command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s {name}"
             + " || echo '[baudhoundterm] tmux not found on this host: plain shell, not kept on disconnect'\r";
+    }
+
+    /// <summary>tmux rejects '.' and ':' in names, and a safe name needs no quoting in any shell.</summary>
+    public static string TmuxName(string session)
+    {
+        var name = new string(session.Where(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_').ToArray());
+        return name.Length == 0 ? "bht" : name;
     }
 
     /// <summary>
@@ -303,6 +341,85 @@ public sealed class SessionController : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Asks the host whether the tmux session is there, on a second channel of the connection
+    /// that is already open: no new login, and no dependence on what the terminal is showing.
+    /// </summary>
+    public async Task RefreshTmuxAsync(CancellationToken token = default)
+    {
+        var was = Tmux;
+        if (Definition is not { Protocol: SessionProtocol.Ssh, Tmux: true })
+        {
+            Tmux = TmuxState.Off;
+        }
+        else
+        {
+            Tmux = await HasTmuxSessionAsync(token).ConfigureAwait(false) ? TmuxState.Live : TmuxState.Missing;
+        }
+
+        if (Tmux != was)
+        {
+            TmuxChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private async Task<bool> HasTmuxSessionAsync(CancellationToken token)
+    {
+        if (Ssh?.Client is not { IsConnected: true } client)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var command = client.CreateCommand($"tmux has-session -t {TmuxName(Definition.TmuxSession)}");
+            command.CommandTimeout = TimeSpan.FromSeconds(10);
+            await Task.Run(() => command.Execute(), token).ConfigureAwait(false);
+            return command.ExitStatus == 0;
+        }
+        catch (Exception ex) when (ex is Renci.SshNet.Common.SshException or ObjectDisposedException or InvalidOperationException or OperationCanceledException)
+        {
+            // The host answered nothing useful; "not there" is the safe reading, and the marker
+            // simply does not claim a session is being kept.
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Ends the tmux session on the host, with everything running in it. Sent on its own channel,
+    /// so it works whatever the terminal is showing: a full-screen editor would have swallowed a
+    /// typed command. The shell's channel then ends by itself, because tmux was its exec.
+    /// </summary>
+    /// <returns>Null when it is gone, or why it is not.</returns>
+    public async Task<string?> EndTmuxAsync(CancellationToken token = default)
+    {
+        if (Ssh?.Client is not { IsConnected: true } client)
+        {
+            return "This session has no live SSH connection.";
+        }
+
+        var name = TmuxName(Definition.TmuxSession);
+        try
+        {
+            using var command = client.CreateCommand($"tmux kill-session -t {name}");
+            command.CommandTimeout = TimeSpan.FromSeconds(15);
+            await Task.Run(() => command.Execute(), token).ConfigureAwait(false);
+            if (command.ExitStatus != 0)
+            {
+                var why = (command.Error.Length > 0 ? command.Error : command.Result).Trim();
+                return why.Length > 0 ? why : $"tmux refused to end {name} (exit {command.ExitStatus}).";
+            }
+        }
+        catch (Exception ex) when (ex is Renci.SshNet.Common.SshException or ObjectDisposedException or InvalidOperationException)
+        {
+            return ex.Message;
+        }
+
+        Emit($"\r\n[baudhoundterm] tmux session {name} ended on the host.\r\n");
+        await RefreshTmuxAsync(token).ConfigureAwait(false);
+        return null;
+    }
+
     public Task WriteAsync(string text) =>
         _transport?.WriteAsync(text) ?? Task.CompletedTask;
 
@@ -330,6 +447,12 @@ public sealed class SessionController : IAsyncDisposable
 
         var transport = _transport;
         _transport = null;
+        if (Tmux != TmuxState.Off)
+        {
+            Tmux = TmuxState.Off;
+            TmuxChanged?.Invoke(this, EventArgs.Empty);
+        }
+
         _expect?.Detach();
         _expect = null;
         transport.DataReceived -= OnTransportData;

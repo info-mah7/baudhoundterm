@@ -822,6 +822,13 @@ public partial class TerminalView : UserControl, ITerminalTarget
             Transcript.Append(e.Text);   // the agent's view of the screen, kept off the UI thread
             Buffer(e.Text);
         };
+        controller.TmuxChanged += (_, _) => Dispatcher.BeginInvoke(() =>
+        {
+            if (ReferenceEquals(controller, _controller))
+            {
+                TmuxChanged?.Invoke(this, EventArgs.Empty);
+            }
+        });
         controller.StateChanged += (_, e) => Dispatcher.BeginInvoke(() =>
         {
             // A disposed controller still reports its "Disconnected" a beat later; after a
@@ -1215,6 +1222,18 @@ public partial class TerminalView : UserControl, ITerminalTarget
     public bool IsAgentAttached => _agent is not null;
 
     public event EventHandler? AgentAttachedChanged;
+
+    /// <summary>The tmux marker changed: the shell entered tmux, or the session went away.</summary>
+    public event EventHandler? TmuxChanged;
+
+    /// <summary>Whether this tab's shell is kept in tmux on the host.</summary>
+    public TmuxState Tmux => _controller?.Tmux ?? TmuxState.Off;
+
+    /// <summary>
+    /// Ends the tmux session on the host, with whatever is running in it. The connection ends
+    /// with it, because tmux was the shell.
+    /// </summary>
+    public Task<string?> EndTmuxAsync() => _controller?.EndTmuxAsync() ?? Task.FromResult<string?>("This tab has no session.");
 
     /// <summary>
     /// Terminals get the text agent, VNC and RDP the screen agent (TerminalView.Screen.cs). A
