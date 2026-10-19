@@ -165,6 +165,26 @@ public partial class SessionEditorWindow : Window
         RdpPanel.Visibility = protocol == SessionProtocol.Rdp ? Visibility.Visible : Visibility.Collapsed;
         SqlPanel.Visibility = protocol == SessionProtocol.Sql ? Visibility.Visible : Visibility.Collapsed;
         KvmPanel.Visibility = protocol == SessionProtocol.Kvm ? Visibility.Visible : Visibility.Collapsed;
+
+        // Only the tabs that mean something for this protocol. Commands, Logging, Auto-login,
+        // Highlight and Reconnect are all about a terminal's text stream, which only ssh, serial,
+        // telnet and local shells have. A desktop, camera or database keeps just Connection and
+        // the tab colour; its terminal appearance (font, theme, scrollback) is hidden too.
+        var terminal = protocol is SessionProtocol.Ssh or SessionProtocol.Serial
+                               or SessionProtocol.Telnet or SessionProtocol.LocalShell;
+
+        TerminalAppearancePanel.Visibility = terminal ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var tab in new[] { CommandsTab, LoggingTab, AutoLoginTab, HighlightTab, ReconnectTab })
+        {
+            tab.Visibility = terminal ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        // If the tab now hidden was the one on screen, fall back to Connection so the dialog does
+        // not show a blank body.
+        if (EditorTabs.SelectedItem is TabItem { Visibility: Visibility.Collapsed })
+        {
+            EditorTabs.SelectedIndex = 0;
+        }
     }
 
     private bool _loadingSql;
