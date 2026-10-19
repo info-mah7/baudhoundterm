@@ -166,6 +166,33 @@ internal static class SessionPresentation
         };
     }
 
+    /// <summary>
+    /// The "set up to use tmux" mark for a saved SSH shortcut, or null. Muted, because it says
+    /// how the shortcut is configured, not that a session is running (that is the live tab's
+    /// green chip); it answers "will this one survive a dropped link" at a glance in the list.
+    /// </summary>
+    public static Border? ConfiguredTmuxChip(SessionDefinition s)
+    {
+        if (!(s.Protocol == SessionProtocol.Ssh && s.Tmux))
+        {
+            return null;
+        }
+
+        var colour = Color.FromRgb(0x7F, 0x9A, 0x7B);   // a muted green: configured, not live
+        return new Border
+        {
+            CornerRadius = new CornerRadius(3),
+            Background = Freeze(new SolidColorBrush(Color.FromArgb(0x22, colour.R, colour.G, colour.B))),
+            BorderBrush = Freeze(new SolidColorBrush(colour)),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(4, 0, 4, 0),
+            Margin = new Thickness(6, 1, 0, 1),
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = $"Runs in tmux ({Quarterdeck.Core.Terminal.SessionController.TmuxName(s.TmuxSession)}): a dropped link leaves the shell running on the host, and reconnecting attaches to it.",
+            Child = new TextBlock { Text = "tmux", FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = Freeze(new SolidColorBrush(colour)) }
+        };
+    }
+
     /// <summary>A list row: badge, then the name (if it says anything), then the target, dimmed.</summary>
     public static StackPanel Row(SessionDefinition s, string? name, bool hostShown)
     {
@@ -177,7 +204,15 @@ internal static class SessionPresentation
             panel.Children.Add(new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center });
         }
 
+        // The tmux mark is a chip, so its text comes out of the dimmed target line here (Target
+        // itself keeps it, for the filter and the agent's description of the session).
         var target = Target(s, hostShown);
+        var mark = target.IndexOf("  · tmux ", StringComparison.Ordinal);
+        if (mark >= 0)
+        {
+            target = target[..mark];
+        }
+
         if (target.Length > 0)
         {
             panel.Children.Add(new TextBlock
@@ -187,6 +222,11 @@ internal static class SessionPresentation
                 Margin = new Thickness(string.IsNullOrWhiteSpace(name) ? 0 : 8, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center
             });
+        }
+
+        if (ConfiguredTmuxChip(s) is { } chip)
+        {
+            panel.Children.Add(chip);
         }
 
         return panel;
