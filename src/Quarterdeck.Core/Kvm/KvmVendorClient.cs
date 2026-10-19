@@ -33,6 +33,9 @@ public sealed class KvmVendorClient : IDisposable
 
     public string BaseUrl { get; }
 
+    /// <summary>The session token from the last sign-in, empty before one. Used to pair the daemon.</summary>
+    public string Token => _token;
+
     /// <summary>
     /// Signs in and keeps the token. The page encrypts the password with a passphrase built into
     /// its own JavaScript before posting it, so a plain one is refused however correct it is.

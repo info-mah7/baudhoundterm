@@ -4,9 +4,12 @@ using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using Quarterdeck.Core.Model;
+using Quarterdeck.Core.Kvm;
 using Quarterdeck.Core.Security;
 using Quarterdeck.Core.Security.KeePassXc;
 using System.IO;
+using System.Net.Http;
+using System.Windows.Media;
 
 namespace Quarterdeck.App.Views;
 
@@ -485,6 +488,87 @@ public partial class SessionEditorWindow : Window
 
     private static double ParseDouble(string text, double fallback) =>
         double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : fallback;
+
+    /// <summary>
+    /// Pairs with the board: signs in to its web interface with the login in the panel, trades
+    /// that session for the daemon key, and saves it. One login instead of copying the key by
+    /// hand; the picture's password is saved at the same time, since it is the same login.
+    /// </summary>
+    private async void OnKvmPair(object sender, RoutedEventArgs e)
+    {
+        var host = KvmHostBox.Text.Trim();
+        if (host.Length == 0)
+        {
+            PairStatus("Enter the KVM board address first.", false);
+            return;
+        }
+
+        var scheme = KvmTlsBox.IsChecked == true ? "https" : "http";
+        var daemon = $"{scheme}://{host}:{ParseInt(KvmPortBox.Text, 9200)}";
+        if (KvmClient.Refuse(daemon) is { } why)
+        {
+            PairStatus(why, false);
+            return;
+        }
+
+        var video = KvmVideoUrlBox.Text.Trim();
+        video = video.Length > 0 && video != "-" ? video : $"{scheme}://{host}";
+        var user = KvmVideoUserBox.Text.Trim().Length > 0 ? KvmVideoUserBox.Text.Trim() : "admin";
+
+        // The web interface password: the box, or the saved one, or asked. Whatever is used for
+        // pairing is also what the picture needs, so it is saved too.
+        var password = KvmVideoSecretBox.Password;
+        var fromBox = password.Length > 0;
+        if (password.Length == 0)
+        {
+            password = _vault.Get(Definition.Id) ?? "";
+        }
+
+        if (password.Length == 0)
+        {
+            var dialog = new SecretPromptWindow($"{user} on {host}", "web interface password") { Owner = this };
+            if (dialog.ShowDialog() != true || dialog.Secret.Length == 0)
+            {
+                PairStatus("Pairing needs the web interface password.", false);
+                return;
+            }
+
+            password = dialog.Secret;
+        }
+
+        KvmPairButton.IsEnabled = false;
+        PairStatus("Signing in to the board and fetching the key...", true);
+        try
+        {
+            using var vendor = new KvmVendorClient(video, user, password);
+            await vendor.SignInAsync();
+            var key = await KvmClient.PairAsync(daemon, vendor.Token);
+
+            _vault.Set(Definition.Id, key, "kvmkey");
+            // Save the web password used, so the picture works later without asking again.
+            if (fromBox || _vault.Get(Definition.Id) is null or "")
+            {
+                _vault.Set(Definition.Id, password);
+            }
+
+            KvmKeyBox.Clear();   // the key is in the vault now; nothing to type
+            PairStatus("Paired. The daemon key is set and saved on this PC.", true);
+        }
+        catch (Exception ex) when (ex is KvmException or HttpRequestException or IOException)
+        {
+            PairStatus(ex.Message, false);
+        }
+        finally
+        {
+            KvmPairButton.IsEnabled = true;
+        }
+    }
+
+    private void PairStatus(string text, bool ok)
+    {
+        KvmPairStatus.Text = text;
+        KvmPairStatus.Foreground = new SolidColorBrush(ok ? Color.FromRgb(0x98, 0xC3, 0x79) : Color.FromRgb(0xE0, 0x6C, 0x75));
+    }
 
     private void OnSave(object sender, RoutedEventArgs e)
     {

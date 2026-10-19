@@ -249,7 +249,12 @@
               <TextBox x:Name="KvmVideoUserBox"/>
               <TextBlock Text="Web interface password (encrypted on this PC; blank keeps the existing one, none saved means ask)"/>
               <PasswordBox x:Name="KvmVideoSecretBox" Padding="3"/>
-              <TextBlock Text="The board types on the target over USB and watches its HDMI output, so nothing is installed on the target and it need not be on the network. The keyboard is a US layout: a target set to another one receives some characters wrong."
+              <DockPanel Margin="0,8,0,0">
+                <Button x:Name="KvmPairButton" DockPanel.Dock="Left" Content="Pair with portal" Padding="10,3" Click="OnKvmPair"
+                        ToolTip="Signs in to the board's web interface with the username and password above and fetches the daemon key for you, so you never copy it by hand."/>
+                <TextBlock x:Name="KvmPairStatus" VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="Wrap" Foreground="#8B94A7"/>
+              </DockPanel>
+              <TextBlock Text="Pairing fills in the daemon key automatically: enter the address and the web interface login above, then Pair. The board types on the target over USB and watches its HDMI output, so nothing is installed on the target and it need not be on the network. The keyboard is a US layout: a target set to another one receives some characters wrong."
                          Foreground="#5C6370" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel>
 
