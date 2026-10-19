@@ -43,9 +43,10 @@ public sealed class AgentSkill
     /// </summary>
     public bool Restricted { get; init; }
 
-    /// <summary>A desktop skill ("vnc") is for any remote desktop, RDP included.</summary>
+    /// <summary>A desktop skill ("vnc") is for any remote desktop: RDP and a KVM too.</summary>
     public bool AppliesTo(SessionProtocol protocol) =>
-        !Restricted || Protocols.Contains(protocol) || protocol == SessionProtocol.Rdp && Protocols.Contains(SessionProtocol.Vnc);
+        !Restricted || Protocols.Contains(protocol)
+        || (protocol is SessionProtocol.Rdp or SessionProtocol.Kvm) && Protocols.Contains(SessionProtocol.Vnc);
 }
 
 public static class SkillLibrary
@@ -136,7 +137,7 @@ public static class SkillLibrary
 
         if (group.Length == 0)
         {
-            group = protocols.Contains(SessionProtocol.Vnc) || protocols.Contains(SessionProtocol.Rdp) ? "Desktop"
+            group = protocols.Contains(SessionProtocol.Vnc) || protocols.Contains(SessionProtocol.Rdp) || protocols.Contains(SessionProtocol.Kvm) ? "Desktop"
                 : restricted ? "Terminal"
                 : "General";
         }
@@ -156,6 +157,7 @@ public static class SkillLibrary
         "telnet" => SessionProtocol.Telnet,
         "vnc" or "desktop" => SessionProtocol.Vnc,
         "rdp" => SessionProtocol.Rdp,
+        "kvm" => SessionProtocol.Kvm,
         _ => null
     };
 
