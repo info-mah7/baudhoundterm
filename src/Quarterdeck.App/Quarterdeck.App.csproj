@@ -31,6 +31,19 @@
     <DebugType>none</DebugType>
   </PropertyGroup>
 
+  <!--
+    Native libraries go in a "dll" folder beside the exe instead of loose around it, so an
+    install reads as the program and its three folders. Windows does not look there on its own:
+    NativeLibraries.cs adds it to the search path before Main. WebView2Loader keeps its second
+    copy under runtimes\win-x64\native, which is where the WebView2 loader looks by itself.
+  -->
+  <Target Name="NativeLibrariesIntoDllFolder" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Condition="'%(ResolvedFileToPublish.AssetType)' == 'native'"
+                             RelativePath="dll\%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)" />
+    </ItemGroup>
+  </Target>
+
   <!-- Keep WinForms and GDI+ names out of every file: they clash with WPF's (Button, Color, Brush...). -->
   <ItemGroup>
     <Using Remove="System.Windows.Forms" />
