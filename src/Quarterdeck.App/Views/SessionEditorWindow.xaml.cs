@@ -109,6 +109,11 @@ public partial class SessionEditorWindow : Window
         RdpClipboardBox.IsChecked = d.RdpClipboard;
         RdpDrivesBox.IsChecked = d.RdpDrives;
         RdpAdminBox.IsChecked = d.RdpAdmin;
+        KvmHostBox.Text = d.Host;
+        KvmPortBox.Text = (d.KvmPort > 0 ? d.KvmPort : 9200).ToString(CultureInfo.InvariantCulture);
+        KvmTlsBox.IsChecked = d.KvmTls;
+        KvmVideoUrlBox.Text = d.KvmVideoUrl;
+        KvmVideoUserBox.Text = d.KvmVideoUser;
         RtspPathBox.Text = d.RtspPath;
         RtspUserBox.Text = d.Username;
         RtspTcpBox.IsChecked = d.RtspTcp;
@@ -156,6 +161,7 @@ public partial class SessionEditorWindow : Window
         RtspPanel.Visibility = protocol == SessionProtocol.Rtsp ? Visibility.Visible : Visibility.Collapsed;
         RdpPanel.Visibility = protocol == SessionProtocol.Rdp ? Visibility.Visible : Visibility.Collapsed;
         SqlPanel.Visibility = protocol == SessionProtocol.Sql ? Visibility.Visible : Visibility.Collapsed;
+        KvmPanel.Visibility = protocol == SessionProtocol.Kvm ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private bool _loadingSql;
@@ -494,6 +500,7 @@ public partial class SessionEditorWindow : Window
             SessionProtocol.Vnc => VncHostBox.Text,
             SessionProtocol.Rtsp => RtspHostBox.Text,
             SessionProtocol.Rdp => RdpHostBox.Text,
+            SessionProtocol.Kvm => KvmHostBox.Text,
             SessionProtocol.Sql => (SqlEngine)Math.Max(0, SqlEngineBox.SelectedIndex) == SqlEngine.Sqlite
                 ? System.IO.Path.GetFileNameWithoutExtension(SqlFileBox.Text)
                 : SqlHostBox.Text,
@@ -585,6 +592,27 @@ public partial class SessionEditorWindow : Window
             if (!string.IsNullOrEmpty(RdpSecretBox.Password))
             {
                 _vault.Set(d.Id, RdpSecretBox.Password);
+            }
+        }
+
+        if (d.Protocol == SessionProtocol.Kvm)
+        {
+            d.Host = KvmHostBox.Text.Trim();
+            d.KvmPort = ParseInt(KvmPortBox.Text, 9200);
+            d.KvmTls = KvmTlsBox.IsChecked == true;
+            d.KvmVideoUrl = KvmVideoUrlBox.Text.Trim();
+            d.KvmVideoUser = KvmVideoUserBox.Text.Trim();
+
+            // Two secrets on one board: the daemon's bearer key, and the web interface's own
+            // password for the picture. The second is the session's "password", as elsewhere.
+            if (!string.IsNullOrEmpty(KvmKeyBox.Password))
+            {
+                _vault.Set(d.Id, KvmKeyBox.Password, "kvmkey");
+            }
+
+            if (!string.IsNullOrEmpty(KvmVideoSecretBox.Password))
+            {
+                _vault.Set(d.Id, KvmVideoSecretBox.Password);
             }
         }
 
