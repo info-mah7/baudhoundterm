@@ -22,6 +22,7 @@ internal static class SessionPresentation
         SessionProtocol.Sql => ("SQL", Color.FromRgb(0xD1, 0x9A, 0x66)),
         SessionProtocol.Telnet => ("TEL", Color.FromRgb(0xE5, 0xC0, 0x7B)),
         SessionProtocol.Serial => ("COM", Color.FromRgb(0x98, 0xC3, 0x79)),
+        SessionProtocol.Kvm => ("KVM", Color.FromRgb(0xB4, 0x8E, 0xAD)),
         _ => (ShellBadge(s.ShellCommand), Color.FromRgb(0x56, 0xB6, 0xC2))
     };
 
@@ -57,6 +58,7 @@ internal static class SessionPresentation
                 : (string.IsNullOrEmpty(s.Username) || s.SqlWindowsAuth ? "" : s.Username + "@") + host
                   + PortSuffix(s.Port, Quarterdeck.Core.Sql.SqlSession.DefaultPort(s.SqlEngine), hostShown)
                   + (s.SqlDatabase.Length > 0 ? "/" + s.SqlDatabase : ""),
+            SessionProtocol.Kvm => host + PortSuffix(s.KvmPort, 9200, hostShown),
             SessionProtocol.Rdp =>
                 (string.IsNullOrEmpty(s.Username) ? "" : s.Username + "@") + host + PortSuffix(s.Port, 3389, hostShown)
                 + (s.RdpGateway.Length > 0 ? "  · via " + s.RdpGateway : ""),

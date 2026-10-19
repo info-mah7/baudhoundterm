@@ -45,6 +45,7 @@
               <ComboBoxItem Content="RTSP camera"/>
               <ComboBoxItem Content="RDP (Windows Remote Desktop)"/>
               <ComboBoxItem Content="SQL database"/>
+              <ComboBoxItem Content="KVM (agentkvm board)"/>
             </ComboBox>
 
             <StackPanel x:Name="SshPanel">
@@ -231,6 +232,24 @@
               <CheckBox x:Name="SqlReadOnlyBox" Content="Read-only: refuse anything that changes data"/>
               <CheckBox x:Name="SqlConfirmBox" Content="Ask before statements that change data or structure"/>
               <TextBlock Text="Read-only is enforced by PostgreSQL, MySQL and SQLite; for SQL Server the app refuses such statements itself."
+                         Foreground="#5C6370" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <StackPanel x:Name="KvmPanel" Visibility="Collapsed">
+              <TextBlock Text="KVM board address (the board, not the machine it is plugged into)"/>
+              <TextBox x:Name="KvmHostBox"/>
+              <TextBlock Text="Daemon port (agentkvmd)"/>
+              <TextBox x:Name="KvmPortBox"/>
+              <CheckBox x:Name="KvmTlsBox" Content="https (needed for anything but a private network)"/>
+              <TextBlock Text="Daemon key (encrypted on this PC; blank keeps the existing one, none saved means ask)"/>
+              <PasswordBox x:Name="KvmKeyBox" Padding="3"/>
+              <TextBlock Text="Picture from (blank: the same board's web interface; a single - for no picture)"/>
+              <TextBox x:Name="KvmVideoUrlBox"/>
+              <TextBlock Text="Web interface username"/>
+              <TextBox x:Name="KvmVideoUserBox"/>
+              <TextBlock Text="Web interface password (encrypted on this PC; blank keeps the existing one, none saved means ask)"/>
+              <PasswordBox x:Name="KvmVideoSecretBox" Padding="3"/>
+              <TextBlock Text="The board types on the target over USB and watches its HDMI output, so nothing is installed on the target and it need not be on the network. The keyboard is a US layout: a target set to another one receives some characters wrong."
                          Foreground="#5C6370" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel>
 

@@ -63,6 +63,8 @@ public partial class TerminalView : UserControl, ITerminalTarget
     private readonly TaskCompletionSource _rdpReady = new();
     private SqlView? _sql;
     private readonly TaskCompletionSource _sqlReady = new();
+    private KvmView? _kvm;
+    private readonly TaskCompletionSource _kvmReady = new();
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -93,6 +95,20 @@ public partial class TerminalView : UserControl, ITerminalTarget
             }, PromptForSecret);
             ((Grid)Web.Parent).Children.Add(_rdp);
             _rdpReady.TrySetResult();
+            return;
+        }
+
+        if (Definition.Protocol == SessionProtocol.Kvm)
+        {
+            // A KVM draws a picture from the board's capture; no web page, no pty.
+            Web.Visibility = Visibility.Collapsed;
+            _kvm = new KvmView(Definition, _vault, (state, message) =>
+            {
+                StatusText.Text = message ?? state.ToString();
+                RaiseState(state, message);
+            }, PromptForSecret);
+            ((Grid)Web.Parent).Children.Add(_kvm);
+            _kvmReady.TrySetResult();
             return;
         }
 
@@ -785,6 +801,13 @@ public partial class TerminalView : UserControl, ITerminalTarget
             return;
         }
 
+        if (Definition.Protocol == SessionProtocol.Kvm)
+        {
+            await _kvmReady.Task;
+            await _kvm!.ConnectAsync();
+            return;
+        }
+
         // A VNC session is driven entirely by the page: the bridge starts once the document
         // is loaded, so there is no controller and no pty to build here.
         if (Definition.Protocol == SessionProtocol.Vnc)
@@ -958,6 +981,12 @@ public partial class TerminalView : UserControl, ITerminalTarget
         if (_sql is not null)
         {
             await _sql.DisconnectAsync();
+            return;
+        }
+
+        if (_kvm is not null)
+        {
+            await _kvm.DisconnectAsync();
             return;
         }
 
@@ -1250,6 +1279,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         ((object?)_camera as IDisposable)?.Dispose();
         _rdp?.Dispose();
         _sql?.Dispose();
+        _kvm?.Dispose();
     }
 
     /// <summary>The same tab, connected again: scrollback stays, the session starts over.</summary>
@@ -1293,7 +1323,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
         RaiseState(SessionState.Connecting, null);
 
-        if (Definition.Protocol is SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Sql)
+        if (Definition.Protocol is SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Sql or SessionProtocol.Kvm)
         {
             await ConnectAsync();
             return;
