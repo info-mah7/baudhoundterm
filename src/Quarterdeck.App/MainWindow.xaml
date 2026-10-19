@@ -44,6 +44,10 @@
         <MenuItem Header="(no tab)" IsEnabled="False"/>
       </MenuItem>
       <MenuItem Header="_Help">
+        <MenuItem Header="_Getting started" Click="OnGettingStarted"/>
+        <MenuItem Header="_User manual" Click="OnManual"/>
+        <MenuItem Header="_Report a problem" Click="OnReportProblem"/>
+        <Separator/>
         <MenuItem Header="_Open log folder" Click="OnOpenLogs"/>
         <MenuItem Header="_About" Click="OnAbout"/>
       </MenuItem>

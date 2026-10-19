@@ -2127,6 +2127,28 @@ public partial class MainWindow : Window
         }
     }
 
+    private const string DocsBase = "https://github.com/info-mah7/baudhoundterm/blob/main/docs/";
+
+    private void OnGettingStarted(object sender, RoutedEventArgs e) => OpenInBrowser(DocsBase + "HELP.md");
+
+    private void OnManual(object sender, RoutedEventArgs e) => OpenInBrowser(DocsBase + "MANUAL.md");
+
+    private void OnReportProblem(object sender, RoutedEventArgs e) =>
+        OpenInBrowser("https://github.com/info-mah7/baudhoundterm/issues");
+
+    /// <summary>Opens a documentation or repository link in the user's own browser.</summary>
+    private void OpenInBrowser(string url)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            MessageBox.Show(this, $"The page could not be opened: {ex.Message}\n\n{url}", "BaudHoundTerm");
+        }
+    }
+
     private void OnAbout(object sender, RoutedEventArgs e) =>
         MessageBox.Show(this,
             $"BaudHoundTerm {Version}\n" +
