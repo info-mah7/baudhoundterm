@@ -3,7 +3,7 @@
 Agentic, multi-protocol terminal and session manager for Windows 11: saved sessions in folders,
 an encrypted credential store, session logging, scripted logins, auto-reconnect, SFTP/SCP
 transfer, and an AI agent that can work in any tab. SSH, telnet, serial, local shells, VNC,
-RDP, SQL databases and cameras. One self-contained executable, no runtime to install.
+RDP, SQL databases, cameras and KVM boards. One self-contained executable, no runtime to install.
 
 It is also the desktop console for [BaudHound](https://github.com/info-mah7/BaudHound),
 the pocket ESP32-S3 wireless serial tap: BaudHound puts a UART on the network over ssl, and
@@ -44,6 +44,12 @@ The [manual](docs/MANUAL.md) explains how to use it.
   admin-session options.
 - **SQL query tabs** for SQL Server, PostgreSQL, MySQL/MariaDB and SQLite, with a read-only mode
   and a prompt before statements that change data.
+- **KVM boards** running [agentkvm](https://github.com/info-mah7/agentkvm): the board types on the
+  machine over USB and shows its HDMI output, so nothing is installed on the target and it need not
+  be on the network. **Pair with portal** signs in to the board's web interface and fetches its
+  key for you, so no 64-character key is copied by hand. The agent drives it like a VNC or RDP
+  desktop, and because it is hardware-level it reaches screens an OS-level tool cannot, including
+  the BIOS/UEFI setup before any OS boots.
 - **Agent helpers**: built-in `ocr_read` (Windows OCR) on remote desktops, and skills can name small local
   services (JSON over HTTP) the agent calls for exact work.
 
@@ -57,7 +63,11 @@ The [manual](docs/MANUAL.md) explains how to use it.
   step, re-run after a reconnect. The password comes from the vault, never from the script text.
 - **Auto-reconnect** with exponential backoff and an attempt cap.
 - **tmux persistence** for SSH (opt-in per session): the shell runs in a named tmux session, so a
-  dropped link leaves it running and the reconnect attaches to it again.
+  dropped link leaves it running and the reconnect attaches to it again. A chip in the session list
+  marks which shortcuts use it, and a live tab's chip says whether the session is really there on
+  the host; the tab's menu can end that session when you want it gone.
+- **Context-aware properties**: the shortcut editor shows only the tabs and fields the chosen
+  protocol uses, and every open tab carries an × to close it.
 - **File transfer**: SFTP browser with upload and download, or SCP for hosts with no SFTP
   subsystem. Remote paths are shell-quoted.
 - **BaudHound**: the BaudHound button finds devices on the networks the PC is on (UDP broadcast,
@@ -110,8 +120,8 @@ details.
 
 ## Agent on a remote desktop
 
-Attach the agent to a VNC or RDP tab and it works the desktop through that tab's own connection:
-screenshots in, pointer and key events out. Nothing is installed on the remote machine.
+Attach the agent to a VNC, RDP or KVM tab and it works the desktop through that tab's own
+connection: screenshots in, pointer and key events out. Nothing is installed on the remote machine.
 
 - **One model does everything**, so the endpoint's model must accept images and call tools.
   **Test** in Agent endpoints checks both. On vLLM, Qwen3.8-27B works with its vision tower
@@ -128,6 +138,19 @@ screenshots in, pointer and key events out. Nothing is installed on the remote m
 - **Approval:** under "Ask before risky", clicks on things like Delete, Uninstall or Shut down,
   typed text matching the risky patterns, and combinations such as Win+R, Ctrl+Alt+Del and
   Alt+F4 need a yes. A view-only session can be looked at but not driven.
+
+## KVM boards and agentkvm
+
+A KVM tab is backed by [**agentkvm**](https://github.com/info-mah7/agentkvm), a small daemon that
+runs on a network KVM board (a NanoKVM, or an ESP32-P4 you flash). The board presents itself to the
+target as an ordinary USB keyboard and mouse and captures its HDMI output, so BaudHoundTerm drives
+the machine with nothing installed on it and no network access to it at all; only the board is on
+the network. This is what reaches a BIOS screen, a bare-metal installer, a frozen desktop or a
+locked-down appliance that no OS-level remote tool can touch. agentkvm is BaudHoundTerm's companion,
+but not tied to it: the same board exposes a plain HTTP API, a Python client and an MCP server, so
+it can also be driven from scripts or another agent on its own. To add one here, create a **KVM**
+shortcut, enter the board's address and web login, and press **Pair with portal**; the daemon key
+is fetched and saved for you, and the KVM tab connects.
 
 ## What it connects to
 
