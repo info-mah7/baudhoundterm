@@ -18,11 +18,19 @@ public partial class TerminalView : IScreenTarget
 
     public bool ViewOnly => Definition.Protocol == SessionProtocol.Vnc && Definition.ViewOnly;
 
+    /// <summary>The KVM tab's screen, once it has connected; null before that and for other protocols.</summary>
+    private IScreenTarget? Kvm => _kvm?.Screen;
+
     public async Task<ScreenShot> CaptureAsync(ScreenRegion? region, int maxWidth, ScreenMark? mark, CancellationToken token)
     {
         if (_rdp is not null)
         {
             return await _rdp.CaptureAsync(region, maxWidth, mark);
+        }
+
+        if (Kvm is { } kvm)
+        {
+            return await kvm.CaptureAsync(region, maxWidth, mark, token);
         }
 
         var r = region ?? new ScreenRegion(0, 0, 0, 0);
@@ -45,15 +53,24 @@ public partial class TerminalView : IScreenTarget
             return await _rdp.ThumbnailAsync();
         }
 
+        if (Kvm is { } kvm)
+        {
+            return await kvm.ThumbnailAsync(token);
+        }
+
         var reply = await AskPageAsync(new Dictionary<string, object?> { ["t"] = "thumb" }, token);
         return reply.GetProperty("grey").EnumerateArray().Select(v => (byte)v.GetInt32()).ToArray();
     }
 
     public Task PointerAsync(int x, int y, int buttons, CancellationToken token) =>
-        _rdp is not null ? _rdp.PointerAsync(x, y, buttons) : AskPageAsync(new Dictionary<string, object?> { ["t"] = "ptr", ["x"] = x, ["y"] = y, ["mask"] = buttons }, token);
+        _rdp is not null ? _rdp.PointerAsync(x, y, buttons)
+        : Kvm is { } kvm ? kvm.PointerAsync(x, y, buttons, token)
+        : AskPageAsync(new Dictionary<string, object?> { ["t"] = "ptr", ["x"] = x, ["y"] = y, ["mask"] = buttons }, token);
 
     public Task KeyAsync(uint keysym, bool down, CancellationToken token) =>
-        _rdp is not null ? _rdp.KeyAsync(keysym, down) : AskPageAsync(new Dictionary<string, object?> { ["t"] = "key", ["keysym"] = keysym, ["down"] = down }, token);
+        _rdp is not null ? _rdp.KeyAsync(keysym, down)
+        : Kvm is { } kvm ? kvm.KeyAsync(keysym, down, token)
+        : AskPageAsync(new Dictionary<string, object?> { ["t"] = "key", ["keysym"] = keysym, ["down"] = down }, token);
 
     /// <summary>One request to the page, answered by a {t:'agent', id} message or failed after 10 s.</summary>
     private async Task<JsonElement> AskPageAsync(Dictionary<string, object?> message, CancellationToken token)

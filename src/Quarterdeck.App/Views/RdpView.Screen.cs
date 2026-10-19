@@ -102,6 +102,8 @@ internal sealed partial class RdpView
     }).Task;
 
     /// <summary>The crosshair vnc.html draws: four arms that stop short of the point.</summary>
+    internal static void DrawCrosshair(Graphics g, float mx, float my, float r) => DrawMark(g, mx, my, r);
+
     private static void DrawMark(Graphics g, float mx, float my, float r)
     {
         g.SmoothingMode = SmoothingMode.AntiAlias;

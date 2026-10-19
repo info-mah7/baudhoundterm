@@ -24,7 +24,14 @@ public enum SessionProtocol
     Rdp,
 
     /// <summary>A SQL query tab: SQL Server, PostgreSQL, MySQL/MariaDB or a SQLite file.</summary>
-    Sql
+    Sql,
+
+    /// <summary>
+    /// A machine driven through an IP-KVM running agentkvm: the picture comes from the board's
+    /// video, the typing from a USB gadget the target takes for a keyboard. Nothing is installed
+    /// on the target, so a BIOS screen or an installer can be worked like any other screen.
+    /// </summary>
+    Kvm
 }
 
 public enum SqlEngine
@@ -120,6 +127,18 @@ public sealed class SessionDefinition
     // RDP: Host, Port (3389), Username and the password source are shared fields.
     /// <summary>Windows domain for the login. Blank for a local account or user@domain in Username.</summary>
     public string RdpDomain { get; set; } = "";
+
+    /// <summary>KVM: the port agentkvmd listens on, and whether to reach it over TLS.</summary>
+    public int KvmPort { get; set; } = 9200;
+    public bool KvmTls { get; set; }
+
+    /// <summary>
+    /// KVM: where the picture comes from. The board's own web interface serves it, with a sign-in
+    /// of its own, because agentkvmd only offers a screenshot where the firmware has an
+    /// unauthenticated one. Blank uses the same host on port 80.
+    /// </summary>
+    public string KvmVideoUrl { get; set; } = "";
+    public string KvmVideoUser { get; set; } = "admin";
 
     /// <summary>Remote Desktop Gateway host, for servers behind one. Blank connects directly.</summary>
     public string RdpGateway { get; set; } = "";

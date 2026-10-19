@@ -65,7 +65,8 @@ internal sealed class AgentPanel : DockPanel
     private bool Elevated => _protocol == Core.Model.SessionProtocol.LocalShell && Elevation.IsCurrentProcessElevated;
 
     /// <summary>A remote desktop (VNC or RDP): the screen agent, not the terminal one.</summary>
-    private bool Desktop => _protocol is Core.Model.SessionProtocol.Vnc or Core.Model.SessionProtocol.Rdp;
+    private bool Desktop => _protocol is Core.Model.SessionProtocol.Vnc or Core.Model.SessionProtocol.Rdp
+                                      or Core.Model.SessionProtocol.Kvm;
 
     public AgentPanel(IAgentTarget target, Core.Model.SessionProtocol protocol, CredentialVault vault)
     {
@@ -174,7 +175,7 @@ internal sealed class AgentPanel : DockPanel
         }
         if (Desktop)
         {
-            Append($"This is a remote desktop: the agent sees screenshots and clicks and types over {(_protocol == Core.Model.SessionProtocol.Rdp ? "RDP" : "VNC")}, so the endpoint's " +
+            Append($"This is a remote desktop: the agent sees screenshots and clicks and types over {_protocol switch { Core.Model.SessionProtocol.Rdp => "RDP", Core.Model.SessionProtocol.Kvm => "a KVM's USB keyboard and mouse", _ => "VNC" }}, so the endpoint's " +
                    "model must accept images (Test in Agent endpoints checks). Clicks are checked against a close-up first.");
         }
     }
