@@ -25,7 +25,7 @@
     </Grid.RowDefinitions>
 
     <!-- Seven pages: a column on the left, not two rows of tabs that swap when clicked. -->
-    <TabControl Grid.Row="0" Background="#171C27" TabStripPlacement="Left">
+    <TabControl x:Name="EditorTabs" Grid.Row="0" Background="#171C27" TabStripPlacement="Left">
       <TabItem Header="Connection">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel Margin="12">
@@ -285,20 +285,22 @@
         </ScrollViewer>
       </TabItem>
 
-      <TabItem Header="Terminal">
+      <TabItem Header="Appearance" x:Name="AppearanceTab">
         <StackPanel Margin="12">
-          <TextBlock Text="Theme"/>
-          <ComboBox x:Name="ThemeBox">
-            <ComboBoxItem Content="Quarterdeck Dark"/>
-            <ComboBoxItem Content="Solarized Light"/>
-            <ComboBoxItem Content="Campbell"/>
-          </ComboBox>
-          <TextBlock Text="Font family"/>
-          <TextBox x:Name="FontBox"/>
-          <TextBlock Text="Font size"/>
-          <TextBox x:Name="FontSizeBox"/>
-          <TextBlock Text="Scrollback lines"/>
-          <TextBox x:Name="ScrollbackBox"/>
+          <StackPanel x:Name="TerminalAppearancePanel">
+            <TextBlock Text="Theme"/>
+            <ComboBox x:Name="ThemeBox">
+              <ComboBoxItem Content="Quarterdeck Dark"/>
+              <ComboBoxItem Content="Solarized Light"/>
+              <ComboBoxItem Content="Campbell"/>
+            </ComboBox>
+            <TextBlock Text="Font family"/>
+            <TextBox x:Name="FontBox"/>
+            <TextBlock Text="Font size"/>
+            <TextBox x:Name="FontSizeBox"/>
+            <TextBlock Text="Scrollback lines"/>
+            <TextBox x:Name="ScrollbackBox"/>
+          </StackPanel>
           <TextBlock Text="Tab colour (hex or name, blank for none)"/>
           <DockPanel>
             <Rectangle x:Name="ColourSwatch" DockPanel.Dock="Right" Width="26" Height="18"
@@ -310,7 +312,7 @@
         </StackPanel>
       </TabItem>
 
-      <TabItem Header="Commands">
+      <TabItem Header="Commands" x:Name="CommandsTab">
         <DockPanel Margin="12">
           <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
                      Text="Shown on the terminal's right-click menu. Tick Confirm for anything that reboots or deletes; tick Enter to run it rather than just type it."/>
@@ -338,7 +340,7 @@
         </DockPanel>
       </TabItem>
 
-      <TabItem Header="Logging">
+      <TabItem Header="Logging" x:Name="LoggingTab">
         <StackPanel Margin="12">
           <CheckBox x:Name="LogEnabledBox" Content="Log this session to a file"/>
           <TextBlock Text="Directory (blank uses %APPDATA%\BaudHoundTerm\logs)"/>
@@ -352,7 +354,7 @@
         </StackPanel>
       </TabItem>
 
-      <TabItem Header="Auto-login">
+      <TabItem Header="Auto-login" x:Name="AutoLoginTab">
         <DockPanel Margin="12">
           <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
                      Text="Each row waits for text from the far end, then sends a reply. Tick Secret to send the stored password instead of the literal text."/>
@@ -373,7 +375,7 @@
         </DockPanel>
       </TabItem>
 
-      <TabItem Header="Highlight">
+      <TabItem Header="Highlight" x:Name="HighlightTab">
         <DockPanel Margin="12">
           <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
                      Text="Colour matching output as it arrives. A match split across two reads is missed."/>
@@ -394,7 +396,7 @@
         </DockPanel>
       </TabItem>
 
-      <TabItem Header="Reconnect">
+      <TabItem Header="Reconnect" x:Name="ReconnectTab">
         <StackPanel Margin="12">
           <CheckBox x:Name="ReconnectBox" Content="Reconnect automatically when the connection drops"/>
           <TextBlock Text="Maximum attempts (0 = keep trying)"/>

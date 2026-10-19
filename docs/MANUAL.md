@@ -101,7 +101,11 @@ it offers to start a second, elevated copy through UAC and open the shell there.
 
 ## 3. Shortcut properties
 
-The properties window has seven tabs. **Save** keeps the changes.
+The properties window shows only the tabs and fields that apply to the protocol you pick, so you
+never set an option that does nothing. A terminal session (SSH, serial, telnet, local shell) has
+all of them; a desktop, camera, KVM or database keeps **Connection** and the tab colour, since
+Commands, Logging, Auto-login, Highlight, Reconnect and the terminal font are about a text stream
+it does not have. **Save** keeps the changes.
 
 ### Connection
 
@@ -181,10 +185,11 @@ the board is. See [section 4](#kvm-tabs) for how to set one up.
 ONVIF), **Username**, **Password**, **RTP over TCP**, **Low latency**, and the **ONVIF port** used
 for pan, tilt, zoom and stream lookup.
 
-### Terminal
+### Appearance
 
-**Theme** (Quarterdeck Dark, Solarized Light, Campbell), **Font family**, **Font size**,
-**Scrollback lines**, and **Tab colour** (hex like `#e06c75` or a colour name).
+**Tab colour** (hex like `#e06c75` or a colour name) for any session, and for a terminal session
+also **Theme** (Quarterdeck Dark, Solarized Light, Campbell), **Font family**, **Font size** and
+**Scrollback lines**.
 
 ### Commands
 
