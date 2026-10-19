@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Quarterdeck.Core.Model;
+using Quarterdeck.Core.Terminal;
 
 namespace Quarterdeck.App.Views;
 
@@ -48,7 +49,8 @@ internal static class SessionPresentation
         return s.Protocol switch
         {
             SessionProtocol.Ssh =>
-                (string.IsNullOrEmpty(s.Username) ? "" : s.Username + "@") + host + PortSuffix(s.Port, 22, hostShown),
+                (string.IsNullOrEmpty(s.Username) ? "" : s.Username + "@") + host + PortSuffix(s.Port, 22, hostShown)
+                + (s.Tmux ? "  · tmux " + SessionController.TmuxName(s.TmuxSession) : ""),
             SessionProtocol.Telnet => host + PortSuffix(s.Port, 23, hostShown),
             SessionProtocol.Vnc => host + PortSuffix(s.Port, 5900, hostShown) + (s.ViewOnly ? "  · view only" : ""),
             SessionProtocol.Rtsp => host + PortSuffix(s.Port, 554, hostShown) + (s.RtspPath.Length > 0 ? s.RtspPath : "  · ONVIF"),
@@ -123,6 +125,43 @@ internal static class SessionPresentation
                 FontWeight = FontWeights.SemiBold,
                 Foreground = Freeze(new SolidColorBrush(color)),
                 HorizontalAlignment = HorizontalAlignment.Center
+            }
+        };
+    }
+
+    /// <summary>
+    /// The tmux mark for a tab: "tmux" while the session is really there on the host, so closing
+    /// the tab leaves the work running, and "no tmux" when it was asked for and is not, which is
+    /// the case where closing the tab loses everything.
+    /// </summary>
+    public static Border? TmuxChip(TmuxState state)
+    {
+        if (state == TmuxState.Off)
+        {
+            return null;
+        }
+
+        var live = state == TmuxState.Live;
+        var colour = live ? Color.FromRgb(0x98, 0xC3, 0x79) : Color.FromRgb(0xE0, 0x6C, 0x75);
+
+        return new Border
+        {
+            CornerRadius = new CornerRadius(3),
+            Background = Freeze(new SolidColorBrush(Color.FromArgb(0x2A, colour.R, colour.G, colour.B))),
+            BorderBrush = Freeze(new SolidColorBrush(colour)),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(4, 0, 4, 0),
+            Margin = new Thickness(0, 1, 6, 1),
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = live
+                ? "The shell runs in tmux on the host: closing this tab leaves it running, and reconnecting attaches to it again."
+                : "tmux was asked for but is not running on the host: this is a plain shell, and closing the tab ends it.",
+            Child = new TextBlock
+            {
+                Text = live ? "tmux" : "no tmux",
+                FontSize = 10,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Freeze(new SolidColorBrush(colour))
             }
         };
     }

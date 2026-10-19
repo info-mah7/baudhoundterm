@@ -629,6 +629,11 @@ public partial class MainWindow : Window
             RefreshTab(live);
         };
         view.AgentAttachedChanged += (_, _) => RefreshTab(live);
+        view.TmuxChanged += (_, _) =>
+        {
+            RefreshTab(live);
+            tab.ContextMenu = BuildTabMenu(tab, definition);   // the end-session item turns on with it
+        };
         view.StateChanged += (_, e) =>
         {
             live.State = e.State;
@@ -964,6 +969,18 @@ public partial class MainWindow : Window
             menu.Items.Add(cad);
         }
 
+        if (tab.Content is TerminalView tmuxView && tmuxView.Tmux == TmuxState.Live)
+        {
+            var end = new MenuItem
+            {
+                Header = "End the tmux _session on the host",
+                ToolTip = "Kills the tmux session and everything running in it, on the host. Closing the tab only leaves it running."
+            };
+            end.Click += async (_, _) => await EndTmuxAsync(tmuxView, definition);
+            menu.Items.Add(new Separator());
+            menu.Items.Add(end);
+        }
+
         if (definition.Protocol is not (SessionProtocol.Rtsp or SessionProtocol.Sql))
         {
             var agent = new MenuItem { Header = "_Agent on this tab" };
@@ -979,6 +996,31 @@ public partial class MainWindow : Window
         }
 
         return menu;
+    }
+
+    /// <summary>
+    /// Ends the tmux session on the host after asking. Everything running in it goes with it,
+    /// and that cannot be undone from here, so the name of the session is in the question.
+    /// </summary>
+    private async Task EndTmuxAsync(TerminalView view, SessionDefinition definition)
+    {
+        var name = SessionController.TmuxName(definition.TmuxSession);
+        var answer = MessageBox.Show(this,
+            $"End the tmux session \"{name}\" on {definition.Host}?\n\n" +
+            "Everything running in it stops, and this connection ends with it. " +
+            "Closing the tab instead leaves the session running on the host.",
+            "End tmux session", MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel);
+
+        if (answer != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        if (await view.EndTmuxAsync() is { } why)
+        {
+            MessageBox.Show(this, $"The tmux session was not ended: {why}", "End tmux session",
+                            MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void ApplyTabColour(TabItem tab, SessionDefinition definition, string colour)
@@ -1026,6 +1068,12 @@ public partial class MainWindow : Window
 
         // Two tabs on one host differ only by protocol; the badge says which is which.
         panel.Children.Add(SessionPresentation.BadgeElement(definition));
+
+        // Whether the shell is really being kept in tmux, which decides what closing the tab costs.
+        if (SessionPresentation.TmuxChip(view.Tmux) is { } tmux)
+        {
+            panel.Children.Add(tmux);
+        }
 
         var text = new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center };
 
@@ -1415,6 +1463,12 @@ public partial class MainWindow : Window
 
                     UpdateConnectionToggle();
                 }));
+                if (live.View.Tmux == TmuxState.Live)
+                {
+                    menu.Items.Add(Item("End the tmux _session on the host", async () =>
+                        await EndTmuxAsync(live.View, live.Definition)));
+                }
+
                 menu.Items.Add(Item("Close _tab", () =>
                 {
                     Tabs.SelectedItem = live.Tab;
