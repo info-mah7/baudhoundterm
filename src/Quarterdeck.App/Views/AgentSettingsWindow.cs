@@ -57,6 +57,7 @@ internal sealed class AgentSettingsWindow : Window
     private readonly TextBlock _heading = new() { FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) };
     private readonly Button _saveButton;
     private readonly Button _deleteButton;
+    private readonly Button _forgetKeyButton;
 
     // The endpoint in the form. A new one is a draft: not in the list or the config until saved.
     private AgentEndpoint _editing = new();
@@ -111,7 +112,12 @@ internal sealed class AgentSettingsWindow : Window
         modelRow.Children.Add(fetch);
         modelRow.Children.Add(_model);
         Field(form, "Model", modelRow);
-        Field(form, "API key (blank keeps the saved one)", _key);
+        var keyRow = new DockPanel();
+        _forgetKeyButton = Btn("Forget key", ForgetKey, "Remove the saved key, for a server that takes none");
+        DockPanel.SetDock(_forgetKeyButton, Dock.Right);
+        keyRow.Children.Add(_forgetKeyButton);
+        keyRow.Children.Add(_key);
+        Field(form, "API key (blank keeps the saved one)", keyRow);
         var nums = new UniformGrid2(_temperature, _steps);
         Field(form, "Temperature  /  Max steps per goal", nums);
         Field(form, "Extra request JSON (optional)", _extra);
@@ -290,9 +296,48 @@ internal sealed class AgentSettingsWindow : Window
         _noLocal.IsChecked = ep.NeverOnLocalShells;
         _shotWidth.Text = ep.ScreenshotWidth.ToString(CultureInfo.InvariantCulture);
         _confirm.IsChecked = ep.ConfirmClicks;
-        _key.ToolTip = !isNew && _vault.Get(ep.Id, "apikey") is not null ? "A key is saved" : "No key saved";
+        ShowKeyState();
         _clean = Snapshot();
         Hint();
+    }
+
+    private void ShowKeyState()
+    {
+        var saved = !IsNew && _vault.Get(_editing.Id, "apikey") is not null;
+        _key.ToolTip = saved ? "A key is saved" : "No key saved";
+        _forgetKeyButton.IsEnabled = saved;
+    }
+
+    /// <summary>
+    /// Removes the saved key. A blank field on save keeps the key, so without this the only
+    /// way to clear one was to delete the endpoint.
+    /// </summary>
+    private void ForgetKey()
+    {
+        if (MessageBox.Show(this, $"Remove the saved API key of {_editing.Name}? Requests will be sent without one.",
+                "Agent endpoints", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        RemoveSavedKey();
+    }
+
+    private void RemoveSavedKey()
+    {
+        try
+        {
+            _vault.Remove(_editing.Id, "apikey");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Note("Key not removed: " + ex.Message, Color.FromRgb(0xE0, 0x6C, 0x75));
+            return;
+        }
+
+        _key.Password = "";
+        ShowKeyState();
+        Note($"Removed the saved key of {_editing.Name}.", Color.FromRgb(0x98, 0xC3, 0x79));
     }
 
     private void New()
