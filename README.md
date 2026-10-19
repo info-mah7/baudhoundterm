@@ -11,6 +11,9 @@ It is also the desktop console for [BaudHound](https://github.com/info-mah7/Baud
 the pocket ESP32-S3 wireless serial tap: BaudHound puts a UART on the network over ssl, and
 BaudHoundTerm gives that connection saved sessions, logging, highlight rules and reconnect.
 
+New to it? Start with the [getting-started guide](docs/HELP.md); the full
+[user manual](docs/MANUAL.md) covers every option. Both are also under the app's **Help** menu.
+
 Apache-2.0.
 
 ## Why it does not wrap Windows Terminal
