@@ -197,6 +197,14 @@ For better security, use a local model: one you run yourself with vLLM, llama.cp
 your own PC or network, so nothing leaves it. For sensitive systems, use a local model or do not
 attach the agent at all.
 
+**The agent acts with the permissions of the account the session is logged in as.** It has no
+identity of its own: every command it runs, file it touches and button it clicks on a remote
+machine carries exactly the rights of that user, on that machine. So connect with an account
+scoped to the task and nothing more, a least-privilege user rather than root, a domain admin or a
+local administrator. Give it only the access the job needs, grant any elevation narrowly and for
+that session, and keep the endpoint's approval set to ask before risky actions. The smaller the
+account's reach, the smaller the damage if the agent, or the model behind it, gets something wrong.
+
 ### Verifying a build
 
 Binaries are unsigned, so Windows SmartScreen reports an unknown publisher on every launch.
