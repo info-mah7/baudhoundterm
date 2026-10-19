@@ -1049,7 +1049,7 @@ public partial class MainWindow : Window
     /// A coloured stripe beside the tab title. The stripe is part of the header content rather
     /// than TabItem.Background, which the default template paints over when the tab is selected.
     /// </summary>
-    private static void SetTabHeader(TabItem tab, SessionDefinition definition, string title, string colour, TerminalView view)
+    private void SetTabHeader(TabItem tab, SessionDefinition definition, string title, string colour, TerminalView view)
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
 
@@ -1092,6 +1092,8 @@ public partial class MainWindow : Window
             panel.Children.Add(AgentToggle(tab, view));
         }
 
+        panel.Children.Add(TabCloseButton(tab));
+
         tab.Header = panel;
     }
 
@@ -1099,6 +1101,38 @@ public partial class MainWindow : Window
     /// The bot on the tab: dim when no agent is attached, lit (and outlined) when one is and can
     /// type into the session. Clicking it attaches or detaches the agent for this tab only.
     /// </summary>
+    /// <summary>The × on a tab that closes it, like every browser's. Closing still disconnects
+    /// and tidies up through the one path (CloseTabAsync), so the menu and the × behave alike.</summary>
+    private Button TabCloseButton(TabItem tab)
+    {
+        var grey = Color.FromRgb(0x8B, 0x94, 0xA7);
+        var button = new Button
+        {
+            Content = new TextBlock { Text = "✕", FontSize = 11, Foreground = new SolidColorBrush(grey) },
+            Padding = new Thickness(4, 0, 4, 0),
+            Margin = new Thickness(6, 0, 0, 0),
+            MinWidth = 0,
+            MinHeight = 0,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+            BorderThickness = new Thickness(1),
+            Focusable = false,   // closing must not pull the keyboard off the terminal first
+            ToolTip = "Close this tab (Ctrl+W). A connected session ends."
+        };
+
+        System.Windows.Automation.AutomationProperties.SetName(button, "Close this tab");
+
+        button.Click += async (_, e) =>
+        {
+            e.Handled = true;
+            await CloseTabAsync(tab);
+        };
+
+        return button;
+    }
+
     private static Button AgentToggle(TabItem tab, TerminalView view)
     {
         var on = view.IsAgentAttached;
@@ -1219,11 +1253,15 @@ public partial class MainWindow : Window
 
     private async void OnCloseTab(object sender, RoutedEventArgs e)
     {
-        if (Tabs.SelectedItem is not TabItem tab)
+        if (Tabs.SelectedItem is TabItem tab)
         {
-            return;
+            await CloseTabAsync(tab);
         }
+    }
 
+    /// <summary>Closes one tab, whichever it is: the X on its header and the menus all come here.</summary>
+    private async Task CloseTabAsync(TabItem tab)
+    {
         if (tab.Content is TerminalView view)
         {
             view.DetachAgent();
