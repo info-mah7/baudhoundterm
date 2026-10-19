@@ -91,10 +91,17 @@ internal static class SessionPresentation
             ? s.Host.Trim().ToLowerInvariant()
             : null;
 
+    /// <summary>
+    /// The port a session actually connects to. A KVM keeps its daemon port in KvmPort and
+    /// leaves Port unused, so comparing or sorting KVM sessions by Port compares nothing.
+    /// </summary>
+    public static int EffectivePort(SessionDefinition s) => s.Protocol == SessionProtocol.Kvm ? s.KvmPort : s.Port;
+
     /// <summary>Words in the filter box that mean a protocol rather than a name.</summary>
     public static SessionProtocol? ProtocolWord(string word) => word.ToLowerInvariant() switch
     {
         "ssh" => SessionProtocol.Ssh,
+        "kvm" => SessionProtocol.Kvm,
         "vnc" => SessionProtocol.Vnc,
         "rdp" => SessionProtocol.Rdp,
         "sql" or "db" or "database" => SessionProtocol.Sql,
