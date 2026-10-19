@@ -11,7 +11,10 @@
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>BaudHoundTerm</AssemblyName>
-    <Version>0.8.0</Version>
+    <!-- VersionPrefix, not Version: an explicit <Version> overrides -p:VersionSuffix at publish,
+         so the build stamp never reached InformationalVersion and the title bar showed only the
+         bare version. With VersionPrefix, -p:VersionSuffix=dev.<date>.<n> composes into it. -->
+    <VersionPrefix>0.8.0</VersionPrefix>
     <!-- The mah7 eagle: exe, taskbar and title bar. -->
     <ApplicationIcon>baudhoundterm.ico</ApplicationIcon>
     <RootNamespace>Quarterdeck.App</RootNamespace>
