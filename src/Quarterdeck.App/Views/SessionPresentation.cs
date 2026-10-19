@@ -85,7 +85,7 @@ internal static class SessionPresentation
     /// port or a local shell never groups.
     /// </summary>
     public static string? HostKey(SessionDefinition s) =>
-        (s.Protocol is SessionProtocol.Ssh or SessionProtocol.Telnet or SessionProtocol.Vnc or SessionProtocol.Rtsp or SessionProtocol.Rdp
+        (s.Protocol is SessionProtocol.Ssh or SessionProtocol.Telnet or SessionProtocol.Vnc or SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Kvm
          || s.Protocol == SessionProtocol.Sql && s.SqlEngine != SqlEngine.Sqlite)
         && !string.IsNullOrWhiteSpace(s.Host)
             ? s.Host.Trim().ToLowerInvariant()
