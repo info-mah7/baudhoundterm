@@ -498,8 +498,9 @@ protocols: serial, ssh
 Always run "terminal length 0" first. Never write memory without asking.
 ```
 
-`protocols` takes `ssh`, `serial`, `telnet`, `local`, `vnc` and `rdp`. A `vnc` skill is a
-desktop skill and applies to RDP tabs too. Without it, the skill applies everywhere. `steps: 300`
+`protocols` takes `ssh`, `serial`, `telnet`, `local`, `vnc`, `rdp` and `kvm`. A `vnc` skill is a
+desktop skill and applies to RDP and KVM tabs too, so the Windows desktop skill works on a KVM
+unchanged. Without it, the skill applies everywhere. `steps: 300`
 raises the step limit for runs that use the skill, for long tasks. `group: Office` files it under
 that heading (without one: Desktop, Terminal or General), and `default: off` leaves it unticked
 until you tick it.
@@ -516,6 +517,9 @@ The app also ships skills from [docs/skills](skills/), added to the folder and k
   sysadmin would, with changes made carefully and verified.
 - **Network device** (off, terminal): operate and troubleshoot switches, routers and firewalls
   (Cisco, FortiGate and similar) over a console.
+- **BIOS and UEFI setup** (off, KVM only): enter and navigate a machine's firmware setup over a KVM,
+  before any OS runs, which no other protocol can reach. Keyboard-first, vendor-aware, and careful:
+  it reads the current value and asks before changing anything that can stop a machine booting.
 
 ### Helpers
 
