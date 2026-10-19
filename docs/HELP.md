@@ -39,8 +39,13 @@ safer habit. See **Passwords** below.
   it filters by name, host or tag. Shortcuts on the same host are grouped together.
 - **Tabs** across the top are your open connections. Each has an **×** to close it; closing a
   connected tab ends that session.
+- **Switch tabs** with **Ctrl+Tab** and **Ctrl+Shift+Tab**, or **Ctrl+PgDn** and **Ctrl+PgUp**.
+  Ctrl+Left and Ctrl+Right stay with the session, where shells use them to move by word.
+- **Full screen** (toolbar, or **F11**) hides everything but the tabs. F11 again brings it back.
+- **Pop out** (toolbar, or right-click a tab) moves the tab into its own window, still connected,
+  for a second monitor. Close that window to put the tab back; F11 works in it too.
 - **Right-click** a shortcut for Connect, Properties, Move, Delete. Right-click a tab's **header**
-  for its colour, properties, and (on a desktop or KVM tab) agent options.
+  for its colour, properties, pop-out, and (on a desktop or KVM tab) agent options.
 
 ## 4. The kinds of connection
 
