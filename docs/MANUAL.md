@@ -66,8 +66,19 @@ shortcut...**, the **+** above the list, or Ctrl+Shift+T.
 - **Filter:** the box above the list matches name, host or tag. Protocol words narrow it:
   `ssh`, `vnc`, `telnet`, `serial`, `local`, `cam`. For example `vnc lab` shows VNC shortcuts
   whose name or host contains "lab".
-- **Group by host** (the 🖥 button): shortcuts in one folder that share a host sit under one row.
-  Right-click that row > **Connect** to choose which one.
+- **Group by host** (the 🖥 button): shortcuts in one folder that share a host sit under one row,
+  named after the machine with its address in brackets, e.g. `web01 (192.0.2.10)`. Right-click
+  that row > **Connect** to choose which one.
+- **Address details:** **Shortcut > Show address details in the list** off leaves the list with
+  names only: no `user@host:port` beside a shortcut and no address beside a host row. Remembered.
+- **Hide addresses** (toolbar, **Shortcut > Hide addresses**, or Ctrl+Shift+H), for demos and
+  screen recordings: every IP address, host name and user name BaudHoundTerm draws becomes `•••`,
+  in the list, tab headers and tooltips, status lines and popped-out windows. Ports and shortcut
+  names stay, unless a name is itself an address (quick connect's `user@host`). It is remembered,
+  so a restart mid-demo stays covered. To hide one shortcut always, tick **Always hide this address
+  and user name** in its properties. Only the display changes: connecting, the filter and the
+  agent use the real values. Not covered: what the far end shows (a shell prompt, a remote
+  desktop), the properties dialog, and the host-key question on a first connection.
 
 Open connections appear under their shortcut with their state, and clicking one brings its tab
 forward. Tabs with no shortcut in view, such as quick connections, are listed under
@@ -629,6 +640,9 @@ than anything BaudHoundTerm sends.
 | Ctrl+Shift+T | New shortcut |
 | Ctrl+Shift+F | Find in scrollback |
 | Ctrl+Shift+A | Attach or detach the agent |
+| Ctrl+Shift+H | Hide addresses on or off |
+| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab (also Ctrl+PgDn / Ctrl+PgUp) |
+| F11 | Full screen on or off (also in a popped-out window) |
 | Ctrl+Shift+C / Ctrl+Shift+V | Copy / paste in a terminal |
 | Shift+right-click | Copy the selection, or paste when nothing is selected |
 | Enter (in a dropped tab) | Reconnect |

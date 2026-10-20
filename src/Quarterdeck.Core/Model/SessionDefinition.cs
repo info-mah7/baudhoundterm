@@ -73,6 +73,12 @@ public sealed class SessionDefinition
 
     public SessionProtocol Protocol { get; set; } = SessionProtocol.Ssh;
 
+    /// <summary>
+    /// Always show this session's address and user name as dots, as the global Hide addresses
+    /// switch does for every session: for demos and screen recordings. Display only.
+    /// </summary>
+    public bool HideAddress { get; set; }
+
     // SSH
     public string Host { get; set; } = "";
     public int Port { get; set; } = 22;

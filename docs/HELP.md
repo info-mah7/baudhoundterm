@@ -44,6 +44,8 @@ safer habit. See **Passwords** below.
 - **Full screen** (toolbar, or **F11**) hides everything but the tabs. F11 again brings it back.
 - **Pop out** (toolbar, or right-click a tab) moves the tab into its own window, still connected,
   for a second monitor. Close that window to put the tab back; F11 works in it too.
+- **Hide addresses** (toolbar, or **Ctrl+Shift+H**) shows every IP, host and user name as `•••`,
+  for demos and recordings. To always hide one shortcut, tick the box in its properties.
 - **Right-click** a shortcut for Connect, Properties, Move, Delete. Right-click a tab's **header**
   for its colour, properties, pop-out, and (on a desktop or KVM tab) agent options.
 

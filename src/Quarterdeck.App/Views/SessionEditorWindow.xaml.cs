@@ -46,6 +46,7 @@ public partial class SessionEditorWindow : Window
         NameBox.Text = d.Name;
         FolderBox.Text = d.Folder;
         TagsBox.Text = string.Join(", ", d.Tags);
+        HideAddressBox.IsChecked = d.HideAddress;
         ProtocolBox.SelectedIndex = (int)d.Protocol;
 
         HostBox.Text = d.Host;
@@ -617,6 +618,7 @@ public partial class SessionEditorWindow : Window
         d.Folder = FolderBox.Text.Trim().Trim('/');
         d.Tags = TagsBox.Text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        d.HideAddress = HideAddressBox.IsChecked == true;
         d.Protocol = (SessionProtocol)Math.Max(0, ProtocolBox.SelectedIndex);
 
         d.Host = HostBox.Text.Trim();

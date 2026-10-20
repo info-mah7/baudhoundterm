@@ -17,6 +17,12 @@ public sealed class UiPreferences
     /// <summary>Sessions that share a host sit under one host row; off is a flat list.</summary>
     public bool GroupByHost { get; set; } = true;
 
+    /// <summary>The dimmed address beside each row in the list (user@host:port, a host row's IP); off shows names only.</summary>
+    public bool ShowAddressDetails { get; set; } = true;
+
+    /// <summary>Hide addresses: every IP, host and user name the app draws is shown as dots (for demos).</summary>
+    public bool HideAddresses { get; set; }
+
     // The TFTP server's last settings, so firmware day starts where it left off.
     public string TftpFolder { get; set; } = "";
     public string TftpAddress { get; set; } = "";
