@@ -35,6 +35,8 @@
             <TextBox x:Name="FolderBox"/>
             <TextBlock Text="Tags (comma-separated; the filter above the shortcut list matches them)"/>
             <TextBox x:Name="TagsBox"/>
+            <CheckBox x:Name="HideAddressBox" Margin="0,8,0,0" Content="Always hide this address and user name (show as dots)"
+                      ToolTip="For demos and recordings: the list, tab and status line show ••• instead of the IP, host and user name, even with Hide addresses off. Connecting still uses the real values."/>
             <TextBlock Text="Protocol"/>
             <ComboBox x:Name="ProtocolBox" SelectionChanged="OnProtocolChanged">
               <ComboBoxItem Content="SSH"/>

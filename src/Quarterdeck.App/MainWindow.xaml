@@ -28,6 +28,11 @@
         <MenuItem Header="Passwords and _keys (KeePassXC)..." Click="OnKeePassXc"/>
         <MenuItem Header="S_ync between PCs (git)..." Click="OnSyncSettings"/>
         <Separator/>
+        <MenuItem x:Name="HideMenu" Header="_Hide addresses" IsCheckable="False" Click="OnHideAddresses" InputGestureText="Ctrl+Shift+H"
+                  ToolTip="Show every IP address, host and user name as dots, for demos and recordings"/>
+        <MenuItem x:Name="DetailsMenu" Header="Show address _details in the list" IsCheckable="True" Click="OnAddressDetails"
+                  ToolTip="Off: the list shows names only, without user@host:port or a host row's address"/>
+        <Separator/>
         <MenuItem Header="E_xit" Click="OnExit"/>
       </MenuItem>
       <MenuItem Header="_Terminal">
@@ -72,6 +77,28 @@
             <Setter Property="Margin" Value="1,1"/>
             <Setter Property="MinWidth" Value="64"/>
           </Style>
+          <!-- A toolbar switch: flat like the buttons, lit blue while on. -->
+          <Style TargetType="ToggleButton">
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                  <Border x:Name="Box" Background="Transparent" BorderBrush="Transparent" BorderThickness="1"
+                          Padding="{TemplateBinding Padding}" CornerRadius="2">
+                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </Border>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="Box" Property="BorderBrush" Value="#3A4459"/>
+                    </Trigger>
+                    <Trigger Property="IsChecked" Value="True">
+                      <Setter TargetName="Box" Property="Background" Value="#3D5A80"/>
+                      <Setter TargetName="Box" Property="BorderBrush" Value="#61AFEF"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
           <Style TargetType="Rectangle">
             <Setter Property="Width" Value="1"/>
             <Setter Property="Margin" Value="6,4"/>
@@ -99,6 +126,10 @@
         <Button Click="OnBaudHound" ToolTip="Find BaudHound wireless serial consoles on this PC's networks and open one">BaudHound</Button>
         <Rectangle/>
         <Button x:Name="SyncButton" Click="OnSyncSettings" ToolTip="Share shortcuts between PCs through a private git repository">Sync</Button>
+        <Rectangle/>
+        <ToggleButton x:Name="HideToggle" Click="OnHideAddresses" Foreground="#DFE4EE" Padding="10,4" Margin="1,1" MinWidth="64"
+                      AutomationProperties.Name="Hide addresses"
+                      ToolTip="Hide addresses (Ctrl+Shift+H): every IP, host and user name BaudHoundTerm shows becomes dots, for demos and recordings. What a remote screen or shell prompt shows is not covered.">Hide addresses</ToggleButton>
       </WrapPanel>
     </Border>
 

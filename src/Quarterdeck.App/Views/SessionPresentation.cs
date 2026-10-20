@@ -200,20 +200,23 @@ internal static class SessionPresentation
         };
     }
 
-    /// <summary>A list row: badge, then the name (if it says anything), then the target, dimmed.</summary>
-    public static StackPanel Row(SessionDefinition s, string? name, bool hostShown)
+    /// <summary>
+    /// A list row: badge, then the name (if it says anything), then the target, dimmed. With
+    /// details off the target is left out; with addresses hidden it shows as dots.
+    /// </summary>
+    public static StackPanel Row(SessionDefinition s, string? name, bool hostShown, bool details = true)
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         panel.Children.Add(BadgeElement(s));
 
         if (!string.IsNullOrWhiteSpace(name))
         {
-            panel.Children.Add(new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center });
+            panel.Children.Add(new TextBlock { Text = Privacy.MaskName(name, s), VerticalAlignment = VerticalAlignment.Center });
         }
 
         // The tmux mark is a chip, so its text comes out of the dimmed target line here (Target
         // itself keeps it, for the filter and the agent's description of the session).
-        var target = Target(s, hostShown);
+        var target = details ? Privacy.Mask(Target(s, hostShown), s) : "";
         var mark = target.IndexOf("  · tmux ", StringComparison.Ordinal);
         if (mark >= 0)
         {
@@ -239,18 +242,27 @@ internal static class SessionPresentation
         return panel;
     }
 
-    /// <summary>The row above a host's sessions: its title, and the host itself if the title is a name.</summary>
-    public static StackPanel HostRow(string title, string host)
+    /// <summary>
+    /// The row above a host's sessions: the machine's name first, then its address in brackets,
+    /// smaller and dimmed, when the name is not the address already. The address is left out
+    /// with details off, and shown as dots when hidden.
+    /// </summary>
+    public static StackPanel HostRow(string title, string host, bool hide, bool details = true)
     {
+        // The address is shared by the group, so one member marked "always hide" hides it for all.
+        var first = new SessionDefinition { Host = host, HideAddress = hide };
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
-        panel.Children.Add(new TextBlock { Text = "🖥  " + title, VerticalAlignment = VerticalAlignment.Center });
+        var isAddress = string.Equals(title, host, StringComparison.OrdinalIgnoreCase);
+        var shownTitle = isAddress ? Privacy.Mask(title, first) : Privacy.MaskName(title, first);
+        panel.Children.Add(new TextBlock { Text = "🖥  " + shownTitle, VerticalAlignment = VerticalAlignment.Center });
 
-        if (!string.Equals(title, host, StringComparison.OrdinalIgnoreCase))
+        if (details && !isAddress)
         {
             panel.Children.Add(new TextBlock
             {
-                Text = host,
+                Text = "(" + Privacy.Mask(host, first) + ")",
                 Foreground = Dim,
+                FontSize = 11,
                 Margin = new Thickness(8, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center
             });

@@ -40,6 +40,9 @@ public partial class MainWindow : Window
         // Unknown or changed SSH host keys are put to the user; nothing is trusted silently.
         KnownHosts.Ask = q => Dispatcher.Invoke(() => AskHostKey(q));
         GroupToggle.IsChecked = _ui.GroupByHost;   // Click, not Checked: setting it here saves nothing
+        Privacy.HideAll = _ui.HideAddresses;
+        HideToggle.IsChecked = HideMenu.IsChecked = _ui.HideAddresses;
+        DetailsMenu.IsChecked = _ui.ShowAddressDetails;
         RebuildTree();
 
         // Relaunched through UAC by the Admin button: open the shell the user asked for.
@@ -126,6 +129,11 @@ public partial class MainWindow : Window
             ToggleFullScreen();
             e.Handled = true;
         }
+        else if (e.Key == Key.H && mods == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            SetHideAddresses(!Privacy.HideAll);
+            e.Handled = true;
+        }
     }
 
     private void OnNextTab(object sender, RoutedEventArgs e) => CycleTab(1);
@@ -201,7 +209,7 @@ public partial class MainWindow : Window
     private void PopOut(LiveTab live)
     {
         live.Tab.Content = PoppedPlaceholder(live);
-        var window = new PopOutWindow(live.View, live.Title, this);
+        var window = new PopOutWindow(live.View, Privacy.MaskName(live.Title, live.Definition), this);
         window.ReturnRequested += (_, _) => BringBack(live, closing: true);
         live.PoppedOut = window;
         window.Show();
@@ -369,7 +377,8 @@ public partial class MainWindow : Window
             var title = GroupTitle(members);
             var hostNode = new TreeViewItem
             {
-                Header = SessionPresentation.HostRow(title, members[0].Host.Trim()),
+                Header = SessionPresentation.HostRow(title, members[0].Host.Trim(),
+                    members.Any(m => m.HideAddress), _ui.ShowAddressDetails),
                 Tag = new HostNode(members[0].Host.Trim(), group.Key.Folder, members),
                 ItemContainerStyle = SessionTree.ItemContainerStyle,
                 IsExpanded = true
@@ -384,7 +393,7 @@ public partial class MainWindow : Window
                 var name = string.Equals(session.Name, title, StringComparison.OrdinalIgnoreCase) ? null : session.Name;
                 hostNode.Items.Add(WithLiveRows(new TreeViewItem
                 {
-                    Header = SessionPresentation.Row(session, name, hostShown: true),
+                    Header = SessionPresentation.Row(session, name, hostShown: true, _ui.ShowAddressDetails),
                     Tag = session
                 }, session, placed));
             }
@@ -396,7 +405,7 @@ public partial class MainWindow : Window
         {
             ContainerFor(folder).Items.Add(WithLiveRows(new TreeViewItem
             {
-                Header = SessionPresentation.Row(session, session.Name, hostShown: false),
+                Header = SessionPresentation.Row(session, session.Name, hostShown: false, _ui.ShowAddressDetails),
                 Tag = session
             }, session, placed));
         }
@@ -484,6 +493,44 @@ public partial class MainWindow : Window
             // The view still changes; it just will not be remembered.
         }
 
+        RebuildTree();
+    }
+
+    private void SaveUi()
+    {
+        try
+        {
+            _ui.Save();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The view still changes; it just will not be remembered.
+        }
+    }
+
+    private void OnHideAddresses(object sender, RoutedEventArgs e) => SetHideAddresses(!Privacy.HideAll);
+
+    /// <summary>
+    /// Hide addresses on or off, everywhere at once: the list, every tab's header, tooltip and
+    /// status line, and popped-out windows. Remembered, so a restart mid-demo does not uncover them.
+    /// </summary>
+    private void SetHideAddresses(bool hide)
+    {
+        Privacy.HideAll = hide;
+        _ui.HideAddresses = hide;
+        SaveUi();
+        HideToggle.IsChecked = HideMenu.IsChecked = hide;
+        RebuildTree();
+        foreach (var live in _live)
+        {
+            RefreshTab(live);
+        }
+    }
+
+    private void OnAddressDetails(object sender, RoutedEventArgs e)
+    {
+        _ui.ShowAddressDetails = DetailsMenu.IsChecked;
+        SaveUi();
         RebuildTree();
     }
 
@@ -824,7 +871,6 @@ public partial class MainWindow : Window
         view.TitleChanged += (_, title) =>
         {
             live.ShellTitle = string.IsNullOrWhiteSpace(title) ? "" : title;
-            tab.ToolTip = live.ShellTitle.Length > 0 ? live.ShellTitle : null;
             RefreshTab(live);
         };
         view.AgentAttachedChanged += (_, _) => RefreshTab(live);
@@ -957,10 +1003,13 @@ public partial class MainWindow : Window
     private void RefreshTab(LiveTab live)
     {
         SetTabHeader(live.Tab, live.Definition, live.Title, live.Colour, live.View);
+        // What the shell calls itself (often user@host: path) goes in the tooltip, masked like the rest.
+        live.Tab.ToolTip = live.ShellTitle.Length > 0 ? Privacy.Mask(live.ShellTitle, live.Definition) : null;
+        live.View.RefreshPrivacy();
         RefreshLiveRow(live);
         if (live.PoppedOut is { } window)
         {
-            window.Title = live.Title + " - BaudHoundTerm";
+            window.Title = Privacy.MaskName(live.Title, live.Definition) + " - BaudHoundTerm";
         }
     }
 
@@ -976,7 +1025,7 @@ public partial class MainWindow : Window
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         panel.Children.Add(ColourStripe(live.Colour, hollow: true));
-        panel.Children.Add(new TextBlock { Text = ShortTitle(live.ShellTitle.Length > 0 ? live.ShellTitle : live.Title), VerticalAlignment = VerticalAlignment.Center });
+        panel.Children.Add(new TextBlock { Text = ShortTitle(live.ShellTitle.Length > 0 ? Privacy.Mask(live.ShellTitle, live.Definition) : Privacy.MaskName(live.Title, live.Definition)), VerticalAlignment = VerticalAlignment.Center });
         panel.Children.Add(new TextBlock
         {
             Text = live.State switch
@@ -1306,7 +1355,7 @@ public partial class MainWindow : Window
             panel.Children.Add(tmux);
         }
 
-        var text = new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center };
+        var text = new TextBlock { Text = Privacy.MaskName(title, definition), VerticalAlignment = VerticalAlignment.Center };
 
         // The app-wide TextBlock style would otherwise pin one colour here and the tab would
         // not brighten when selected or dim when it is not.

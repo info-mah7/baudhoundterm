@@ -76,7 +76,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
             Web.Visibility = Visibility.Collapsed;
             _camera = new CameraView(Definition, _vault, (state, message) =>
             {
-                StatusText.Text = message ?? state.ToString();
+                ShowStatus(message ?? state.ToString());
                 RaiseState(state, message);
             });
             ((Grid)Web.Parent).Children.Add(_camera);
@@ -90,7 +90,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
             Web.Visibility = Visibility.Collapsed;
             _rdp = new RdpView(Definition, _vault, (state, message) =>
             {
-                StatusText.Text = message ?? state.ToString();
+                ShowStatus(message ?? state.ToString());
                 RaiseState(state, message);
             }, PromptForSecret);
             ((Grid)Web.Parent).Children.Add(_rdp);
@@ -104,7 +104,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
             Web.Visibility = Visibility.Collapsed;
             _kvm = new KvmView(Definition, _vault, (state, message) =>
             {
-                StatusText.Text = message ?? state.ToString();
+                ShowStatus(message ?? state.ToString());
                 RaiseState(state, message);
             }, PromptForSecret);
             ((Grid)Web.Parent).Children.Add(_kvm);
@@ -117,7 +117,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
             Web.Visibility = Visibility.Collapsed;
             _sql = new SqlView(Definition, _vault, (state, message) =>
             {
-                StatusText.Text = message ?? state.ToString();
+                ShowStatus(message ?? state.ToString());
                 RaiseState(state, message);
             }, PromptForSecret);
             ((Grid)Web.Parent).Children.Add(_sql);
@@ -694,13 +694,26 @@ public partial class TerminalView : UserControl, ITerminalTarget
     /// which belongs to the far end: writing into it lands in the middle of whatever is being
     /// typed.
     /// </summary>
-    private void SetStatus(string text) => Dispatcher.BeginInvoke(() => StatusText.Text = text);
+    private void SetStatus(string text) => Dispatcher.BeginInvoke(() => ShowStatus(text));
+
+    // The status line as reported, kept so Hide addresses can be switched on or off over it.
+    private string _status = "Disconnected.";
+
+    /// <summary>Every status line goes through here, so an address in it is masked when hidden.</summary>
+    private void ShowStatus(string text)
+    {
+        _status = text;
+        StatusText.Text = Privacy.Mask(text, Definition);
+    }
+
+    /// <summary>Hide addresses was switched, or this session's own flag changed: redraw the status line.</summary>
+    public void RefreshPrivacy() => StatusText.Text = Privacy.Mask(_status, Definition);
 
     /// <summary>Report a bridge step to both the status bar and the page's own event log.</summary>
     private void Note(string text) => Dispatcher.BeginInvoke(() =>
     {
-        StatusText.Text = text;
-        Post(new { t = "note", d = text });
+        ShowStatus(text);
+        Post(new { t = "note", d = Privacy.Mask(text, Definition) });
     });
 
     /// <summary>Quote a path only when it needs it, so the common case stays clean.</summary>
@@ -839,7 +852,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
             }
 
             var wasLive = IsConnected;
-            StatusText.Text = e.Message ?? e.State.ToString();
+            ShowStatus(e.Message ?? e.State.ToString());
             RaiseState(e.State, e.Message);
 
             // The far end ended it ("exit" in a shell): say how to get it back.
@@ -1001,7 +1014,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         {
             await _camera.StopAsync();
             RaiseState(SessionState.Disconnected, "Stopped.");
-            StatusText.Text = "Stopped. Reconnect to play again.";
+            ShowStatus("Stopped. Reconnect to play again.");
             return;
         }
 
@@ -1107,21 +1120,21 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
                 if (i % 10 == 0 || i == lines.Length - 1)
                 {
-                    StatusText.Text = $"Sending {name}: line {i + 1} of {lines.Length}";
+                    ShowStatus($"Sending {name}: line {i + 1} of {lines.Length}");
                 }
 
                 await Task.Delay(lineDelay, _sendCts.Token);
             }
 
-            StatusText.Text = $"Sent {name}: {lines.Length} lines.";
+            ShowStatus($"Sent {name}: {lines.Length} lines.");
         }
         catch (OperationCanceledException)
         {
-            StatusText.Text = $"Stopped sending {name}.";
+            ShowStatus($"Stopped sending {name}.");
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Sending {name} failed: {ex.Message}";
+            ShowStatus($"Sending {name} failed: {ex.Message}");
         }
         finally
         {
@@ -1172,26 +1185,26 @@ public partial class TerminalView : UserControl, ITerminalTarget
         var link = serial.BeginRaw();
         var modem = new ModemTransfer(link);
         modem.Log += line => Dispatcher.BeginInvoke(() => Write($"\r\n[baudhoundterm] {label}: {line}\r\n"));
-        modem.Progress += p => Dispatcher.BeginInvoke(() => StatusText.Text = p.Total > 0
+        modem.Progress += p => Dispatcher.BeginInvoke(() => ShowStatus(p.Total > 0
             ? $"{verb} {p.File} ({label}): {p.Done:N0} of {p.Total:N0} bytes, {100 * p.Done / p.Total}%"
-            : $"{verb} {p.File} ({label}): {p.Done:N0} bytes");
-        StatusText.Text = verb == "Sending"
+            : $"{verb} {p.File} ({label}): {p.Done:N0} bytes"));
+        ShowStatus(verb == "Sending"
             ? $"{label}: waiting for the device to start receiving (loady / loadx / rb / rx)..."
-            : $"{label}: waiting for the device to start sending...";
+            : $"{label}: waiting for the device to start sending...");
 
         try
         {
             var token = _sendCts.Token;
             await Task.Run(() => body(modem, token), token);
-            StatusText.Text = $"{label} transfer finished.";
+            ShowStatus($"{label} transfer finished.");
         }
         catch (OperationCanceledException)
         {
-            StatusText.Text = $"{label} transfer cancelled.";
+            ShowStatus($"{label} transfer cancelled.");
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"{label} transfer failed: {ex.Message}";
+            ShowStatus($"{label} transfer failed: {ex.Message}");
             Write($"\r\n[baudhoundterm] {label}: {ex.Message}\r\n");
         }
         finally
