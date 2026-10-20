@@ -57,6 +57,7 @@
         <MenuItem Header="_Getting started" Click="OnGettingStarted"/>
         <MenuItem Header="_User manual" Click="OnManual"/>
         <MenuItem Header="_Report a problem" Click="OnReportProblem"/>
+        <MenuItem Header="_Check for updates..." Click="OnCheckForUpdates"/>
         <Separator/>
         <MenuItem Header="_Open log folder" Click="OnOpenLogs"/>
         <MenuItem Header="_About" Click="OnAbout"/>
