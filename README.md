@@ -159,8 +159,10 @@ is fetched and saved for you, and the KVM tab connects.
 
 ## What it connects to
 
-Nothing of its own: no telemetry, no analytics, no update check. Every connection is one you ask
-for, the hosts in your shortcuts, your sync repository, and the AI endpoint you configure.
+Nothing of its own: no telemetry, no analytics, no automatic update check. Every connection is one
+you ask for, the hosts in your shortcuts, your sync repository, and the AI endpoint you configure.
+**Help > Check for updates** asks GitHub for the newest release only when clicked, sends no
+version or machine details, and downloads nothing.
 WebView2's own background traffic is switched off at startup. Verified on Windows with the app
 idle: no outbound connection, no name resolved, and no request in Chromium's network log.
 
@@ -269,6 +271,8 @@ is whether someone tampered with the file.
 
 Open an issue. If it is a vulnerability, say so in the title and leave the details out of the
 public text; there is no separate disclosure channel yet.
+
+Questions and chat: the [MAH7 Discord server](https://mah7.com/discord) (**Help > MAH7 Discord**).
 
 ## Known limits
 
