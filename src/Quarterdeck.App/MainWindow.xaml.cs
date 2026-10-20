@@ -2432,6 +2432,9 @@ public partial class MainWindow : Window
     private void OnReportProblem(object sender, RoutedEventArgs e) =>
         OpenInBrowser("https://github.com/info-mah7/baudhoundterm/issues");
 
+    // Via mah7.com, so a replaced invite does not need a new build.
+    private void OnDiscord(object sender, RoutedEventArgs e) => OpenInBrowser("https://mah7.com/discord");
+
     /// <summary>Opens a documentation or repository link in the user's own browser.</summary>
     private void OpenInBrowser(string url)
     {
