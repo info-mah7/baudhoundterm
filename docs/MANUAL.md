@@ -607,6 +607,10 @@ Everything is in `%APPDATA%\BaudHoundTerm\`:
 
 Camera snapshots go to `Pictures\BaudHoundTerm`. **Help > Open log folder** opens the transcripts.
 
+**Help > Check for updates** asks GitHub for the newest release and compares it with yours. It
+runs only when clicked, sends no version or machine details, and downloads nothing: get a newer
+build from the releases page yourself and check its SHA-256.
+
 An elevated window keeps its browser profile in `%ProgramData%\BaudHoundTerm` instead, where
 programs running as you cannot reach it.
 

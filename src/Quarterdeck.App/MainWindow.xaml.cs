@@ -2445,6 +2445,44 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Asks GitHub for the newest release only when clicked; nothing runs in the background and
+    /// nothing is downloaded. A newer build is fetched by the user from the releases page.
+    /// </summary>
+    private async void OnCheckForUpdates(object sender, RoutedEventArgs e)
+    {
+        var item = (MenuItem)sender;
+        item.IsEnabled = false;
+        try
+        {
+            var info = System.Reflection.Assembly.GetExecutingAssembly()
+                .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion;
+            var result = await Quarterdeck.Core.Update.UpdateCheck.CheckAsync(info);
+            var page = Quarterdeck.Core.Update.UpdateCheck.ReleasesPage;
+
+            if (result.Newer)
+            {
+                var open = MessageBox.Show(this,
+                    $"{result.Text}\n\nDownload it yourself from {page} and check the zip against the " +
+                    "SHA-256 in the release notes before running it.\n\nOpen the releases page?",
+                    "Check for updates", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                if (open == MessageBoxResult.Yes)
+                {
+                    OpenInBrowser(page);
+                }
+            }
+            else
+            {
+                MessageBox.Show(this, $"{result.Text}\n\nReleases: {page}", "Check for updates");
+            }
+        }
+        finally
+        {
+            item.IsEnabled = true;
+        }
+    }
+
     private void OnAbout(object sender, RoutedEventArgs e) =>
         MessageBox.Show(this,
             $"BaudHoundTerm {Version}\n" +
