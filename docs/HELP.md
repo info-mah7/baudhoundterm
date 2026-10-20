@@ -36,7 +36,8 @@ safer habit. See **Passwords** below.
 ## 3. Finding your way around
 
 - **The list on the left** holds your saved shortcuts, grouped into folders you make. The box above
-  it filters by name, host or tag. Shortcuts on the same host are grouped together.
+  it filters by name, host or tag. With the 🖥 button on, each host gets a row with its shortcuts
+  under it.
 - **Tabs** across the top are your open connections. Each has an **×** to close it; closing a
   connected tab ends that session.
 - **Switch tabs** with **Ctrl+Tab** and **Ctrl+Shift+Tab**, or **Ctrl+PgDn** and **Ctrl+PgUp**.

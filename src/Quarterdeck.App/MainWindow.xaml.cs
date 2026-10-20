@@ -355,9 +355,9 @@ public partial class MainWindow : Window
         ItemsControl ContainerFor(string folder) =>
             folder.Length > 0 && nodes.TryGetValue(folder, out var parent) ? parent : SessionTree;
 
-        // Grouping is worked out here, from Host, and never stored: a host row exists only while
-        // two or more saved sessions in the same folder point at that host, so it never shows a
-        // protocol that is not configured.
+        // Grouping is worked out here, from Host, and never stored. With it on, every host gets a
+        // row, even with one shortcut, so a machine looks the same whether it has one protocol
+        // set up or three. A host row never shows a protocol that is not configured.
         var groups = visible
             .GroupBy(s => (Folder: s.Folder.Trim().Trim('/'), Host: _ui.GroupByHost ? SessionPresentation.HostKey(s) : null))
             .OrderBy(g => g.Key.Host is null ? g.First().Name : GroupTitle(g.ToList()), StringComparer.OrdinalIgnoreCase);
@@ -368,7 +368,7 @@ public partial class MainWindow : Window
         {
             var members = group.ToList();
 
-            if (group.Key.Host is null || members.Count < 2)
+            if (group.Key.Host is null)
             {
                 loose.AddRange(members.Select(m => (group.Key.Folder, m)));
                 continue;
@@ -750,6 +750,12 @@ public partial class MainWindow : Window
         {
             e.Handled = true;   // or the tree item takes the click, and the keyboard, back
             Connect(Selected);
+        }
+        else if (SelectedHost is { Sessions.Count: 1 } host)
+        {
+            // A host with one shortcut: there is nothing to choose, so its row connects too.
+            e.Handled = true;
+            Connect(host.Sessions[0]);
         }
     }
 

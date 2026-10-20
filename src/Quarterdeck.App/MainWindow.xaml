@@ -196,7 +196,7 @@
                         TabIndex="1" AutomationProperties.Name="Group shortcuts by host"
                         FocusVisualStyle="{StaticResource QdFocusVisual}"
                         Click="OnGroupToggle"
-                        ToolTip="Group shortcuts that share a host under one row. Off: a flat list. Remembered.">
+                        ToolTip="Each host gets a row with its shortcuts under it, even just one. Off: a flat list. Remembered.">
             <ToggleButton.Template>
               <ControlTemplate TargetType="ToggleButton">
                 <Border x:Name="Box" Background="#2A3245" BorderBrush="#3A4459" BorderThickness="1" CornerRadius="2">
