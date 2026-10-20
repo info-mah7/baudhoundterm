@@ -266,6 +266,14 @@ it. To end it instead, right-click the tab (or the connection in the session lis
 and the connection ends with it. The command goes over its own channel, so a full-screen program
 in the session cannot swallow it.
 
+**What a session left running costs.** Very little on its own. Measured on a Linux host, tmux and
+its shell use about 20 MB of memory and no CPU while idle, and the scrollback stops growing at
+tmux's `history-limit` (2,000 lines by default). With no tab attached nothing crosses the network,
+and BaudHoundTerm spends nothing on it. What runs *inside* the session is the real cost: a build,
+a log tail or a command-line AI tool keeps running and keeps using whatever it used before (one AI
+CLI with its helpers measured about 1.2 GB). `tmux ls` on the host lists the sessions still
+running; end the ones you no longer need.
+
 ### Link lamps
 
 Serial and telnet tabs show lamps at the bottom right: the connection state, **TX** (sent to the
