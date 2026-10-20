@@ -51,7 +51,8 @@ safer habit. See **Passwords** below.
 
 - **SSH / telnet / serial / local shell** are text terminals. You type, the far end answers.
   Optional **tmux** (SSH) keeps your shell alive if the link drops; a green **tmux** chip in the
-  list marks shortcuts set up for it.
+  list marks shortcuts set up for it. An idle session costs the host about 20 MB and no CPU; what
+  runs inside it keeps running (see the manual, "Ending a tmux session").
 - **RDP** opens a Windows desktop using Windows' own Remote Desktop client.
 - **VNC** shows another machine's screen. Copy and paste work both ways.
 - **SQL** gives you a query tab for SQL Server, PostgreSQL, MySQL/MariaDB or SQLite.
