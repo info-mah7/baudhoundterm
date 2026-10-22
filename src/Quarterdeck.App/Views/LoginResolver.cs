@@ -6,7 +6,7 @@ using Quarterdeck.Core.Security.KeePassXc;
 namespace Quarterdeck.App.Views;
 
 /// <summary>
-/// User name and password for tabs that sign in themselves (RDP, SQL): from the shortcut,
+/// User name and password for tabs that sign in themselves (RDP): from the shortcut,
 /// from KeePassXC, or asked. Not saving the password is the recommended setup, so asking is
 /// the normal path, not an error. Cancelling throws <see cref="OperationCanceledException"/>.
 /// </summary>

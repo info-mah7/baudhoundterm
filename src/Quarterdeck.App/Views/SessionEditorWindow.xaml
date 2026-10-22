@@ -46,7 +46,9 @@
               <ComboBoxItem Content="VNC"/>
               <ComboBoxItem Content="RTSP camera"/>
               <ComboBoxItem Content="RDP (Windows Remote Desktop)"/>
-              <ComboBoxItem Content="SQL database"/>
+              <!-- SQL tabs were removed in build 70. The item stays, hidden, because the list index is
+                   the stored protocol number and KVM comes after it. -->
+              <ComboBoxItem Content="SQL database (removed)" Visibility="Collapsed" IsEnabled="False"/>
               <ComboBoxItem Content="KVM (agentkvm board)"/>
             </ComboBox>
 
@@ -193,50 +195,6 @@
                          Foreground="#5C6370" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel>
 
-            <StackPanel x:Name="SqlPanel" Visibility="Collapsed">
-              <TextBlock Text="Database type"/>
-              <ComboBox x:Name="SqlEngineBox" SelectionChanged="OnSqlEngineChanged">
-                <ComboBoxItem Content="SQL Server"/>
-                <ComboBoxItem Content="PostgreSQL"/>
-                <ComboBoxItem Content="MySQL / MariaDB"/>
-                <ComboBoxItem Content="SQLite file"/>
-              </ComboBox>
-              <StackPanel x:Name="SqlServerFields">
-                <TextBlock Text="Host"/>
-                <TextBox x:Name="SqlHostBox"/>
-                <TextBlock Text="Port"/>
-                <TextBox x:Name="SqlPortBox"/>
-                <TextBlock Text="Database (blank: the login's default)"/>
-                <TextBox x:Name="SqlDatabaseBox"/>
-                <CheckBox x:Name="SqlWindowsAuthBox" Content="Windows sign-in (SQL Server: the current Windows user)" Checked="OnSqlAuthChanged" Unchecked="OnSqlAuthChanged"/>
-                <StackPanel x:Name="SqlLoginFields">
-                  <TextBlock Text="Username (blank: asked when you connect)"/>
-                  <TextBox x:Name="SqlUserBox"/>
-                  <TextBlock Text="Password from"/>
-                  <ComboBox x:Name="SqlPasswordSourceBox">
-                    <ComboBoxItem Content="Saved on this PC, or ask"/>
-                    <ComboBoxItem Content="KeePassXC, looked up at each connect"/>
-                  </ComboBox>
-                  <TextBlock Text="KeePassXC entry: blank finds entries with URL mssql://, postgresql:// or mysql://host; or paste the entry's UUID"/>
-                  <TextBox x:Name="SqlKeePassEntryBox"/>
-                  <TextBlock Text="Password (encrypted on this PC; blank keeps the existing one, none saved means ask)"/>
-                  <PasswordBox x:Name="SqlSecretBox" Padding="3"/>
-                </StackPanel>
-                <CheckBox x:Name="SqlTrustBox" Content="Trust the server's certificate even if it does not verify (self-signed)"/>
-              </StackPanel>
-              <StackPanel x:Name="SqliteFields" Visibility="Collapsed">
-                <TextBlock Text="Database file"/>
-                <DockPanel>
-                  <Button DockPanel.Dock="Right" Content="Browse" Padding="10,2" Margin="6,0,0,0" Click="OnSqlBrowse"/>
-                  <TextBox x:Name="SqlFileBox"/>
-                </DockPanel>
-              </StackPanel>
-              <CheckBox x:Name="SqlReadOnlyBox" Content="Read-only: refuse anything that changes data"/>
-              <CheckBox x:Name="SqlConfirmBox" Content="Ask before statements that change data or structure"/>
-              <TextBlock Text="Read-only is enforced by PostgreSQL, MySQL and SQLite; for SQL Server the app refuses such statements itself."
-                         Foreground="#5C6370" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
-            </StackPanel>
-
             <StackPanel x:Name="KvmPanel" Visibility="Collapsed">
               <TextBlock Text="KVM board address (the board, not the machine it is plugged into)"/>
               <TextBox x:Name="KvmHostBox"/>
@@ -292,7 +250,7 @@
           <StackPanel x:Name="TerminalAppearancePanel">
             <TextBlock Text="Theme"/>
             <ComboBox x:Name="ThemeBox">
-              <ComboBoxItem Content="Quarterdeck Dark"/>
+              <ComboBoxItem Content="BaudHoundTerm Dark"/>
               <ComboBoxItem Content="Solarized Light"/>
               <ComboBoxItem Content="Campbell"/>
             </ComboBox>
@@ -302,6 +260,9 @@
             <TextBox x:Name="FontSizeBox"/>
             <TextBlock Text="Scrollback lines"/>
             <TextBox x:Name="ScrollbackBox"/>
+            <CheckBox x:Name="WheelArrowsBox" Margin="0,10,0,0"
+                      Content="Mouse wheel sends Up/Down in full-screen programs"
+                      ToolTip="In vim, less or tmux (when they do not use the mouse) the wheel moves by sending arrow keys, as other terminals do. Untick it if the wheel steps through command history instead of scrolling."/>
           </StackPanel>
           <TextBlock Text="Tab colour (hex or name, blank for none)"/>
           <DockPanel>
