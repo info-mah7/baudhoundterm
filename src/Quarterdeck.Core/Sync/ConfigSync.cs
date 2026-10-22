@@ -533,6 +533,13 @@ public sealed class ConfigSync
         }
 
         var node = JsonNode.Parse(File.ReadAllText(local));
+        if (name == "agent.json" && node is JsonObject agent)
+        {
+            // Per PC, never leaves it: two PCs with different settings would otherwise flip the
+            // repository's copy and commit on every sync.
+            agent.Remove("keepLog");
+        }
+
         if (sortKeys && node is JsonObject obj)
         {
             node = new JsonObject(obj.OrderBy(p => p.Key, StringComparer.Ordinal)

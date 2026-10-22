@@ -58,11 +58,20 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF 
 IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
 OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."""
 
-# Full texts printed once at the end, keyed by SPDX id.
+# Full texts printed once at the end, keyed by SPDX id. The GNU and Mozilla texts come from the
+# Debian common-licenses folder; load_texts() reads them when main() runs, with a plain message
+# on a host that has no such folder.
 TEXTS = {"MIT": MIT, "BSD-3-Clause": BSD3}
-for spdx, fname in (("Apache-2.0", "Apache-2.0"), ("LGPL-2.1-or-later", "LGPL-2.1"),
-                    ("LGPL-3.0-or-later", "LGPL-3"), ("GPL-3.0", "GPL-3"), ("MPL-2.0", "MPL-2.0")):
-    TEXTS[spdx] = open(os.path.join(LICENSES, fname), encoding="utf-8").read().strip()
+SYSTEM_TEXTS = (("Apache-2.0", "Apache-2.0"), ("LGPL-2.1-or-later", "LGPL-2.1"),
+                ("LGPL-3.0-or-later", "LGPL-3"), ("GPL-3.0", "GPL-3"), ("MPL-2.0", "MPL-2.0"))
+
+
+def load_texts():
+    for spdx, fname in SYSTEM_TEXTS:
+        path = os.path.join(LICENSES, fname)
+        if not os.path.isfile(path):
+            sys.exit(f"{path} not found: this script needs the Debian/Ubuntu common-licenses folder")
+        TEXTS[spdx] = open(path, encoding="utf-8").read().strip()
 
 # Not NuGet packages, or a package whose files the build picks by hand.
 MANUAL = [
@@ -134,6 +143,7 @@ def license_files(d):
 
 
 def main():
+    load_texts()
     target = json.load(open(ASSETS))["targets"][TARGET]
     pkgs = []
     for key, v in target.items():
@@ -201,9 +211,9 @@ def main():
              files, None if (spdx in TEXTS or not spdx) else f"Licence: {spdx}")
 
     out += ["#" * 100, "LICENCE TEXTS", "#" * 100, ""]
-    if "LGPL-3.0-or-later" in TEXTS:
-        used |= {"LGPL-3.0-or-later", "GPL-3.0"}
-    used.add("BSD-3-Clause")  # speexdsp and libmysofa inside the VLC DLLs
+    # LIVE555 inside the VLC build may be LGPL-3 (it says only "LGPL"); speexdsp and libmysofa in
+    # the same DLLs are BSD-3-Clause. Neither is a package, so name their texts here.
+    used |= {"LGPL-3.0-or-later", "GPL-3.0", "BSD-3-Clause"}
     for spdx in sorted(used):
         out += ["=" * 100, spdx, "=" * 100, TEXTS[spdx], ""]
 

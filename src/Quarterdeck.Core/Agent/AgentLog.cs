@@ -28,8 +28,12 @@ public sealed class AgentLog
 
     public string CurrentFile => Path.Combine(_directory, $"{DateTime.Now:yyyy-MM-dd}.jsonl");
 
-    /// <summary>Follows <see cref="AgentConfig.KeepLog"/>; off, <see cref="Write"/> does nothing.</summary>
-    public bool Enabled { get; set; } = true;
+    /// <summary>
+    /// Follows <see cref="AgentConfig.KeepLog"/>; off, <see cref="Write"/> does nothing. One flag for
+    /// the process: every panel has its own log, and turning logging off in one tab must stop a goal
+    /// already running in another.
+    /// </summary>
+    public static bool Enabled { get; set; } = true;
 
     public void Write(AgentLogEntry entry)
     {
