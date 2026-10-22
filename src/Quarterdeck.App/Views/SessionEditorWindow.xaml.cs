@@ -88,21 +88,6 @@ public partial class SessionEditorWindow : Window
         VncViewOnlyBox.IsChecked = d.ViewOnly;
         RtspHostBox.Text = d.Host;
         RtspPortBox.Text = (d.Protocol == SessionProtocol.Rtsp ? d.Port : 554).ToString(CultureInfo.InvariantCulture);
-        _loadingSql = true;
-        SqlEngineBox.SelectedIndex = (int)d.SqlEngine;
-        SqlHostBox.Text = d.Host;
-        SqlPortBox.Text = (d.Protocol == SessionProtocol.Sql ? d.Port : Quarterdeck.Core.Sql.SqlSession.DefaultPort(d.SqlEngine)).ToString(CultureInfo.InvariantCulture);
-        SqlDatabaseBox.Text = d.SqlDatabase;
-        SqlWindowsAuthBox.IsChecked = d.SqlWindowsAuth;
-        SqlUserBox.Text = d.Username;
-        SqlPasswordSourceBox.SelectedIndex = d.PasswordSource == PasswordSource.KeePassXc ? 1 : 0;
-        SqlKeePassEntryBox.Text = d.KeePassEntry;
-        SqlTrustBox.IsChecked = d.SqlTrustServerCertificate;
-        SqlFileBox.Text = d.SqlFile;
-        SqlReadOnlyBox.IsChecked = d.SqlReadOnly;
-        SqlConfirmBox.IsChecked = d.SqlConfirmChanges;
-        _loadingSql = false;
-        UpdateSqlFields();
         RdpHostBox.Text = d.Host;
         RdpPortBox.Text = (d.Protocol == SessionProtocol.Rdp ? d.Port : 3389).ToString(CultureInfo.InvariantCulture);
         RdpUserBox.Text = d.Username;
@@ -128,6 +113,7 @@ public partial class SessionEditorWindow : Window
         FontBox.Text = d.FontFamily;
         FontSizeBox.Text = d.FontSize.ToString(CultureInfo.InvariantCulture);
         ScrollbackBox.Text = d.ScrollbackLines.ToString(CultureInfo.InvariantCulture);
+        WheelArrowsBox.IsChecked = d.WheelSendsArrows;
         TabColorBox.Text = d.TabColor;
 
         LogEnabledBox.IsChecked = d.Logging.Enabled;
@@ -164,12 +150,11 @@ public partial class SessionEditorWindow : Window
         VncPanel.Visibility = protocol == SessionProtocol.Vnc ? Visibility.Visible : Visibility.Collapsed;
         RtspPanel.Visibility = protocol == SessionProtocol.Rtsp ? Visibility.Visible : Visibility.Collapsed;
         RdpPanel.Visibility = protocol == SessionProtocol.Rdp ? Visibility.Visible : Visibility.Collapsed;
-        SqlPanel.Visibility = protocol == SessionProtocol.Sql ? Visibility.Visible : Visibility.Collapsed;
         KvmPanel.Visibility = protocol == SessionProtocol.Kvm ? Visibility.Visible : Visibility.Collapsed;
 
         // Only the tabs that mean something for this protocol. Commands, Logging, Auto-login,
         // Highlight and Reconnect are all about a terminal's text stream, which only ssh, serial,
-        // telnet and local shells have. A desktop, camera or database keeps just Connection and
+        // telnet and local shells have. A desktop or camera keeps just Connection and
         // the tab colour; its terminal appearance (font, theme, scrollback) is hidden too.
         var terminal = protocol is SessionProtocol.Ssh or SessionProtocol.Serial
                                or SessionProtocol.Telnet or SessionProtocol.LocalShell;
@@ -185,57 +170,6 @@ public partial class SessionEditorWindow : Window
         if (EditorTabs.SelectedItem is TabItem { Visibility: Visibility.Collapsed })
         {
             EditorTabs.SelectedIndex = 0;
-        }
-    }
-
-    private bool _loadingSql;
-
-    /// <summary>A file for SQLite, a server for the rest; Windows sign-in only for SQL Server.</summary>
-    private void UpdateSqlFields()
-    {
-        if (SqlEngineBox is null || SqlServerFields is null)
-        {
-            return;
-        }
-
-        var engine = (SqlEngine)Math.Max(0, SqlEngineBox.SelectedIndex);
-        SqliteFields.Visibility = engine == SqlEngine.Sqlite ? Visibility.Visible : Visibility.Collapsed;
-        SqlServerFields.Visibility = engine == SqlEngine.Sqlite ? Visibility.Collapsed : Visibility.Visible;
-        SqlWindowsAuthBox.Visibility = engine == SqlEngine.SqlServer ? Visibility.Visible : Visibility.Collapsed;
-        SqlLoginFields.Visibility = engine == SqlEngine.SqlServer && SqlWindowsAuthBox.IsChecked == true ? Visibility.Collapsed : Visibility.Visible;
-    }
-
-    private void OnSqlEngineChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_loadingSql || SqlPortBox is null)
-        {
-            return;
-        }
-
-        // Switching engine moves the port to the new engine's default, unless it was set by hand.
-        var engine = (SqlEngine)Math.Max(0, SqlEngineBox.SelectedIndex);
-        var defaults = new[] { "1433", "5432", "3306", "0", "" };
-        if (defaults.Contains(SqlPortBox.Text.Trim()))
-        {
-            SqlPortBox.Text = Quarterdeck.Core.Sql.SqlSession.DefaultPort(engine).ToString(CultureInfo.InvariantCulture);
-        }
-
-        UpdateSqlFields();
-    }
-
-    private void OnSqlAuthChanged(object sender, RoutedEventArgs e) => UpdateSqlFields();
-
-    private void OnSqlBrowse(object sender, RoutedEventArgs e)
-    {
-        var dialog = new Microsoft.Win32.OpenFileDialog
-        {
-            Title = "SQLite database file",
-            Filter = "SQLite databases|*.db;*.sqlite;*.sqlite3;*.db3|All files|*.*",
-            CheckFileExists = true
-        };
-        if (dialog.ShowDialog(this) == true)
-        {
-            SqlFileBox.Text = dialog.FileName;
         }
     }
 
@@ -606,9 +540,6 @@ public partial class SessionEditorWindow : Window
             SessionProtocol.Rtsp => RtspHostBox.Text,
             SessionProtocol.Rdp => RdpHostBox.Text,
             SessionProtocol.Kvm => KvmHostBox.Text,
-            SessionProtocol.Sql => (SqlEngine)Math.Max(0, SqlEngineBox.SelectedIndex) == SqlEngine.Sqlite
-                ? System.IO.Path.GetFileNameWithoutExtension(SqlFileBox.Text)
-                : SqlHostBox.Text,
             SessionProtocol.Serial => SerialPortBox.Text,
             _ => "Local shell"
         }).Trim();
@@ -658,27 +589,6 @@ public partial class SessionEditorWindow : Window
             if (!string.IsNullOrEmpty(VncSecretBox.Password))
             {
                 _vault.Set(d.Id, VncSecretBox.Password);
-            }
-        }
-
-        if (d.Protocol == SessionProtocol.Sql)
-        {
-            d.SqlEngine = (SqlEngine)Math.Max(0, SqlEngineBox.SelectedIndex);
-            d.Host = SqlHostBox.Text.Trim();
-            d.Port = ParseInt(SqlPortBox.Text, Quarterdeck.Core.Sql.SqlSession.DefaultPort(d.SqlEngine));
-            d.SqlDatabase = SqlDatabaseBox.Text.Trim();
-            d.SqlWindowsAuth = d.SqlEngine == SqlEngine.SqlServer && SqlWindowsAuthBox.IsChecked == true;
-            d.Username = SqlUserBox.Text.Trim();
-            d.PasswordSource = SqlPasswordSourceBox.SelectedIndex == 1 ? PasswordSource.KeePassXc : PasswordSource.Saved;
-            d.KeePassEntry = SqlKeePassEntryBox.Text.Trim();
-            d.SqlTrustServerCertificate = SqlTrustBox.IsChecked == true;
-            d.SqlFile = SqlFileBox.Text.Trim();
-            d.SqlReadOnly = SqlReadOnlyBox.IsChecked == true;
-            d.SqlConfirmChanges = SqlConfirmBox.IsChecked == true;
-
-            if (!string.IsNullOrEmpty(SqlSecretBox.Password))
-            {
-                _vault.Set(d.Id, SqlSecretBox.Password);
             }
         }
 
@@ -742,6 +652,7 @@ public partial class SessionEditorWindow : Window
         d.FontFamily = FontBox.Text.Trim();
         d.FontSize = ParseInt(FontSizeBox.Text, 13);
         d.ScrollbackLines = ParseInt(ScrollbackBox.Text, 10000);
+        d.WheelSendsArrows = WheelArrowsBox.IsChecked == true;
         d.TabColor = TabColorBox.Text.Trim();
 
         d.Logging.Enabled = LogEnabledBox.IsChecked == true;

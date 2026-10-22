@@ -23,7 +23,10 @@ public enum SessionProtocol
     /// </summary>
     Rdp,
 
-    /// <summary>A SQL query tab: SQL Server, PostgreSQL, MySQL/MariaDB or a SQLite file.</summary>
+    /// <summary>
+    /// Was a SQL query tab; removed in build 70 with its database drivers. Kept so the numbers
+    /// stored for later protocols (Kvm) do not shift; a stored SQL shortcut no longer opens.
+    /// </summary>
     Sql,
 
     /// <summary>
@@ -32,14 +35,6 @@ public enum SessionProtocol
     /// on the target, so a BIOS screen or an installer can be worked like any other screen.
     /// </summary>
     Kvm
-}
-
-public enum SqlEngine
-{
-    SqlServer,
-    PostgreSql,
-    MySql,
-    Sqlite
 }
 
 public enum SshAuthMethod
@@ -158,27 +153,6 @@ public sealed class SessionDefinition
     /// <summary>Connect to the server's console/admin session (mstsc /admin).</summary>
     public bool RdpAdmin { get; set; }
 
-    // SQL: Host, Port, Username and the password source are shared fields.
-    public SqlEngine SqlEngine { get; set; }
-
-    /// <summary>Database to open. Blank: the login's default.</summary>
-    public string SqlDatabase { get; set; } = "";
-
-    /// <summary>SQLite only: the database file.</summary>
-    public string SqlFile { get; set; } = "";
-
-    /// <summary>SQL Server only: sign in as the current Windows user.</summary>
-    public bool SqlWindowsAuth { get; set; }
-
-    /// <summary>Accept a server certificate that does not verify (self-signed). Encryption stays on.</summary>
-    public bool SqlTrustServerCertificate { get; set; }
-
-    /// <summary>Refuse changes: enforced by PostgreSQL, MySQL and SQLite; checked by the app for SQL Server.</summary>
-    public bool SqlReadOnly { get; set; }
-
-    /// <summary>Ask before running a statement that changes data or structure.</summary>
-    public bool SqlConfirmChanges { get; set; } = true;
-
     // RTSP camera: Host, Port (554) and Username are shared fields; the password is in the vault.
     /// <summary>Stream path after host:port, e.g. /Streaming/Channels/101. Blank asks the camera over ONVIF.</summary>
     public string RtspPath { get; set; } = "";
@@ -198,10 +172,25 @@ public sealed class SessionDefinition
     /// <summary>Commands offered on the terminal's right-click menu.</summary>
     public List<CommandShortcut> Commands { get; set; } = CommandShortcut.Defaults();
 
-    public string Theme { get; set; } = "Quarterdeck Dark";
+    /// <summary>The default theme was called "Quarterdeck Dark" until build 70; saved shortcuts get the new name.</summary>
+    public string Theme
+    {
+        get => _theme;
+        set => _theme = value == "Quarterdeck Dark" ? DefaultTheme : value;
+    }
+
+    private string _theme = DefaultTheme;
+    public const string DefaultTheme = "BaudHoundTerm Dark";
     public string FontFamily { get; set; } = "Cascadia Mono";
     public int FontSize { get; set; } = 13;
     public int ScrollbackLines { get; set; } = 10000;
+
+    /// <summary>
+    /// In a full-screen program (vim, less, tmux with mouse off) that does not read the mouse,
+    /// the wheel is sent as Up/Down keys, as every terminal does. Off, the wheel does nothing
+    /// there, so it cannot page through a shell's command history by accident.
+    /// </summary>
+    public bool WheelSendsArrows { get; set; } = true;
 
     public LoggingSettings Logging { get; set; } = new();
     public ReconnectSettings Reconnect { get; set; } = new();
