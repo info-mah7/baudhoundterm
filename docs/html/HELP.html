@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BaudHoundTerm: getting started</title>
+<style>
+:root { color-scheme: light dark; --fg: #1f2328; --bg: #ffffff; --muted: #59636e;
+        --line: #d1d9e0; --code: #f6f8fa; --link: #0969da; }
+@media (prefers-color-scheme: dark) {
+  :root { --fg: #e6edf3; --bg: #0d1117; --muted: #9198a1; --line: #3d444d; --code: #151b23; --link: #4493f8; }
+}
+body { margin: 0; background: var(--bg); color: var(--fg);
+       font: 15px/1.6 "Segoe UI", system-ui, sans-serif; }
+main { max-width: 52rem; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+a { color: var(--link); }
+h1, h2 { border-bottom: 1px solid var(--line); padding-bottom: .3em; }
+code, pre { font-family: "Cascadia Mono", Consolas, monospace; font-size: .9em; background: var(--code); }
+code { padding: .1em .3em; border-radius: 4px; }
+pre { padding: .8em 1em; overflow-x: auto; border-radius: 6px; }
+pre code { padding: 0; }
+table { border-collapse: collapse; display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--line); padding: .35em .7em; text-align: left; vertical-align: top; }
+blockquote { margin: 0; padding: 0 1em; color: var(--muted); border-left: .25em solid var(--line); }
+hr { border: 0; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<main>
+<h1 id="baudhoundterm-getting-started">BaudHoundTerm: getting
+started</h1>
+<p>A friendly starting point. For the full detail of every setting, see
+the <a href="MANUAL.html">user manual</a>.</p>
+<p>BaudHoundTerm connects you to other computers and devices, each in
+its own tab: a server over SSH, a Windows PC over Remote Desktop, a
+screen over VNC, a serial console, a network camera, or a KVM board. It
+can also drive any of those for you with an AI agent.</p>
+<hr />
+<h2 id="1-install-and-first-run">1. Install and first run</h2>
+<ol type="1">
+<li>Get the BaudHoundTerm <code>.zip</code> from MAH7 and
+<strong>extract the whole folder</strong> (keep
+<code>BaudHoundTerm.exe</code> together with the <code>Assets</code>,
+<code>dll</code>, <code>docs</code>, <code>libvlc</code> and
+<code>runtimes</code> folders next to it). This guide and the user
+manual are in <code>docs</code>, and the <strong>Help</strong> menu
+opens them.</li>
+<li>Run <code>BaudHoundTerm.exe</code>. Windows may warn that the
+publisher is unknown, because the app is not code-signed yet: choose
+<strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+<li>The window opens empty. Everything starts from the left-hand list
+and the toolbar.</li>
+</ol>
+<h2 id="2-your-first-connection">2. Your first connection</h2>
+<p>The fastest way: at the top, use <strong>Quick connect</strong>. Pick
+<code>SSH</code>, type <code>user@server</code> (or just the address),
+and press <strong>Connect</strong>. A tab opens and asks for your
+password if it needs one.</p>
+<p>To keep a connection for next time, make a <strong>shortcut</strong>
+instead:</p>
+<ol type="1">
+<li>Click <strong>New</strong> (or right-click the empty list &gt;
+<strong>New shortcut</strong>).</li>
+<li>Choose the <strong>Protocol</strong> (SSH, RDP, VNC, and so on). The
+fields below change to match it.</li>
+<li>Fill in the address and login, give it a <strong>Name</strong>, and
+<strong>Save</strong>.</li>
+<li>Double-click the shortcut in the list to connect.</li>
+</ol>
+<p>You never have to save a password: leave it blank and BaudHoundTerm
+asks each time, which is the safer habit. See <strong>Passwords</strong>
+below.</p>
+<h2 id="3-finding-your-way-around">3. Finding your way around</h2>
+<ul>
+<li><strong>The list on the left</strong> holds your saved shortcuts,
+grouped into folders you make. The box above it filters by name, host or
+tag. With the 🖥 button on, each host gets a row with its shortcuts under
+it.</li>
+<li><strong>Tabs</strong> across the top are your open connections. Each
+has an <strong>×</strong> to close it; closing a connected tab ends that
+session.</li>
+<li><strong>Switch tabs</strong> with <strong>Ctrl+Tab</strong> and
+<strong>Ctrl+Shift+Tab</strong>, or <strong>Ctrl+PgDn</strong> and
+<strong>Ctrl+PgUp</strong>. Ctrl+Left and Ctrl+Right stay with the
+session, where shells use them to move by word.</li>
+<li><strong>Full screen</strong> (toolbar, or <strong>F11</strong>)
+hides everything but the tabs. F11 again brings it back.</li>
+<li><strong>Pop out</strong> (toolbar, or right-click a tab) moves the
+tab into its own window, still connected, for a second monitor. Close
+that window to put the tab back; F11 works in it too.</li>
+<li><strong>Hide addresses</strong> (toolbar, or
+<strong>Ctrl+Shift+H</strong>) shows every IP, host and user name as
+<code>•••</code>, for demos and recordings. To always hide one shortcut,
+tick the box in its properties.</li>
+<li><strong>Right-click</strong> a shortcut for Connect, Properties,
+Move, Delete. Right-click a tab's <strong>header</strong> for its
+colour, properties, pop-out, and (on a desktop or KVM tab) agent
+options.</li>
+</ul>
+<h2 id="4-the-kinds-of-connection">4. The kinds of connection</h2>
+<ul>
+<li><strong>SSH / telnet / serial / local shell</strong> are text
+terminals. You type, the far end answers. Optional <strong>tmux</strong>
+(SSH) keeps your shell alive if the link drops; a green
+<strong>tmux</strong> chip in the list marks shortcuts set up for it. An
+idle session costs the host about 20 MB and no CPU; what runs inside it
+keeps running (see the manual, "Ending a tmux session"). The mouse wheel
+scrolls back through tmux's output; hold Shift to select text.</li>
+<li><strong>RDP</strong> opens a Windows desktop using Windows' own
+Remote Desktop client.</li>
+<li><strong>VNC</strong> shows another machine's screen. Copy and paste
+work both ways.</li>
+<li><strong>RTSP camera</strong> shows a camera's video, with
+pan/tilt/zoom if it supports it.</li>
+<li><strong>KVM</strong> drives a machine through a <a
+href="https://github.com/info-mah7/agentkvm">KVM board</a>: the board
+acts as a USB keyboard and mouse and shows the machine's HDMI output, so
+nothing is installed on that machine. To set one up, make a KVM
+shortcut, enter the board's address and web login, and press
+<strong>Pair with portal</strong> to fetch its key automatically. On a
+KVM tab, <strong>Ctrl+V</strong> types your clipboard onto the machine
+(there is no shared clipboard), and a right-click goes to the
+machine.</li>
+</ul>
+<h2 id="5-the-ai-agent-optional">5. The AI agent (optional)</h2>
+<p>The agent can work inside a tab for you: run commands on a terminal,
+or click and type on a VNC, RDP or KVM desktop, toward a goal you give
+it.</p>
+<ul>
+<li>Open the agent from a tab's menu (<strong>Agent on this
+tab</strong>), pick an endpoint, type a goal, <strong>Run</strong>.</li>
+<li>It needs an AI endpoint you set up once in <strong>Terminal &gt;
+Agent endpoints and skills</strong> (any OpenAI-compatible service, or a
+local model you run yourself).</li>
+<li><strong>Be careful.</strong> Everything the agent sees goes to that
+AI endpoint, and the agent acts with the full permissions of whatever
+account the session is logged in as. Use a least-privilege login, keep
+the approval set to <strong>Ask before risky</strong>, and for sensitive
+systems use a local model or do not attach the agent at all. See the
+manual's <strong>Security</strong> section.</li>
+<li>Every step is logged to a file on this PC. To keep no record, untick
+<strong>Keep a log of agent conversations</strong> in Agent
+endpoints.</li>
+</ul>
+<h2 id="6-moving-files">6. Moving files</h2>
+<p>On an SSH tab, <strong>Files</strong> opens an SFTP browser to upload
+and download. There is also SCP for hosts without SFTP, and TightVNC
+file transfer on VNC tabs that support it.</p>
+<h2 id="7-passwords-and-keys">7. Passwords and keys</h2>
+<ul>
+<li>The safest setup is <strong>no saved password</strong>: leave it
+blank and type it when asked, or use an SSH key or agent.</li>
+<li>Saved secrets are encrypted on your PC with Windows DPAPI (tied to
+your Windows account) and are never written in readable form.</li>
+<li><strong>KeePassXC</strong> can supply SSH passwords and keys at
+connect time, so nothing is stored in BaudHoundTerm at all. See the
+manual's KeePassXC section.</li>
+</ul>
+<h2 id="8-when-something-does-not-work">8. When something does not
+work</h2>
+<ul>
+<li><strong>Can't connect:</strong> check the address and port, and that
+the service is actually running. For SSH the first connection asks you
+to trust the host's fingerprint; later changes are refused until you
+accept them.</li>
+<li><strong>Agent won't run on a desktop:</strong> its AI endpoint's
+model must accept images. Use <strong>Test</strong> in Agent endpoints
+to check.</li>
+<li><strong>Paste on a KVM tab:</strong> use <strong>Ctrl+V</strong> to
+type your clipboard onto the machine. A big or multi-line paste asks
+first, because line breaks press Enter.</li>
+<li><strong>A skill is missing</strong> from the agent's skill list:
+skills are filtered by protocol (a Windows desktop skill only shows on a
+desktop or KVM tab). If one you expect is gone entirely, open
+<strong>Agent endpoints</strong> and click <strong>Restore built-in
+skills</strong>.</li>
+<li><strong>Where are my files?</strong> Settings live in
+<code>%APPDATA%\BaudHoundTerm</code> (shortcuts, encrypted credentials,
+logs, skills). The <strong>Help &gt; Open log folder</strong> menu opens
+the logs.</li>
+<li><strong>Credits and licences:</strong> <strong>Help &gt;
+Credits</strong>, <strong>Third-party licenses</strong> and
+<strong>License</strong>.</li>
+</ul>
+<hr />
+<p>More detail on every option is in the <a href="MANUAL.html">user
+manual</a>. To report a problem or ask a question, use <strong>Help &gt;
+Report a problem</strong>: it points to the <a
+href="https://mah7.com/discord">MAH7 Discord</a>.</p>
+</main>
+</body>
+</html>

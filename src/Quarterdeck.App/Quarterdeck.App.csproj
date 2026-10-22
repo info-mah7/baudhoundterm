@@ -15,6 +15,10 @@
          so the build stamp never reached InformationalVersion and the title bar showed only the
          bare version. With VersionPrefix, -p:VersionSuffix=dev.<date>.<n> composes into it. -->
     <VersionPrefix>0.8.0</VersionPrefix>
+    <!-- Shown under the exe's Properties > Details in Windows. -->
+    <Product>BaudHoundTerm</Product>
+    <Company>MAH7</Company>
+    <Copyright>Copyright 2026 MAH7 and the BaudHoundTerm contributors. Apache-2.0.</Copyright>
     <!-- The mah7 eagle: exe, taskbar and title bar. -->
     <ApplicationIcon>baudhoundterm.ico</ApplicationIcon>
     <RootNamespace>Quarterdeck.App</RootNamespace>
@@ -27,7 +31,7 @@
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-    <!-- Native DLLs (WebView2Loader, libsodium, SQL Server's SNI...) ship beside the exe, not
+    <!-- Native DLLs (WebView2Loader, libsodium...) ship beside the exe, not
          inside it: self-extraction unpacked them under %TEMP%, a folder anything running as the
          user can change, and an administrator copy then loaded them from there. -->
     <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
@@ -73,6 +77,9 @@
     <VlcWindowsX64IncludeFiles Include="plugins\video_output\libdirect3d11_plugin.dll;plugins\video_output\libdirect3d9_plugin.dll;plugins\video_output\libwingdi_plugin.dll;plugins\video_output\libvmem_plugin.dll;plugins\video_output\libdrawable_plugin.dll" />
     <VlcWindowsX64IncludeFiles Include="plugins\video_chroma\%2A;plugins\d3d11\%2A;plugins\d3d9\%2A;plugins\video_filter\libdeinterlace_plugin.dll" />
     <VlcWindowsX64IncludeFiles Include="plugins\audio_output\%2A;plugins\audio_filter\%2A;plugins\audio_mixer\%2A" />
+    <!-- The only two GPL-2.0 plugins in that set (every other shipped VLC file is LGPL-2.1).
+         A camera viewer needs neither headphone surround nor Dolby Surround decoding. -->
+    <VlcWindowsX64ExcludeFiles Include="plugins\audio_filter\libheadphone_channel_mixer_plugin.dll;plugins\audio_filter\libdolby_surround_decoder_plugin.dll" />
   </ItemGroup>
 
   <!-- VLC loads its plugins from a folder at run time, so libvlc must sit beside the exe as real
@@ -100,6 +107,24 @@
          so these must sit beside the executable rather than inside it. -->
     <None Update="Assets\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Licence files ship beside the exe: our Apache-2.0 LICENSE and NOTICE, and the full texts
+       every bundled component's licence asks to travel with copies. -->
+  <ItemGroup>
+    <!-- .txt names so Windows opens them on a double-click. -->
+    <None Include="..\..\LICENSE" Link="LICENSE.txt" />
+    <None Include="..\..\NOTICE" Link="NOTICE.txt" />
+    <None Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" />
+    <None Update="..\..\LICENSE;..\..\NOTICE;..\..\THIRD-PARTY-NOTICES.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </None>
+    <!-- The getting-started guide and manual, opened by the Help menu (helpers/build_docs.py). -->
+    <None Include="..\..\docs\html\*.html" Link="docs\%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
   </ItemGroup>
 

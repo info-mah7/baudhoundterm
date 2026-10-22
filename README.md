@@ -3,7 +3,7 @@
 Agentic, multi-protocol terminal and session manager for Windows 11: saved sessions in folders,
 an encrypted credential store, session logging, scripted logins, auto-reconnect, SFTP/SCP
 transfer, and an AI agent that can work in any tab. SSH, telnet, serial, local shells, VNC,
-RDP, SQL databases, cameras and KVM boards. One self-contained executable, no runtime to install.
+RDP, cameras and KVM boards. One self-contained executable, no runtime to install.
 
 ![BaudHoundTerm: the session tree on the left, a KVM tab driving a browser in the middle, and the AI agent panel working on the right](docs/overview.png)
 
@@ -22,7 +22,7 @@ The obvious design is to shell out to `wt.exe` with a generated profile. It cann
 feature set: Windows Terminal owns the pseudoconsole and exposes no way to read the output stream
 or inject into the input stream. Everything interesting here (logging a transcript, colouring
 matching lines, waiting for a password prompt and answering it, searching the scrollback) needs
-the stream. So Quarterdeck hosts the terminal itself: a ConPTY for local shells, SSH.NET channels
+the stream. So BaudHoundTerm hosts the terminal itself: a ConPTY for local shells, SSH.NET channels
 for SSH, and a serial port for consoles, rendered by xterm.js.
 
 The [manual](docs/MANUAL.md) explains how to use it.
@@ -47,8 +47,6 @@ The [manual](docs/MANUAL.md) explains how to use it.
   Copy and paste work both ways.
 - **RDP** through Windows' own Remote Desktop client, with gateway, clipboard, drive sharing and
   admin-session options.
-- **SQL query tabs** for SQL Server, PostgreSQL, MySQL/MariaDB and SQLite, with a read-only mode
-  and a prompt before statements that change data.
 - **KVM boards** running [agentkvm](https://github.com/info-mah7/agentkvm): the board types on the
   machine over USB and shows its HDMI output, so nothing is installed on the target and it need not
   be on the network. **Pair with portal** signs in to the board's web interface and fetches its
@@ -97,8 +95,13 @@ Requires the .NET 10 SDK. Builds on Windows or, with `EnableWindowsTargeting`, o
 dotnet publish src/Quarterdeck.App/Quarterdeck.App.csproj -c Release
 ```
 
-The result is `BaudHoundTerm.exe` (about 64 MB, self-contained) plus an `Assets` folder that must
-travel with it.
+The result is `BaudHoundTerm.exe` (about 76 MB, self-contained) plus the `Assets`, `dll`, `docs`,
+`libvlc` and `runtimes` folders and three licence files, all of which travel with it.
+
+Two files are generated and committed, so the build itself needs neither tool:
+`THIRD-PARTY-NOTICES.txt` (`python3 helpers/third_party_notices.py`, after any package change) and
+`docs/html/` (`python3 helpers/build_docs.py`, which needs pandoc, after any edit to `docs/HELP.md`
+or `docs/MANUAL.md`).
 
 ## Runtime requirement
 
@@ -159,10 +162,8 @@ is fetched and saved for you, and the KVM tab connects.
 
 ## What it connects to
 
-Nothing of its own: no telemetry, no analytics, no automatic update check. Every connection is one
-you ask for, the hosts in your shortcuts, your sync repository, and the AI endpoint you configure.
-**Help > Check for updates** asks GitHub for the newest release only when clicked, sends no
-version or machine details, and downloads nothing.
+Nothing of its own: no telemetry, no analytics, no update check. Every connection is one you ask
+for, the hosts in your shortcuts, your sync repository, and the AI endpoint you configure.
 WebView2's own background traffic is switched off at startup. Verified on Windows with the app
 idle: no outbound connection, no name resolved, and no request in Chromium's network log.
 
@@ -215,25 +216,8 @@ account's reach, the smaller the damage if the agent, or the model behind it, ge
 Binaries are unsigned, so Windows SmartScreen reports an unknown publisher on every launch.
 Until there is a code-signing certificate, the checksum is the only integrity check there is.
 
-Build 0.8.0-dev.30, `baudhoundterm-0.8.0-dev.20261014.30-win-x64.zip`, 75,114,466 bytes, built
-from commit `df17bb9` (tag `v0.8.0-dev.30`):
-
-| Algorithm | Digest |
-|---|---|
-| SHA-1 | `29fa34f76d0d5806d7edfa34dcc780989570c825` |
-| SHA-256 | `b5c87783315f7eb4714be0c760ba5c989c85bea94a8c31d0b561b70c6e7817bd` |
-
-The unpacked `BaudHoundTerm.exe` is SHA-1 `15d5c8cf4e2f5b1f0240b14e50cf4dab6e0f7b6e`.
-
-Build 0.8.0-dev.29, `baudhoundterm-0.8.0-dev.20261014.29-win-x64.zip`, 75,113,921 bytes, built
-from commit `80f0d2d` (tag `v0.8.0-dev.29`):
-
-| Algorithm | Digest |
-|---|---|
-| SHA-1 | `16e99865baa953257e8294be3ad2fbe607c5cde9` |
-| SHA-256 | `61be88a386956a4aca440397faed722fd6e037f0e089c75ac4ccf3e65a65c8ce` |
-
-The unpacked `BaudHoundTerm.exe` is SHA-1 `b90328b1581bd99382ff8f84ca538379e38eb19f`.
+Each release's notes give the zip's SHA-256 and SHA-1 and the SHA-1 of the unpacked
+`BaudHoundTerm.exe`.
 
 Each release also carries a `SHA256SUMS` file. Check a download with `sha256sum -c SHA256SUMS` on
 Linux, or `Get-FileHash -Algorithm SHA256 <file>` in PowerShell and compare with the table.
@@ -269,10 +253,9 @@ is whether someone tampered with the file.
 
 ### Reporting a problem
 
-Open an issue. If it is a vulnerability, say so in the title and leave the details out of the
-public text; there is no separate disclosure channel yet.
-
-Questions and chat: the [MAH7 Discord server](https://mah7.com/discord) (**Help > MAH7 Discord**).
+Problems, questions and chat go to the [MAH7 Discord server](https://mah7.com/discord)
+(**Help > Report a problem** or **Help > MAH7 Discord** in the app). If it is a vulnerability, say
+only that in the channel and ask for a private contact; there is no separate disclosure channel yet.
 
 ## Known limits
 
@@ -286,5 +269,15 @@ Questions and chat: the [MAH7 Discord server](https://mah7.com/discord) (**Help 
   `127.0.0.1` even when the app runs on the same machine. Use the machine's LAN address.
 
 ## Credits
+
+BaudHoundTerm is built on open-source work: [xterm.js](https://github.com/xtermjs/xterm.js)
+(terminal), [SSH.NET](https://github.com/sshnet/SSH.NET), [noVNC](https://github.com/novnc/noVNC)
+(VNC), [LibVLC](https://www.videolan.org/vlc/libvlc.html) (cameras), [libsodium](https://libsodium.org)
+and .NET.
+[NOTICE](NOTICE) summarises them; [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt), which ships
+beside the executable, has every component's copyright line and full licence text. Regenerate it
+with `python3 helpers/third_party_notices.py` after changing a package.
+
+The application icon was made for MAH7 with Claude (Anthropic).
 
 This is AI-assisted work.
