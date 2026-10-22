@@ -114,10 +114,15 @@
        every bundled component's licence asks to travel with copies. -->
   <ItemGroup>
     <!-- .txt names so Windows opens them on a double-click. -->
-    <None Include="..\..\LICENSE" Link="LICENSE.txt" />
-    <None Include="..\..\NOTICE" Link="NOTICE.txt" />
-    <None Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" />
-    <None Update="..\..\LICENSE;..\..\NOTICE;..\..\THIRD-PARTY-NOTICES.txt">
+    <None Include="..\..\LICENSE" Link="LICENSE.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </None>
+    <None Include="..\..\NOTICE" Link="NOTICE.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </None>
+    <None Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>

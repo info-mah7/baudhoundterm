@@ -811,7 +811,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        foreach (var live in _live.Where(l => l.Definition is { } d && (ReferenceEquals(d, definition) || d.Id == definition.Id)))
+        // A Shell menu tab matches by object only: its normal and administrator tabs share an
+        // Id, and editing one must not retitle or recolour the other.
+        var byId = !_shellTabs.ContainsKey(definition);
+        foreach (var live in _live.Where(l => l.Definition is { } d && (ReferenceEquals(d, definition) || (byId && d.Id == definition.Id))))
         {
             live.Title = definition.Name;
             if (definition.TabColor.Length > 0)
@@ -1335,15 +1338,21 @@ public partial class MainWindow : Window
         {
             Save();
         }
-        else if (_shellTabs.TryGetValue(definition.Id, out var shell))
+        else if (_shellTabs.TryGetValue(definition, out var shell))
         {
-            // One entry per shell, shared by its normal and administrator tabs; the red tab of
-            // an administrator shell is not copied to the normal one.
-            var copy = definition.Clone(definition.Name);
-            copy.Id = definition.Id;
+            // One entry per shell, shared by its normal and administrator tabs. An administrator
+            // tab writes back only the look (CopyLook), so neither its red tab nor its empty
+            // login steps and shortcuts reach the normal tab's entry.
+            SessionDefinition copy;
             if (shell.Elevated)
             {
-                copy.TabColor = LocalShellStore.Load(shell.Key)?.TabColor ?? "";
+                copy = LocalShellStore.Load(shell.Key) ?? new SessionDefinition { Id = definition.Id };
+                CopyLook(definition, copy);
+            }
+            else
+            {
+                copy = definition.Clone(definition.Name);
+                copy.Id = definition.Id;
             }
 
             try
@@ -1593,8 +1602,10 @@ public partial class MainWindow : Window
             await view.DisconnectAsync();
 
             // A quick-connect session was never saved, so its stored password has nothing to
-            // belong to once the tab is gone.
-            if (!_sessions.Any(s => s.Id == view.Definition.Id))
+            // belong to once the tab is gone. A Shell menu tab is not one: its login steps
+            // persist in local-shells.json and need their secret next time.
+            var shellTab = _shellTabs.Remove(view.Definition);
+            if (!shellTab && !_sessions.Any(s => s.Id == view.Definition.Id))
             {
                 _vault.Remove(view.Definition.Id);
             }
@@ -2064,7 +2075,24 @@ public partial class MainWindow : Window
     // ---------- quick shells ----------
 
     // Tabs opened from the Shell menu, by definition id: which shell, and whether elevated.
-    private readonly Dictionary<Guid, (string Key, bool Elevated)> _shellTabs = new();
+    // Keyed by the tab's own definition object: the normal and administrator tabs of one shell
+    // share the stored Id, and keyed by Id the second opened overwrote the first's Elevated flag.
+    private readonly Dictionary<SessionDefinition, (string Key, bool Elevated)> _shellTabs =
+        new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// What an administrator shell takes from, and gives back to, local-shells.json: how the tab
+    /// looks, nothing that runs. The file is writable by any program running as the user, so
+    /// login steps or command shortcuts planted there must never reach a high-integrity shell.
+    /// </summary>
+    private static void CopyLook(SessionDefinition from, SessionDefinition to)
+    {
+        to.FontFamily = from.FontFamily;
+        to.FontSize = from.FontSize;
+        to.ScrollbackLines = from.ScrollbackLines;
+        to.WheelSendsArrows = from.WheelSendsArrows;
+        to.Highlights = from.Highlights.Select(h => h.Copy()).ToList();
+    }
 
     /// <summary>
     /// The shells the Local and Admin buttons offer. A fixed list on purpose: the elevated path
@@ -2140,7 +2168,14 @@ public partial class MainWindow : Window
         if (!elevated || IsElevated)
         {
             // Settings kept from an earlier run (commands, font...); what the shell is stays fixed.
-            var definition = LocalShellStore.Load(shell.Key) ?? new SessionDefinition();
+            // An administrator tab takes only the look: the file is user-writable (see CopyLook).
+            var stored = LocalShellStore.Load(shell.Key);
+            var definition = stored is null ? new SessionDefinition() : elevated ? new SessionDefinition { Id = stored.Id } : stored;
+            if (elevated && stored is not null)
+            {
+                CopyLook(stored, definition);
+            }
+
             definition.Name = elevated ? $"Administrator: {shell.Label}" : shell.Label;
             definition.Folder = "";
             definition.Protocol = SessionProtocol.LocalShell;
@@ -2150,7 +2185,7 @@ public partial class MainWindow : Window
                 definition.TabColor = "#e06c75";
             }
 
-            _shellTabs[definition.Id] = (shell.Key, elevated);
+            _shellTabs[definition] = (shell.Key, elevated);
             Connect(definition);
             return;
         }
