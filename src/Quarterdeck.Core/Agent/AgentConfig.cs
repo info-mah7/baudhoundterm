@@ -135,6 +135,12 @@ public sealed class AgentConfig
     /// <summary>Skills ticked or unticked in the agent pane, by file name; others follow their header.</summary>
     public Dictionary<string, bool> SkillChoices { get; set; } = new();
 
+    /// <summary>
+    /// Write every agent step to agent-logs. Off, nothing of a conversation reaches the disk;
+    /// the panel still shows it until the tab closes.
+    /// </summary>
+    public bool KeepLog { get; set; } = true;
+
     /// <summary>Endpoints still at the old default of 30 steps have been raised to the new one.</summary>
     public bool StepsRaised { get; set; }
 

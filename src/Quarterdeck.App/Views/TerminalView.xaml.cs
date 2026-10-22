@@ -61,8 +61,6 @@ public partial class TerminalView : UserControl, ITerminalTarget
     private readonly TaskCompletionSource _cameraReady = new();
     private RdpView? _rdp;
     private readonly TaskCompletionSource _rdpReady = new();
-    private SqlView? _sql;
-    private readonly TaskCompletionSource _sqlReady = new();
     private KvmView? _kvm;
     private readonly TaskCompletionSource _kvmReady = new();
 
@@ -109,19 +107,6 @@ public partial class TerminalView : UserControl, ITerminalTarget
             }, PromptForSecret);
             ((Grid)Web.Parent).Children.Add(_kvm);
             _kvmReady.TrySetResult();
-            return;
-        }
-
-        if (Definition.Protocol == SessionProtocol.Sql)
-        {
-            Web.Visibility = Visibility.Collapsed;
-            _sql = new SqlView(Definition, _vault, (state, message) =>
-            {
-                ShowStatus(message ?? state.ToString());
-                RaiseState(state, message);
-            }, PromptForSecret);
-            ((Grid)Web.Parent).Children.Add(_sql);
-            _sqlReady.TrySetResult();
             return;
         }
 
@@ -327,6 +312,8 @@ public partial class TerminalView : UserControl, ITerminalTarget
         {
             return;
         }
+
+        Post(new { t = "wheel", arrows = Definition.WheelSendsArrows });
 
         Post(new { t = "commands", list = Definition.Commands.Select(c => new
         {
@@ -572,7 +559,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         }
 
         throw new DirectoryNotFoundException(
-            "The Assets folder was not found next to Quarterdeck.exe. It must travel with the " +
+            "The Assets folder was not found next to BaudHoundTerm.exe. It must travel with the " +
             "executable: extract the whole archive, not just the .exe.");
     }
 
@@ -651,7 +638,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
             }
 
             var name = $"paste-{DateTime.Now:yyyyMMdd-HHmmss}.png";
-            var localDir = Path.Combine(Path.GetTempPath(), "quarterdeck");
+            var localDir = Path.Combine(Path.GetTempPath(), "baudhoundterm");
             Directory.CreateDirectory(localDir);
             var localPath = Path.Combine(localDir, name);
 
@@ -804,13 +791,6 @@ public partial class TerminalView : UserControl, ITerminalTarget
         {
             await _rdpReady.Task;
             await _rdp!.ConnectAsync();
-            return;
-        }
-
-        if (Definition.Protocol == SessionProtocol.Sql)
-        {
-            await _sqlReady.Task;
-            await _sql!.ConnectAsync();
             return;
         }
 
@@ -995,12 +975,6 @@ public partial class TerminalView : UserControl, ITerminalTarget
         if (_rdp is not null)
         {
             await _rdp.DisconnectAsync();
-            return;
-        }
-
-        if (_sql is not null)
-        {
-            await _sql.DisconnectAsync();
             return;
         }
 
@@ -1252,7 +1226,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
     /// Terminals get the text agent, VNC and RDP the screen agent (TerminalView.Screen.cs). A
     /// camera has nothing to act on.
     /// </summary>
-    public bool CanAttachAgent => Definition.Protocol is not (SessionProtocol.Rtsp or SessionProtocol.Sql);
+    public bool CanAttachAgent => Definition.Protocol is not SessionProtocol.Rtsp;
 
     public void AttachAgent()
     {
@@ -1310,7 +1284,6 @@ public partial class TerminalView : UserControl, ITerminalTarget
         Web.Dispose();
         ((object?)_camera as IDisposable)?.Dispose();
         _rdp?.Dispose();
-        _sql?.Dispose();
         _kvm?.Dispose();
     }
 
@@ -1355,7 +1328,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
         RaiseState(SessionState.Connecting, null);
 
-        if (Definition.Protocol is SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Sql or SessionProtocol.Kvm)
+        if (Definition.Protocol is SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Kvm)
         {
             await ConnectAsync();
             return;

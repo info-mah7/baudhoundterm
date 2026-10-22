@@ -85,11 +85,38 @@ internal sealed class AgentSettingsWindow : Window
                 : "Put back: " + string.Join(", ", restored) + ". The agent pane lists them the next time you press Run.",
                 Color.FromRgb(0x98, 0xC3, 0x79));
         }, "Put back any built-in skill (such as chess.com) that is missing from the skills folder"));
+        // For every endpoint, so it is saved when ticked, not with the endpoint form.
+        var keepLog = new CheckBox
+        {
+            Content = "Keep a log of agent conversations",
+            IsChecked = _config.KeepLog,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 10, 0, 0),
+            Foreground = new SolidColorBrush(Color.FromRgb(0xDF, 0xE4, 0xEE)),
+            ToolTip = "Every goal, reply, command and result, one file per day in the logs folder. Off, nothing is written; " +
+                      "files already there stay."
+        };
+        keepLog.Click += (_, _) =>
+        {
+            _config.KeepLog = keepLog.IsChecked == true;
+            try
+            {
+                _config.Save();
+                Note(_config.KeepLog ? "Agent conversations will be logged." : "Agent conversations will not be logged. Files already in the logs folder stay until you delete them.");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Note("Not saved: " + ex.Message, Color.FromRgb(0xE0, 0x6C, 0x75));
+            }
+        };
         bottom.Children.Add(Btn("Logs folder", () => AgentPanel.OpenFolder(AgentConfig.LogDirectory)));
         bottom.Children.Add(Btn("Close", Close));
         Closing += (_, e) => e.Cancel = !ConfirmLeave();
         DockPanel.SetDock(bottom, Dock.Bottom);
         root.Children.Add(bottom);
+        // Its own row above the buttons: the button row has no room left at this width.
+        DockPanel.SetDock(keepLog, Dock.Bottom);
+        root.Children.Add(keepLog);
 
         var left = new DockPanel();
         var leftButtons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };

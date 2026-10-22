@@ -168,7 +168,9 @@ internal sealed class AgentPanel : DockPanel
         };
 
         Reload();
-        Append($"Attached to {_target.Describe}. Every step is logged; what needs your approval first depends on the endpoint's Approval setting (⚙).");
+        Append($"Attached to {_target.Describe}. " +
+               (_log.Enabled ? "Every step is logged" : "Logging is off (⚙), so nothing is saved to disk") +
+               "; what needs your approval first depends on the endpoint's Approval setting (⚙).");
         if (Elevated)
         {
             Append("This shell runs as administrator: every command the agent wants to type asks you first, whatever the endpoint's Approval setting.");
@@ -184,6 +186,7 @@ internal sealed class AgentPanel : DockPanel
     private void Reload()
     {
         var config = AgentConfig.Load();
+        _log.Enabled = config.KeepLog;
         var selected = (_endpoints.SelectedItem as AgentEndpoint)?.Id ?? config.DefaultEndpoint;
 
         _endpoints.Items.Clear();

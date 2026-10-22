@@ -205,12 +205,14 @@ public sealed class SessionController : IAsyncDisposable
     /// <summary>
     /// Typed into the login shell after connect. exec replaces the shell, so leaving tmux ends
     /// the channel; -A attaches when the session already exists. POSIX shells and fish accept
-    /// it; the leading space keeps it out of bash history under ignorespace.
+    /// it; the leading space keeps it out of bash history under ignorespace. Mouse goes on for
+    /// this session only: with it off, tmux turns the wheel into Up/Down keys, so scrolling
+    /// paged through the shell's command history instead of the output.
     /// </summary>
     internal static string TmuxCommand(string session)
     {
         var name = TmuxName(session);
-        return $" command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s {name}"
+        return $" command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s {name} \\; set-option -q mouse on"
             + " || echo '[baudhoundterm] tmux not found on this host: plain shell, not kept on disconnect'\r";
     }
 

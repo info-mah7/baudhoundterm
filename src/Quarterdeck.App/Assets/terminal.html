@@ -53,7 +53,7 @@
   const send = (msg) => host && host.postMessage(JSON.stringify(msg));
 
   const themes = {
-    "Quarterdeck Dark": {
+    "BaudHoundTerm Dark": {
       background: "#10141c", foreground: "#dfe4ee", cursor: "#7fd6c1", selectionBackground: "#2f3b52",
       black: "#10141c", red: "#e06c75", green: "#98c379", yellow: "#e5c07b",
       blue: "#61afef", magenta: "#c678dd", cyan: "#56b6c2", white: "#dfe4ee",
@@ -81,12 +81,13 @@
   let search = null;
   let serialize = null;
   let highlights = [];
+  let wheelArrows = true;     // the shortcut's "Mouse wheel sends Up/Down in full-screen programs"
 
   function init(cfg) {
     // Once per page. A second init used to stack a new xterm over the old one, whose input
     // handler stayed live, and drop the scrollback.
     if (term) {
-      term.options.theme = themes[cfg.theme] || themes["Quarterdeck Dark"];
+      term.options.theme = themes[cfg.theme] || themes["BaudHoundTerm Dark"];
       term.options.fontSize = cfg.fontSize;
       try { fit.fit(); } catch (e) {}
       return;
@@ -98,7 +99,7 @@
       scrollback: cfg.scrollback,
       cursorBlink: true,
       allowProposedApi: true,
-      theme: themes[cfg.theme] || themes["Quarterdeck Dark"]
+      theme: themes[cfg.theme] || themes["BaudHoundTerm Dark"]
     });
 
     fit = new FitAddon.FitAddon();
@@ -125,6 +126,12 @@
     // Copy on Ctrl+Shift+C, paste on Ctrl+Shift+V and on right-click, as most Windows terminals do.
     // Pastes go through term.paste: it turns CRLF into CR (Windows text otherwise sent an extra
     // Enter per line) and wraps the text in bracketed-paste marks when the far end asks for them.
+    // xterm.js sends the wheel as arrow keys on the alternate screen when the program there does
+    // not read the mouse. With the setting off it is dropped instead; a program that asked for
+    // the mouse still gets it.
+    term.attachCustomWheelEventHandler(() =>
+      wheelArrows || term.buffer.active.type !== 'alternate' || term.modes.mouseTrackingMode !== 'none');
+
     term.attachCustomKeyEventHandler(ev => {
       if (ev.type !== 'keydown') return true;
 
@@ -358,7 +365,8 @@
       case 'out':        term && term.write(applyHighlights(m.d)); break;
       case 'highlights': highlights = m.rules || []; compiled.clear(); break;
       case 'commands':   commands = m.list || []; closeMenu(); break;
-      case 'theme':      if (term) term.options.theme = themes[m.d] || themes["Quarterdeck Dark"]; break;
+      case 'wheel':      wheelArrows = m.arrows !== false; break;
+      case 'theme':      if (term) term.options.theme = themes[m.d] || themes["BaudHoundTerm Dark"]; break;
       case 'font':       if (term) { term.options.fontSize = m.size; fit.fit(); } break;
       case 'find':       openFind(); break;
       case 'clear':      term && term.clear(); break;

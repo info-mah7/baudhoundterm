@@ -560,7 +560,14 @@ public sealed class ConfigSync
             var source = Path.Combine(RepoDir, name);
             if (File.Exists(source))
             {
-                WriteIfChanged(Path.Combine(_dataDir, name), File.ReadAllText(source));
+                var target = Path.Combine(_dataDir, name);
+                var text = File.ReadAllText(source);
+                if (name == "agent.json")
+                {
+                    text = KeepLocalAgentLog(text, File.Exists(target) ? File.ReadAllText(target) : null);
+                }
+
+                WriteIfChanged(target, text);
             }
         }
 
@@ -799,6 +806,37 @@ public sealed class ConfigSync
         var result = (JsonObject)other.DeepClone();
         result["endpoints"] = new JsonArray(order.Select(id => byId[id]).ToArray());
         result["defaultEndpoint"] = other["defaultEndpoint"]?.DeepClone() ?? mine["defaultEndpoint"]?.DeepClone();
+        return KeepLocalAgentLog(result.ToJsonString(JsonOptions) + "\n", ours);
+    }
+
+    /// <summary>
+    /// Whether this PC logs agent conversations is its own choice: a sync must not turn a log
+    /// back on that was turned off here. Absent locally means the default (on).
+    /// </summary>
+    private static string KeepLocalAgentLog(string incoming, string? local)
+    {
+        JsonObject? mine, result;
+        try
+        {
+            mine = local is null ? null : JsonNode.Parse(local) as JsonObject;
+            result = JsonNode.Parse(incoming) as JsonObject;
+        }
+        catch (JsonException)
+        {
+            return incoming;   // a damaged file is handled where it is loaded, as before
+        }
+
+        if (result is null)
+        {
+            return incoming;
+        }
+
+        result.Remove("keepLog");
+        if (mine?["keepLog"] is { } keep)
+        {
+            result["keepLog"] = keep.DeepClone();
+        }
+
         return result.ToJsonString(JsonOptions) + "\n";
     }
 
