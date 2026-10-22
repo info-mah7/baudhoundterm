@@ -58,9 +58,12 @@
         <MenuItem Header="_User manual" Click="OnManual"/>
         <MenuItem Header="_Report a problem" Click="OnReportProblem"/>
         <MenuItem Header="MAH7 _Discord" Click="OnDiscord"/>
-        <MenuItem Header="_Check for updates..." Click="OnCheckForUpdates"/>
         <Separator/>
         <MenuItem Header="_Open log folder" Click="OnOpenLogs"/>
+        <Separator/>
+        <MenuItem Header="_Credits" Click="OnCredits"/>
+        <MenuItem Header="_Third-party licenses" Click="OnThirdPartyLicenses"/>
+        <MenuItem Header="_License" Click="OnLicense"/>
         <MenuItem Header="_About" Click="OnAbout"/>
       </MenuItem>
     </Menu>

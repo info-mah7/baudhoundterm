@@ -569,7 +569,6 @@ public partial class MainWindow : Window
                 SessionProtocol.Vnc => 5900,
                 SessionProtocol.Rtsp => 554,
                 SessionProtocol.Rdp => 3389,
-                SessionProtocol.Sql => 1433,
                 SessionProtocol.Telnet => 23,
                 _ => 22
             },
@@ -861,6 +860,14 @@ public partial class MainWindow : Window
 
     private async Task OpenTabAsync(SessionDefinition definition, string? colour = null)
     {
+        if (definition.Protocol == SessionProtocol.Sql)
+        {
+            MessageBox.Show(this, $"\"{definition.Name}\" is a SQL database shortcut. SQL tabs were removed in build 70, " +
+                "so it can no longer open. Delete it, or keep it as a note.", "SQL tabs removed",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
         var view = new TerminalView(definition, _vault);
         var tab = new TabItem { Content = view };
         var live = new LiveTab(tab, view, definition)
@@ -902,11 +909,7 @@ public partial class MainWindow : Window
             if (editor.ShowDialog() == true)
             {
                 RefreshOpenTabsOf(definition);
-
-                if (_sessions.Any(s => s.Id == definition.Id))
-                {
-                    Save();
-                }
+                PersistIfSaved(definition);
             }
         };
 
@@ -1255,7 +1258,7 @@ public partial class MainWindow : Window
             menu.Items.Add(end);
         }
 
-        if (definition.Protocol is not (SessionProtocol.Rtsp or SessionProtocol.Sql))
+        if (definition.Protocol is not SessionProtocol.Rtsp)
         {
             var agent = new MenuItem { Header = "_Agent on this tab" };
             agent.Click += (_, _) =>
@@ -1322,12 +1325,36 @@ public partial class MainWindow : Window
         PersistIfSaved(definition);
     }
 
-    /// <summary>A quick-connect session has nothing to write to; a saved one does.</summary>
+    /// <summary>
+    /// A saved shortcut goes to the store, a Shell menu tab to its own file; a quick-connect
+    /// session has nothing to write to.
+    /// </summary>
     private void PersistIfSaved(SessionDefinition definition)
     {
         if (_sessions.Any(s => s.Id == definition.Id))
         {
             Save();
+        }
+        else if (_shellTabs.TryGetValue(definition.Id, out var shell))
+        {
+            // One entry per shell, shared by its normal and administrator tabs; the red tab of
+            // an administrator shell is not copied to the normal one.
+            var copy = definition.Clone(definition.Name);
+            copy.Id = definition.Id;
+            if (shell.Elevated)
+            {
+                copy.TabColor = LocalShellStore.Load(shell.Key)?.TabColor ?? "";
+            }
+
+            try
+            {
+                LocalShellStore.Save(shell.Key, copy);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                MessageBox.Show(this, "Could not save this shell's settings: " + ex.Message, "BaudHoundTerm",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
     }
 
@@ -1724,7 +1751,7 @@ public partial class MainWindow : Window
         MenuItem AddProtocolMenu()
         {
             var add = new MenuItem { Header = "_Add protocol for this host" };
-            foreach (var (label, protocol) in new[] { ("SSH...", "Ssh"), ("RDP...", "Rdp"), ("VNC...", "Vnc"), ("Telnet...", "Telnet"), ("SQL database...", "Sql"), ("RTSP camera...", "Rtsp") })
+            foreach (var (label, protocol) in new[] { ("SSH...", "Ssh"), ("RDP...", "Rdp"), ("VNC...", "Vnc"), ("Telnet...", "Telnet"), ("RTSP camera...", "Rtsp") })
             {
                 var item = new MenuItem { Header = label, Tag = protocol };
                 item.Click += OnAddProtocol;
@@ -2036,6 +2063,9 @@ public partial class MainWindow : Window
 
     // ---------- quick shells ----------
 
+    // Tabs opened from the Shell menu, by definition id: which shell, and whether elevated.
+    private readonly Dictionary<Guid, (string Key, bool Elevated)> _shellTabs = new();
+
     /// <summary>
     /// The shells the Local and Admin buttons offer. A fixed list on purpose: the elevated path
     /// passes the key on our own command line, and accepting an arbitrary executable there would
@@ -2109,13 +2139,19 @@ public partial class MainWindow : Window
 
         if (!elevated || IsElevated)
         {
-            Connect(new SessionDefinition
+            // Settings kept from an earlier run (commands, font...); what the shell is stays fixed.
+            var definition = LocalShellStore.Load(shell.Key) ?? new SessionDefinition();
+            definition.Name = elevated ? $"Administrator: {shell.Label}" : shell.Label;
+            definition.Folder = "";
+            definition.Protocol = SessionProtocol.LocalShell;
+            definition.ShellCommand = shell.Command.Contains(' ') ? $"\"{shell.Command}\"" : shell.Command;
+            if (elevated)
             {
-                Name = elevated ? $"Administrator: {shell.Label}" : shell.Label,
-                Protocol = SessionProtocol.LocalShell,
-                ShellCommand = shell.Command.Contains(' ') ? $"\"{shell.Command}\"" : shell.Command,
-                TabColor = elevated ? "#e06c75" : ""
-            });
+                definition.TabColor = "#e06c75";
+            }
+
+            _shellTabs[definition.Id] = (shell.Key, elevated);
+            Connect(definition);
             return;
         }
 
@@ -2237,7 +2273,7 @@ public partial class MainWindow : Window
                 : "Needs a VNC tab",
             async () => await OpenVncFilesAsync(view!.Definition)));
 
-        var terminal = view is not null && protocol is not (SessionProtocol.Vnc or SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Sql or SessionProtocol.Kvm);
+        var terminal = view is not null && protocol is not (SessionProtocol.Vnc or SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Kvm);
         items.Add(Item("Send _text file...", terminal && view!.IsConnected && !view.IsSending,
             !terminal ? "Needs a terminal tab"
             : !view!.IsConnected ? "Connect the tab first"
@@ -2423,19 +2459,64 @@ public partial class MainWindow : Window
         }
     }
 
-    private const string DocsBase = "https://github.com/info-mah7/baudhoundterm/blob/main/docs/";
+    // The guide and manual ship as HTML in the docs folder beside the exe, so Help works offline
+    // and does not depend on the source repository being reachable.
+    private void OnGettingStarted(object sender, RoutedEventArgs e) => OpenLocalDoc("HELP.html");
 
-    private void OnGettingStarted(object sender, RoutedEventArgs e) => OpenInBrowser(DocsBase + "HELP.md");
+    private void OnManual(object sender, RoutedEventArgs e) => OpenLocalDoc("MANUAL.html");
 
-    private void OnManual(object sender, RoutedEventArgs e) => OpenInBrowser(DocsBase + "MANUAL.md");
+    private void OpenLocalDoc(string name)
+    {
+        var path = System.IO.Path.Combine(AppContext.BaseDirectory, "docs", name);
+        if (!File.Exists(path))
+        {
+            MessageBox.Show(this, $"{name} was not found in the docs folder beside BaudHoundTerm.exe:\n{path}\n\n" +
+                "Extract the whole zip, not just the executable.", "BaudHoundTerm");
+            return;
+        }
 
-    private void OnReportProblem(object sender, RoutedEventArgs e) =>
-        OpenInBrowser("https://github.com/info-mah7/baudhoundterm/issues");
+        OpenInBrowser(path);
+    }
+
+    // Credits and licences are the text files the zip carries beside the exe, so what Help shows is
+    // exactly what this build ships, offline.
+    private void OnCredits(object sender, RoutedEventArgs e) => OpenBesideExe("NOTICE.txt");
+
+    private void OnThirdPartyLicenses(object sender, RoutedEventArgs e) => OpenBesideExe("THIRD-PARTY-NOTICES.txt");
+
+    private void OnLicense(object sender, RoutedEventArgs e) => OpenBesideExe("LICENSE.txt");
+
+    private void OpenBesideExe(string name)
+    {
+        var path = System.IO.Path.Combine(AppContext.BaseDirectory, name);
+        if (!File.Exists(path))
+        {
+            MessageBox.Show(this, $"{name} was not found beside BaudHoundTerm.exe:\n{path}\n\n" +
+                "Extract the whole zip, not just the executable.", "BaudHoundTerm");
+            return;
+        }
+
+        OpenInBrowser(path);
+    }
+
+    private void OnReportProblem(object sender, RoutedEventArgs e)
+    {
+        var open = MessageBox.Show(this,
+            "Problems and questions go to the MAH7 Discord (mah7.com/discord).\n\n" +
+            "Say what you did, what you expected and what happened, and the build number from Help > About. " +
+            "Help > Open log folder has the logs; they can contain host names and addresses, so check " +
+            "them before you share them.\n\nOpen the MAH7 Discord?",
+            "Report a problem", MessageBoxButton.YesNo, MessageBoxImage.Information);
+        if (open == MessageBoxResult.Yes)
+        {
+            OpenInBrowser("https://mah7.com/discord");
+        }
+    }
 
     // Via mah7.com, so a replaced invite does not need a new build.
     private void OnDiscord(object sender, RoutedEventArgs e) => OpenInBrowser("https://mah7.com/discord");
 
-    /// <summary>Opens a documentation or repository link in the user's own browser.</summary>
+    /// <summary>Opens a web link or a local documentation file in the user's own browser.</summary>
     private void OpenInBrowser(string url)
     {
         try
@@ -2448,50 +2529,14 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>
-    /// Asks GitHub for the newest release only when clicked; nothing runs in the background and
-    /// nothing is downloaded. A newer build is fetched by the user from the releases page.
-    /// </summary>
-    private async void OnCheckForUpdates(object sender, RoutedEventArgs e)
-    {
-        var item = (MenuItem)sender;
-        item.IsEnabled = false;
-        try
-        {
-            var info = System.Reflection.Assembly.GetExecutingAssembly()
-                .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
-                .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion;
-            var result = await Quarterdeck.Core.Update.UpdateCheck.CheckAsync(info);
-            var page = Quarterdeck.Core.Update.UpdateCheck.ReleasesPage;
-
-            if (result.Newer)
-            {
-                var open = MessageBox.Show(this,
-                    $"{result.Text}\n\nDownload it yourself from {page} and check the zip against the " +
-                    "SHA-256 in the release notes before running it.\n\nOpen the releases page?",
-                    "Check for updates", MessageBoxButton.YesNo, MessageBoxImage.Information);
-                if (open == MessageBoxResult.Yes)
-                {
-                    OpenInBrowser(page);
-                }
-            }
-            else
-            {
-                MessageBox.Show(this, $"{result.Text}\n\nReleases: {page}", "Check for updates");
-            }
-        }
-        finally
-        {
-            item.IsEnabled = true;
-        }
-    }
-
     private void OnAbout(object sender, RoutedEventArgs e) =>
         MessageBox.Show(this,
             $"BaudHoundTerm {Version}\n" +
             "Terminal and session manager for Windows: SSH, telnet, serial and local shells.\n" +
             "The desktop console for BaudHound (github.com/info-mah7/BaudHound).\n\n" +
-            "Apache-2.0. Terminal rendering by xterm.js (MIT), SSH by SSH.NET (MIT).",
+            "Apache-2.0. Terminal rendering by xterm.js (MIT), SSH by SSH.NET (MIT), VNC by noVNC\n" +
+            "(MPL-2.0), cameras by LibVLC (LGPL-2.1), and more. Every component and its licence is\n" +
+            "listed under Help > Third-party licenses.",
             "About BaudHoundTerm");
 
     private void OnExit(object sender, RoutedEventArgs e) => Close();

@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BaudHoundTerm user manual</title>
+<style>
+:root { color-scheme: light dark; --fg: #1f2328; --bg: #ffffff; --muted: #59636e;
+        --line: #d1d9e0; --code: #f6f8fa; --link: #0969da; }
+@media (prefers-color-scheme: dark) {
+  :root { --fg: #e6edf3; --bg: #0d1117; --muted: #9198a1; --line: #3d444d; --code: #151b23; --link: #4493f8; }
+}
+body { margin: 0; background: var(--bg); color: var(--fg);
+       font: 15px/1.6 "Segoe UI", system-ui, sans-serif; }
+main { max-width: 52rem; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+a { color: var(--link); }
+h1, h2 { border-bottom: 1px solid var(--line); padding-bottom: .3em; }
+code, pre { font-family: "Cascadia Mono", Consolas, monospace; font-size: .9em; background: var(--code); }
+code { padding: .1em .3em; border-radius: 4px; }
+pre { padding: .8em 1em; overflow-x: auto; border-radius: 6px; }
+pre code { padding: 0; }
+table { border-collapse: collapse; display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--line); padding: .35em .7em; text-align: left; vertical-align: top; }
+blockquote { margin: 0; padding: 0 1em; color: var(--muted); border-left: .25em solid var(--line); }
+hr { border: 0; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<main>
+<h1 id="baudhoundterm-manual">BaudHoundTerm manual</h1>
+<p>BaudHoundTerm keeps your connections as shortcuts and opens each one
+in a tab: SSH, telnet, serial, local shells, VNC desktops and RTSP
+cameras. This manual covers build 0.8.0-dev.30.</p>
+<ul>
+<li><a href="#1-install-and-first-start">1. Install and first
+start</a></li>
+<li><a href="#2-connecting">2. Connecting</a></li>
+<li><a href="#3-shortcut-properties">3. Shortcut properties</a></li>
+<li><a href="#4-working-in-a-tab">4. Working in a tab</a></li>
+<li><a href="#5-moving-files">5. Moving files</a></li>
+<li><a href="#6-baudhound-devices">6. BaudHound devices</a></li>
+<li><a href="#7-passwords-keys-and-keepassxc">7. Passwords, keys and
+KeePassXC</a></li>
+<li><a href="#8-the-ai-agent">8. The AI agent</a></li>
+<li><a href="#9-sync-between-pcs">9. Sync between PCs</a></li>
+<li><a href="#10-where-things-are-stored">10. Where things are
+stored</a></li>
+<li><a href="#11-keyboard-shortcuts">11. Keyboard shortcuts</a></li>
+</ul>
+<h2 id="1-install-and-first-start">1. Install and first start</h2>
+<ol type="1">
+<li>Get the zip and its <code>SHA256SUMS</code> from MAH7. Builds are
+not code-signed yet, so check the zip before running it:
+<code>Get-FileHash -Algorithm SHA256 &lt;file&gt;</code> in PowerShell
+must print the hash in <code>SHA256SUMS</code> (or run
+<code>sha256sum -c SHA256SUMS</code> on Linux).</li>
+<li>Extract the whole archive. <code>BaudHoundTerm.exe</code> needs the
+<code>Assets</code>, <code>dll</code>, <code>libvlc</code> and
+<code>runtimes</code> folders next to it; <code>dll</code> holds the
+libraries it loads at run time. <code>docs</code> holds this manual and
+the getting-started guide, which the <strong>Help</strong> menu opens.
+<code>LICENSE.txt</code>, <code>NOTICE.txt</code> and
+<code>THIRD-PARTY-NOTICES.txt</code> give BaudHoundTerm's licence and
+every bundled component's; <strong>Help &gt; Credits</strong>,
+<strong>Third-party licenses</strong> and <strong>License</strong> open
+them.</li>
+<li>Run <code>BaudHoundTerm.exe</code>. The build is unsigned, so
+Windows SmartScreen reports an unknown publisher: choose <strong>More
+info</strong>, then <strong>Run anyway</strong>.</li>
+</ol>
+<p>It needs WebView2, which Windows 11 already has. The app starts with
+no tabs open. The title bar shows the version and build number.</p>
+<p>The window follows Windows' <strong>Text size</strong> setting
+(Settings &gt; Accessibility &gt; Text size), and High Contrast themes
+replace its dark colours. Closing it while tabs are connected asks
+first, because tabs are not reopened on the next start.</p>
+<h2 id="2-connecting">2. Connecting</h2>
+<h3 id="quick-connect">Quick connect</h3>
+<p>The <strong>Quick connect</strong> bar opens a tab without saving
+anything. Pick a protocol, type an address and press Enter or
+<strong>Connect</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>Protocol</th>
+<th>What to type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SSH</td>
+<td><code>host</code>, <code>host:port</code> or
+<code>user@host:port</code>. You are asked for the password, and for the
+user name if you gave none.</td>
+</tr>
+<tr>
+<td>Telnet</td>
+<td><code>host</code> or <code>host:port</code> (23 if no port).</td>
+</tr>
+<tr>
+<td>VNC</td>
+<td><code>host</code>, <code>host:port</code>, or <code>host:1</code>
+for display 1 (port 5901).</td>
+</tr>
+<tr>
+<td>Local shell</td>
+<td>A command line, e.g. <code>powershell.exe</code>.</td>
+</tr>
+<tr>
+<td>Serial</td>
+<td>The address box changes to <strong>Port</strong>,
+<strong>Baud</strong> and <strong>Framing</strong> (<code>8-N-1</code>,
+<code>7-E-1</code>, <code>7-O-1</code>, <code>8-N-2</code>). The port
+list refreshes each time you open it.</td>
+</tr>
+</tbody>
+</table>
+<p>Quick connect signs in to SSH with a password only. For a key or the
+SSH agent, save a shortcut.</p>
+<h3 id="shortcuts">Shortcuts</h3>
+<p>A shortcut is a saved connection. Create one with
+<strong>New</strong> on the toolbar, <strong>Shortcut &gt; New
+shortcut...</strong>, the <strong>+</strong> above the list, or
+Ctrl+Shift+T.</p>
+<ul>
+<li><strong>Connect:</strong> double-click it, select it and press
+<strong>Connect</strong>, or right-click &gt;
+<strong>Connect</strong>.</li>
+<li><strong>Edit:</strong> select it and press <strong>Open</strong>, or
+right-click &gt; <strong>Properties...</strong>. (<strong>Open</strong>
+opens the properties; it does not connect.)</li>
+<li><strong>Folders:</strong> right-click empty space or a folder &gt;
+<strong>New folder...</strong>. Use <code>/</code> to nest, e.g.
+<code>Customers/Acme/Edge</code>. Right-click a shortcut &gt;
+<strong>Move to folder...</strong> to move it; a blank name moves it to
+the top level. Deleting a folder moves its shortcuts to the top
+level.</li>
+<li><strong>More protocols for one host:</strong> right-click a network
+shortcut &gt; <strong>Add protocol for this host</strong> makes an SSH,
+VNC, telnet or camera shortcut for the same machine.</li>
+<li><strong>Filter:</strong> the box above the list matches name, host
+or tag. Protocol words narrow it: <code>ssh</code>, <code>vnc</code>,
+<code>telnet</code>, <code>serial</code>, <code>local</code>,
+<code>cam</code>. For example <code>vnc lab</code> shows VNC shortcuts
+whose name or host contains "lab".</li>
+<li><strong>Group by host</strong> (the 🖥 button): every host gets a
+row, named after the machine with its address in brackets, e.g.
+<code>web01 (192.0.2.10)</code>, and its shortcuts in that folder sit
+under it, whether there is one or several. Right-click that row &gt;
+<strong>Connect</strong> to choose which one; with only one,
+double-clicking the row connects it. Serial ports and local shells have
+no host and stay as single rows.</li>
+<li><strong>Address details:</strong> <strong>Shortcut &gt; Show address
+details in the list</strong> off leaves the list with names only: no
+<code>user@host:port</code> beside a shortcut and no address beside a
+host row. Remembered.</li>
+<li><strong>Hide addresses</strong> (toolbar, <strong>Shortcut &gt; Hide
+addresses</strong>, or Ctrl+Shift+H), for demos and screen recordings:
+every IP address, host name and user name BaudHoundTerm draws becomes
+<code>•••</code>, in the list, tab headers and tooltips, status lines
+and popped-out windows. Ports and shortcut names stay, unless a name is
+itself an address (quick connect's <code>user@host</code>). It is
+remembered, so a restart mid-demo stays covered. To hide one shortcut
+always, tick <strong>Always hide this address and user name</strong> in
+its properties. Only the display changes: connecting, the filter and the
+agent use the real values. Not covered: what the far end shows (a shell
+prompt, a remote desktop), the properties dialog, and the host-key
+question on a first connection.</li>
+</ul>
+<p>Open connections appear under their shortcut with their state, and
+clicking one brings its tab forward. Tabs with no shortcut in view, such
+as quick connections, are listed under <strong>⚡ Open, not in the list
+above</strong>.</p>
+<h3 id="local-shells">Local shells</h3>
+<p><strong>Shell ▾</strong> opens Windows PowerShell, Command Prompt or
+PowerShell 7 in a tab without saving a shortcut. The
+<strong>(administrator)</strong> entries need BaudHoundTerm itself to be
+elevated: if it is not, it offers to start a second, elevated copy
+through UAC and open the shell there.</p>
+<p>What you change from such a tab (<strong>Edit commands</strong>, or
+<strong>Properties</strong> on the tab header) is kept for that shell on
+this PC, in <code>local-shells.json</code>, and its normal and
+administrator tabs share it. Builds before 70 dropped these changes when
+BaudHoundTerm closed.</p>
+<div class="important">
+<div class="title">
+<p>Important</p>
+</div>
+<p><strong>Running as administrator needs BaudHoundTerm in a protected
+folder.</strong> An elevated copy runs its own
+<code>BaudHoundTerm.exe</code> and loads its pages and libraries from
+beside it, so if anything running as you can change that folder, it can
+choose what runs as administrator. BaudHoundTerm therefore checks its
+own folder, and everything under it, before elevating:</p>
+<ul>
+<li>From a folder only administrators can change, such as
+<code>C:\Program Files\BaudHoundTerm</code>, everything works as
+described.</li>
+<li>From anywhere else, the <strong>(administrator)</strong> entries are
+greyed out and say why, and a copy started as administrator from there
+explains and closes.</li>
+</ul>
+<p>Unzip BaudHoundTerm into <code>C:\Program Files\BaudHoundTerm</code>
+(Windows asks for administrator rights to write there, which is the
+point) to use the administrator shells. Everything else works from any
+folder, including a USB stick.</p>
+<p>An elevated window keeps its browser profile in
+<code>%ProgramData%\BaudHoundTerm</code>, where programs running as you
+cannot reach it, and does not run <strong>Sync</strong> (it would run
+git, git's configuration and the sync repository's own settings, all of
+which you can change without administrator rights). Sync runs in the
+normal window, wherever BaudHoundTerm and its data are kept.</p>
+</div>
+<h2 id="3-shortcut-properties">3. Shortcut properties</h2>
+<p>The properties window shows only the tabs and fields that apply to
+the protocol you pick, so you never set an option that does nothing. A
+terminal session (SSH, serial, telnet, local shell) has all of them; a
+desktop, camera or KVM keeps <strong>Connection</strong> and the tab
+colour, since Commands, Logging, Auto-login, Highlight, Reconnect and
+the terminal font are about a text stream it does not have.
+<strong>Save</strong> keeps the changes.</p>
+<h3 id="connection">Connection</h3>
+<p><strong>Name</strong>, <strong>Folder</strong>, <strong>Tags</strong>
+(comma-separated words the filter matches, such as
+<code>lab, edge</code>) and <strong>Protocol</strong>, then the fields
+for that protocol.</p>
+<p><strong>SSH</strong></p>
+<ul>
+<li><p><strong>Host</strong>, <strong>Port</strong> (22),
+<strong>Username</strong>.</p></li>
+<li><p><strong>Authentication:</strong></p>
+<ul>
+<li><strong>Password</strong>. <strong>Password from</strong> is either
+<em>Saved on this PC, or ask</em> or <em>KeePassXC, looked up at each
+connect</em>.</li>
+<li><strong>Public key file</strong>, with an optional key
+passphrase.</li>
+<li><strong>SSH agent (KeePassXC, Pageant, OpenSSH agent)</strong>. The
+key stays in the agent, which only signs. <strong>Agent key</strong>
+narrows which key is offered: part of its comment or its
+<code>SHA256:</code> fingerprint. <strong>List keys</strong> shows what
+the agents hold.</li>
+<li><strong>Keyboard interactive</strong>, for servers that ask
+questions during login, such as a one-time code. Answered like a
+password, with the same sources.</li>
+</ul>
+<p>The most secure choice is <strong>SSH agent</strong> with your keys
+kept in KeePassXC: no password or key file is stored in BaudHoundTerm at
+all (see <a href="#ssh-agent">section 7</a>).</p></li>
+<li><p><strong>Keep the shell running in tmux when the connection
+drops</strong>, with a <strong>tmux session name</strong>
+(<code>bht</code>). After login the tab runs
+<code>tmux new-session -A -s &lt;name&gt;</code>, so a dropped link
+leaves the shell running on the host and the reconnect attaches to it
+again, mid-command. Leaving tmux (<code>exit</code>, or detaching with
+Ctrl+B D) ends the connection. The host needs tmux; without it the tab
+says so and keeps the plain shell. A tab whose shell really is in tmux
+shows a green <strong>tmux</strong> chip next to its badge, and a red
+<strong>no tmux</strong> chip when it was asked for and the host has
+none, which is the case where closing the tab loses the work. The chip
+is checked against the host, not taken from this setting. The tab also
+turns tmux's mouse support on for that session only, so the wheel
+scrolls back through the output (tmux's own history) instead of stepping
+through the shell's command history. Hold Shift to select text with the
+mouse.</p></li>
+</ul>
+<p><strong>Serial</strong>: <strong>Port</strong>, <strong>Baud
+rate</strong>, <strong>Data bits</strong>, <strong>Parity</strong>,
+<strong>Stop bits</strong>. Defaults are COM1, 115200, 8, None, One.</p>
+<p><strong>Telnet</strong></p>
+<ul>
+<li><strong>Host</strong>, <strong>Port</strong> (23; 992 for TLS).</li>
+<li><strong>TLS (telnets)</strong>: encrypts the connection and pins the
+server's certificate on first use (see <a
+href="#trusting-servers">section 7</a>).</li>
+<li><strong>Line mode</strong>: for consoles that take whole lines and
+do not echo, such as BaudHound. Typing is shown and edited locally
+(Backspace, Ctrl+U erases the line, Ctrl+C abandons it) and each line is
+sent when you press Enter. Leave it off for routers, switches and
+anything with its own line editing.</li>
+</ul>
+<p><strong>Local shell</strong>: the <strong>Command line</strong> to
+run (<code>powershell.exe</code>).</p>
+<p><strong>VNC</strong>: <strong>Host</strong>, <strong>Port</strong>
+(5900), <strong>Password</strong>, and <strong>View only, send no
+input</strong>. Classic VNC passwords are weak; use VNC only on a
+network you trust.</p>
+<p><strong>RDP</strong>: <strong>Host</strong>, <strong>Port</strong>
+(3389), <strong>Username</strong> (blank asks at connect),
+<strong>Domain</strong>, the password from the vault or KeePassXC, an
+optional <strong>Remote Desktop Gateway</strong>, <strong>Share the
+clipboard</strong>, <strong>Share this PC's drives</strong> (off by
+default: the server can then read them) and <strong>Admin
+session</strong>. It uses Windows' own Remote Desktop client, and the
+remote desktop follows the tab's size.</p>
+<p><strong>KVM (agentkvm board)</strong>: a KVM board running <a
+href="https://github.com/info-mah7/agentkvm">agentkvm</a>, which types
+on the machine over USB and watches its HDMI output. Nothing is
+installed on that machine and it need not be on the network; the board
+is. See <a href="#kvm-tabs">section 4</a> for how to set one up.</p>
+<ul>
+<li><strong>KVM board address</strong> and <strong>Daemon port</strong>
+(9200): the keyboard and mouse.</li>
+<li><strong>https</strong>: required for anything that is not a private
+address, because the daemon key is the ability to type on the machine.
+The certificate is checked against this PC's trust store, so the board
+needs a real one for the name you reach it by. There is no certificate
+pinning.</li>
+<li><strong>Daemon key</strong>: the bearer key the board generated,
+kept encrypted on this PC. You rarely type this: <strong>Pair with
+portal</strong> fetches it for you (see below).</li>
+<li><strong>Picture from</strong>, <strong>Web interface
+username</strong> and <strong>Web interface password</strong>: the
+board's own web interface, which is where the picture comes from. Blank
+means the same board. A single <code>-</code> means a board with no
+capture: it still types, and says so.</li>
+</ul>
+<p><strong>RTSP camera</strong>: <strong>Camera host</strong>,
+<strong>RTSP port</strong> (554), <strong>Stream path</strong> (blank
+asks the camera over ONVIF), <strong>Username</strong>,
+<strong>Password</strong>, <strong>RTP over TCP</strong>, <strong>Low
+latency</strong>, and the <strong>ONVIF port</strong> used for pan,
+tilt, zoom and stream lookup.</p>
+<h3 id="appearance">Appearance</h3>
+<p><strong>Tab colour</strong> (hex like <code>#e06c75</code> or a
+colour name) for any session, and for a terminal session also
+<strong>Theme</strong> (BaudHoundTerm Dark, Solarized Light, Campbell),
+<strong>Font family</strong>, <strong>Font size</strong>,
+<strong>Scrollback lines</strong> and <strong>Mouse wheel sends Up/Down
+in full-screen programs</strong> (on). In a full-screen program that
+does not use the mouse (vim, less, tmux without mouse support) the wheel
+moves by sending arrow keys, as other terminals do. Untick it if the
+wheel steps through command history there instead.</p>
+<h3 id="commands">Commands</h3>
+<p>Entries for the terminal's right-click menu. <strong>Enter</strong>
+runs the command rather than just typing it; <strong>Confirm</strong>
+asks first, for anything that reboots or deletes. <strong>Restore
+defaults</strong> adds back any missing default entries. Review the
+defaults before you use them; <strong>Reboot</strong>
+(<code>sudo reboot</code>) is marked Confirm. The menu shows them in
+this order: rearrange with <strong>Move up</strong> and <strong>Move
+down</strong>, Ctrl+Up and Ctrl+Down, or by dragging a row by its left
+edge.</p>
+<h3 id="logging">Logging</h3>
+<p><strong>Log this session to a file</strong> writes a transcript. The
+folder defaults to <code>%APPDATA%\BaudHoundTerm\logs</code>. The file
+name pattern takes <code>%NAME%</code>, <code>%HOST%</code>,
+<code>%Y%</code>, <code>%M%</code>, <code>%D%</code>, <code>%H%</code>,
+<code>%m%</code> and <code>%S%</code>. You can add a timestamp to each
+line, strip colour codes (on by default), and start a new file at a set
+size (64 MB). Logging works on SSH, serial, telnet and local shell tabs.
+Transcripts are plain text: anything shown on screen ends up in
+them.</p>
+<h3 id="auto-login">Auto-login</h3>
+<p>Steps that wait for text (<strong>Expect</strong>) and then send a
+reply (<strong>Send</strong>). Tick <strong>Secret</strong> to send the
+shortcut's password instead of the text: if none is saved, you are asked
+for it at that step, so auto-login works without saving passwords. Tick
+<strong>Regex</strong> to match a regular expression. Each step has a
+timeout. If a step fails, the terminal says which one and why. The steps
+run again after every reconnect.</p>
+<h3 id="highlight">Highlight</h3>
+<p>Colours matching output as it arrives: <strong>Pattern</strong>,
+<strong>Colour</strong> (<code>#rrggbb</code>), <strong>Regex</strong>,
+<strong>Bold</strong>, <strong>On</strong>. A match split across two
+pieces of output is missed.</p>
+<h3 id="reconnect">Reconnect</h3>
+<p>Reconnects automatically when a connection drops: up to
+<strong>Maximum attempts</strong> (10, 0 means keep trying), starting
+after <strong>First delay</strong> and growing by <strong>Backoff
+factor</strong> up to <strong>Maximum delay</strong>. A rejected
+password or key is never retried.</p>
+<h2 id="4-working-in-a-tab">4. Working in a tab</h2>
+<h3 id="terminal-tabs">Terminal tabs</h3>
+<table>
+<thead>
+<tr>
+<th>Do</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Copy</td>
+<td>Select, then Ctrl+Shift+C, or Shift+right-click</td>
+</tr>
+<tr>
+<td>Paste</td>
+<td>Ctrl+Shift+V, or Shift+right-click with nothing selected</td>
+</tr>
+<tr>
+<td>Find in scrollback</td>
+<td>Ctrl+Shift+F or <strong>Find</strong>; Enter for the next match,
+Escape to close</td>
+</tr>
+<tr>
+<td>Clear the screen</td>
+<td><strong>Clear</strong>, or right-click &gt; <strong>Clear
+screen</strong></td>
+</tr>
+<tr>
+<td>Reconnect a dropped tab</td>
+<td>Press Enter in it, or <strong>Reconnect</strong> on the toolbar</td>
+</tr>
+<tr>
+<td>Run a saved command</td>
+<td>Right-click &gt; the command's name</td>
+</tr>
+</tbody>
+</table>
+<p>Links in the output are clickable and open in your default browser
+(http and https only; a link whose text was set by the server shows its
+real address first). Pasting more than one line asks first, since each
+line break runs a command. <strong>Paste image as file</strong>
+(right-click) puts an image from the clipboard on the far end and types
+its path: on SSH it is uploaded to <code>/tmp</code>, in a local shell
+it is a temporary file. Other tab types do not support it.</p>
+<p><strong>Disconnect</strong> leaves the tab and its scrollback open;
+<strong>Close</strong> disconnects and closes it.</p>
+<h3 id="tab-strip">Tab strip</h3>
+<ul>
+<li><strong>Name:</strong> the shortcut's name. The title the shell or
+server sets is in the tab's tooltip and on its row in the shortcut
+list.</li>
+<li><strong>Colour:</strong> right-click a tab to pick a colour, which
+is saved on the shortcut. When two tabs open to the same machine, they
+get different colours automatically.</li>
+<li><strong>State dot</strong> (serial and telnet tabs): grey
+disconnected, amber connecting, green connected, red failed. It blinks
+with traffic.</li>
+<li><strong>Bot icon:</strong> attaches or detaches the AI agent
+(section 8).</li>
+</ul>
+<h3 id="ending-a-tmux-session">Ending a tmux session</h3>
+<p>Closing a tab whose shell is in tmux leaves the session running on
+the host, which is the point of it. To end it instead, right-click the
+tab (or the connection in the session list) and choose <strong>End the
+tmux session on the host</strong>. It asks first: the session and
+everything running in it stop, and the connection ends with it. The
+command goes over its own channel, so a full-screen program in the
+session cannot swallow it.</p>
+<p><strong>What a session left running costs.</strong> Very little on
+its own. Measured on a Linux host, tmux and its shell use about 20 MB of
+memory and no CPU while idle, and the scrollback stops growing at tmux's
+<code>history-limit</code> (2,000 lines by default). With no tab
+attached nothing crosses the network, and BaudHoundTerm spends nothing
+on it. What runs <em>inside</em> the session is the real cost: a build,
+a log tail or a command-line AI tool keeps running and keeps using
+whatever it used before (one AI CLI with its helpers measured about 1.2
+GB). <code>tmux ls</code> on the host lists the sessions still running;
+end the ones you no longer need.</p>
+<h3 id="link-lamps">Link lamps</h3>
+<p>Serial and telnet tabs show lamps at the bottom right: the connection
+state, <strong>TX</strong> (sent to the device) and <strong>RX</strong>
+(received from it), which flash with traffic, and the byte counts. A
+silent serial line with a green lamp and no RX means the device is not
+talking; a lamp that is not green means there is no link.</p>
+<h3 id="vnc-tabs">VNC tabs</h3>
+<p>The remote desktop scales to fit the tab. A password-protected server
+needs the password in the shortcut's properties. Right-click the tab
+&gt; <strong>Send Ctrl+Alt+Del</strong> to send that key combination,
+which Windows otherwise keeps for itself. With <strong>View
+only</strong> set, nothing you or the agent do is sent to it.</p>
+<h3 id="kvm-tabs">KVM tabs</h3>
+<p>A KVM tab shows what the board sees and sends what you type and click
+to the machine over USB, with no software on that machine.</p>
+<p>To set one up:</p>
+<ol type="1">
+<li>Install agentkvm on the board and note the key it generates. Its
+README has the steps for each supported board.</li>
+<li>In BaudHoundTerm, <strong>New shortcut</strong> &gt;
+<strong>Protocol: KVM (agentkvm board)</strong>.</li>
+<li>Fill in the board's address, the web interface username and
+password, and tick <strong>https</strong> if the board is not on a
+private network. Leave the port at 9200 unless you changed it.</li>
+<li>Press <strong>Pair with portal</strong>. BHT signs in to the board's
+web interface with that login and fetches the daemon key for you, so you
+never copy it by hand. The status line says when it is paired.</li>
+<li>Connect.</li>
+</ol>
+<p>Pairing is the whole of the setup: one login sets both the key (for
+the keyboard and mouse) and the picture. If you already have the daemon
+key, you can type it into <strong>Daemon key</strong> instead and skip
+pairing. Each board is added by hand, the same as any other shortcut;
+there is no discovery or DNS to configure.</p>
+<p>The keyboard is a <strong>US layout</strong>. The board sends key
+positions, not characters, so a machine set to another layout receives
+some characters wrong, and there is no way to read its layout through a
+USB keyboard.</p>
+<p>The agent attaches to a KVM tab as it does to VNC and RDP, with the
+same approval settings, skills and close-up check before a click (see <a
+href="#8-the-ai-agent">section 8</a>).</p>
+<h3 id="camera-tabs">Camera tabs</h3>
+<p>Video on the left; on the right, a pan, tilt and zoom pad (arrows
+move while held), presets, <strong>Snapshot</strong> (a PNG in
+<code>Pictures\BaudHoundTerm</code>) and <strong>Mute</strong>. The pad
+is greyed out when the camera reports no PTZ over ONVIF.</p>
+<h2 id="5-moving-files">5. Moving files</h2>
+<p><strong>Files ▾</strong> (or the <strong>Files</strong> menu) lists
+what the active tab supports; the rest is greyed out with the reason in
+its tooltip.</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Tab</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Browse and transfer (SFTP)...</strong></td>
+<td>SSH</td>
+<td>A file browser with <strong>Download</strong> and
+<strong>Upload</strong>. Tick <strong>Use SCP</strong> for hosts with no
+SFTP, such as most network gear.</td>
+</tr>
+<tr>
+<td><strong>Browse and transfer (TightVNC)...</strong></td>
+<td>VNC</td>
+<td>Needs TightVNC Server on the far end.</td>
+</tr>
+<tr>
+<td><strong>Send text file...</strong></td>
+<td>Any terminal</td>
+<td>Types a text file in, paced so the far end keeps up.
+<strong>Cancel</strong> in the status line stops it.</td>
+</tr>
+<tr>
+<td><strong>Send binary file</strong></td>
+<td>Serial</td>
+<td>YMODEM, XMODEM-1K or XMODEM. Start the receive on the device first
+(U-Boot <code>loady</code> / <code>loadx</code>, Linux <code>rb</code> /
+<code>rx</code>).</td>
+</tr>
+<tr>
+<td><strong>Receive binary file</strong></td>
+<td>Serial</td>
+<td>YMODEM or XMODEM. Pick a folder, then start the send on the device
+(<code>sb</code> / <code>sx</code>).</td>
+</tr>
+<tr>
+<td><strong>TFTP server (firmware)...</strong></td>
+<td>Any</td>
+<td>Serves a folder (<code>%USERPROFILE%\tftp</code> by default) on port
+69 while the window is open. Uploads are off unless you allow them, and
+never overwrite. Double-click a file to copy a <code>tftp://</code>
+address. Windows may ask once to allow it through the firewall.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="6-baudhound-devices">6. BaudHound devices</h2>
+<p><a href="https://github.com/info-mah7/BaudHound">BaudHound</a> is a
+pocket ESP32-S3 serial console: clip it to a device's UART and reach
+that UART over Wi-Fi.</p>
+<ol type="1">
+<li>Make sure the PC is on the same network as the BaudHound: either the
+network the device joined, or the device's own Wi-Fi,
+<code>BaudHound-XXXX</code>.</li>
+<li>Press <strong>BaudHound</strong> on the toolbar. The window searches
+for about two seconds.</li>
+<li>Pick the device and press <strong>Connect to device</strong>, or
+double-click it.</li>
+</ol>
+<p>Each result shows the device's address, firmware, baud rate, the
+network it joined, and its certificate fingerprint. <strong>Save
+shortcut</strong> adds it to the <strong>BaudHound</strong> folder;
+saving it again after its address changed updates the existing shortcut.
+<strong>Web page</strong> opens the device's own settings page.</p>
+<ul>
+<li><strong>Encrypted when possible.</strong> Firmware 1.4 and later
+serve the console with TLS on port 992, and BaudHoundTerm uses it.
+Compare the certificate fingerprint with the TLS line on the device's
+Settings page the first time.</li>
+<li><strong>One session at a time.</strong> While a TLS session is open,
+the device refuses other connections and pauses its web console. The
+window marks such a device <strong>in use</strong>.</li>
+<li><strong>Device commands</strong> are on the tab's right-click menu:
+device info, detect or pin the baud rate, the wake probe, swap RX/TX,
+and an LED test. Lines starting with <code>~</code> go to the BaudHound
+itself; everything else goes to the device it is clipped to.</li>
+<li><strong>Not found?</strong> Firmware older than 1.4 is only found
+when the PC is on the device's own Wi-Fi. Windows can also block the
+replies on a network marked Public. You can type the address instead:
+<code>192.168.4.1</code> on the device's own Wi-Fi, <code>:992</code>
+for TLS.</li>
+</ul>
+<h2 id="7-passwords-keys-and-keepassxc">7. Passwords, keys and
+KeePassXC</h2>
+<h3 id="do-not-save-passwords">Do not save passwords</h3>
+<p>For the best security, do not save passwords in shortcuts. Leave the
+password blank and type it when asked, look it up in KeePassXC, or use
+an SSH key or agent. The password prompt has a <strong>Remember</strong>
+box: leave it unticked. Saved secrets are encrypted with Windows DPAPI
+for your account: safe from other accounts and other PCs, not from
+programs running as you.</p>
+<h3 id="keepassxc">KeePassXC</h3>
+<ol type="1">
+<li>In KeePassXC: <strong>Settings &gt; Browser Integration &gt;
+Enable</strong>.</li>
+<li>In BaudHoundTerm: <strong>Shortcut &gt; Passwords and keys
+(KeePassXC)...</strong>, then <strong>Pair with open database</strong>.
+KeePassXC asks you to name and allow the connection. (Pairing also
+happens by itself on the first lookup.)</li>
+<li>Give each KeePassXC entry the URL <code>ssh://host</code>, or
+<code>ssh://host:port</code> for a port other than 22.</li>
+<li>In the shortcut, set <strong>Password from</strong> to
+<em>KeePassXC</em>. Leave <strong>KeePassXC entry</strong> blank to
+match by URL, or paste the entry's UUID. <strong>Test</strong> looks it
+up without showing the password.</li>
+</ol>
+<p>If the shortcut has no user name, it comes from the entry. Nothing
+from KeePassXC is stored by BaudHoundTerm.</p>
+<h3 id="ssh-agent">SSH agent</h3>
+<p>BaudHoundTerm asks both Pageant and the Windows OpenSSH agent for
+keys. To use KeePassXC's keys, enable <strong>Settings &gt; SSH
+Agent</strong> in KeePassXC, choose Pageant or OpenSSH, and tick
+<strong>Add key to agent when database is opened</strong> on the entry.
+The Windows agent is the service <strong>OpenSSH Authentication
+Agent</strong>. <strong>Refresh</strong> in the Passwords and keys
+window lists the keys on offer.</p>
+<h3 id="trusting-servers">Trusting servers</h3>
+<p>The first SSH connection to a host, and the first TLS connection to a
+telnet server, show the server's <code>SHA256:</code> fingerprint and
+ask whether to trust it. Compare it with the server's own
+(<code>ssh-keygen -lf</code> on its host key, or the TLS line on a
+BaudHound's Settings page) before you say yes. Later connections check
+it silently. If it ever changes, you get a warning with No as the
+default: accept only if you know the server was reinstalled or
+reset.</p>
+<h2 id="8-the-ai-agent">8. The AI agent</h2>
+<p>The agent works in one tab for you, through any OpenAI-compatible
+endpoint: vLLM, llama.cpp, Ollama, OpenRouter or OpenAI. On a terminal
+it types commands and reads the output. On a VNC or RDP tab it sees
+screenshots and clicks and types.</p>
+<div class="warning">
+<div class="title">
+<p>Warning</p>
+</div>
+<p><strong>Everything the agent works with is sent to the endpoint's
+provider:</strong> your goals, the terminal output it reads, remote
+desktop screenshots and your skills. That includes whatever is on
+screen: configuration files, passwords, keys, hostnames and addresses. A
+cloud provider receives all of it under its own terms.</p>
+<p>For better security, use a <strong>local model</strong> that you run
+yourself with vLLM, llama.cpp or Ollama, on your own PC or network, so
+nothing leaves it. For sensitive systems, use a local model or do not
+attach the agent at all.</p>
+</div>
+<h3 id="set-up-an-endpoint">Set up an endpoint</h3>
+<p><strong>Terminal &gt; Agent endpoints and skills...</strong>, then
+<strong>New</strong>:</p>
+<ul>
+<li><strong>Name</strong>, <strong>Base URL</strong> (up to
+<code>/v1</code>), <strong>Model</strong> (<strong>Fetch models</strong>
+asks the server), <strong>API key</strong>.</li>
+<li><strong>Temperature</strong> and <strong>Max steps per goal</strong>
+(150 by default; on a remote desktop every click and key is a
+step).</li>
+<li><strong>Extra request JSON</strong>: merged into every request, for
+anything the settings do not cover.</li>
+<li><strong>Thinking</strong>: <em>as the server has it</em>,
+<em>off</em>, or <em>on</em>. Thinking models plan before answering,
+which helps on hard steps and costs time on <strong>every</strong> step;
+on a remote desktop the click check waits for it too, and on a busy
+screen it can spend its whole reply thinking and return nothing, which
+stops the run. There is no standard switch, so BaudHoundTerm learns the
+one this server takes (Qwen, DeepSeek, OpenRouter, Ollama, OpenAI-style
+<code>reasoning_effort</code>) and sends it with every request.</li>
+<li><strong>Context window in tokens</strong>: how much conversation to
+keep. 0 uses a safe default of about 32k tokens.</li>
+</ul>
+<p><strong>Tune for this model</strong> measures the model on your own
+server rather than guessing, and fills both in:</p>
+<ul>
+<li>the real context window, as the server reports it;</li>
+<li>which switch turns thinking off and on here, and how long a short
+answer takes each way;</li>
+<li>how long the model takes to re-read the conversation, which is the
+part people miss. The model reads the whole history on
+<strong>every</strong> step, so the window the server allows is not the
+window worth using. On a 27B measured here, reading costs about 0.4 s
+per 1,000 tokens: a full 131,072-token conversation would add about a
+minute to every step, so Tune suggests about 18,000 tokens, which keeps
+that share near 8 seconds. A faster server (the 80B here, about 0.1 s
+per 1,000) is offered nearly its whole 65k window.</li>
+</ul>
+<p>Raise the context for a long task that genuinely needs the history,
+and expect slower steps. <strong>Save</strong> keeps what Tune
+found.</p>
+<ul>
+<li><strong>Approval</strong>: <em>Run freely</em>, <em>Ask before risky
+commands</em> (the default; the patterns are listed below it and you can
+edit them), or <em>Ask before every command</em>.</li>
+<li><strong>Never on local shells</strong>: a local shell runs as you,
+and you can read the credential vault.</li>
+<li><strong>Remote desktops</strong>: the screenshot width, and
+<strong>Check each click on a remote desktop first</strong>.</li>
+</ul>
+<p><strong>Test connection</strong> checks that the server answers, the
+key works, the model calls tools, and whether it reads pictures.
+Terminals need tool calling; VNC and RDP tabs also need pictures.</p>
+<h3 id="use-it">Use it</h3>
+<p>Attach it with the bot icon on a tab, <strong>Terminal &gt; Agent on
+this tab</strong>, or Ctrl+Shift+A. The panel opens on the right of the
+tab.</p>
+<ol type="1">
+<li>Pick the endpoint and tick the skills to use.</li>
+<li>Type the goal and press Enter (Shift+Enter for a new line).</li>
+<li>Follow its steps in the panel. <strong>Stop</strong> ends the run;
+<strong>New</strong> starts a fresh conversation.</li>
+</ol>
+<p><strong>Interrupting.</strong> While the agent works, type in the
+goal box and press Enter (the button reads <strong>Send</strong>): the
+agent stops what it is waiting on, finishes any typing or click already
+under way, and reads your message before its next step, ahead of the
+goal. Use it to correct or redirect a run without losing what the agent
+has seen. <strong>Stop</strong> (with the box empty) or
+<strong>Esc</strong> ends the run.</p>
+<p>When an action needs approval, a box shows exactly what it wants to
+run and in which tab, with No as the default. A refused action is not
+retried.</p>
+<p>Under <em>Ask before risky commands</em> a built-in list applies on
+top of the endpoint's own patterns and cannot be removed: deleting
+recursively or by wildcard (del /s, rmdir /s, Remove-Item -r or -Force),
+deleting shadow copies, adding users or administrators, <code>iex</code>
+and <code>-EncodedCommand</code>, piping a download into a shell,
+turning off Defender or the firewall, stopping services and processes,
+scheduled tasks, registry and permission changes, disk changes, and any
+command that touches BaudHoundTerm's own settings, the credential store
+or <code>authorized_keys</code>. Shell escapes (<code>^</code>,
+backticks, quotes, look-alike dashes) do not hide a command from it.</p>
+<p>In a BaudHoundTerm opened as administrator, an agent on a local shell
+asks before <strong>every</strong> command, whatever the endpoint's
+Approval setting, and the box says the shell runs as administrator.</p>
+<p>On a VNC or RDP tab the agent checks each click before it happens: it
+names what is under the point and must match what it meant to click, or
+nothing is clicked. Clicks on things like Delete or Shut down, and keys
+such as Win+R, Ctrl+Alt+Del and Alt+F4, need approval under <em>Ask
+before risky commands</em>. A view-only VNC tab can be looked at but not
+driven.</p>
+<p>On an RDP tab the agent's clicks and keys go into the session through
+the Remote Desktop control, without taking the keyboard focus from you.
+Keys are sent as this PC's keyboard layout, which RDP expects to match
+the remote one; a character this layout cannot type stops the action
+with an error.</p>
+<h3 id="skills">Skills</h3>
+<p>Skills are notes the agent reads with every goal, such as house rules
+or how a device works. Each is a <code>.md</code> file in
+<code>%APPDATA%\BaudHoundTerm\skills\</code> (<strong>Skills
+folder</strong> in the endpoints window). In the agent pane,
+<strong>Skills</strong> opens a tree of the skills for this kind of tab,
+by group: tick the ones the agent should get, or a group's box for all
+of them. Your ticks are kept. An optional header sets where a skill
+applies:</p>
+<pre><code>---
+name: Cisco console
+description: How to work on the lab switches
+protocols: serial, ssh
+---
+Always run &quot;terminal length 0&quot; first. Never write memory without asking.</code></pre>
+<p><code>protocols</code> takes <code>ssh</code>, <code>serial</code>,
+<code>telnet</code>, <code>local</code>, <code>vnc</code>,
+<code>rdp</code> and <code>kvm</code>. A <code>vnc</code> skill is a
+desktop skill and applies to RDP and KVM tabs too, so the Windows
+desktop skill works on a KVM unchanged. Without it, the skill applies
+everywhere. <code>steps: 300</code> raises the step limit for runs that
+use the skill, for long tasks. <code>group: Office</code> files it under
+that heading (without one: Desktop, Terminal or General), and
+<code>default: off</code> leaves it unticked until you tick it.</p>
+<p>The app also ships built-in skills (the files in
+<code>docs/skills</code> in its source), added to the folder and kept up
+to date (a file <code>.builtin</code> lists them: one you delete stays
+deleted, and one you edit is never overwritten). <strong>Restore
+built-in skills</strong> in the endpoints window puts back any that are
+missing:</p>
+<ul>
+<li><strong>Windows desktop</strong> (on): keyboard-first ways to open,
+maximize and use apps on Windows.</li>
+<li><strong>Office apps</strong> (off): Word, Excel and PowerPoint, and
+the ArtCraft alternatives WordCraft, GridCraft and DeckCraft, which
+follow the same shortcuts.</li>
+<li><strong>chess.com</strong> (off): opens chess.com in a browser and
+plays a bot; it raises the step limit to 300.</li>
+<li><strong>Linux admin</strong> (off, terminal): operate and
+troubleshoot a Linux or BSD host over SSH, the way a sysadmin would,
+with changes made carefully and verified.</li>
+<li><strong>Network device</strong> (off, terminal): operate and
+troubleshoot switches, routers and firewalls (Cisco, FortiGate and
+similar) over a console.</li>
+<li><strong>BIOS and UEFI setup</strong> (off, KVM only): enter and
+navigate a machine's firmware setup over a KVM, before any OS runs,
+which no other protocol can reach. Keyboard-first, vendor-aware, and
+careful: it reads the current value and asks before changing anything
+that can stop a machine booting.</li>
+</ul>
+<h3 id="helpers">Helpers</h3>
+<p>A helper is a tool the agent can call for work code does better than
+a model.</p>
+<p><strong>Built in:</strong> on remote desktops the agent always has
+<code>ocr_read</code>, the exact text in a region of the screen, read by
+Windows' own OCR (Windows 10 2004 and later; it uses the languages
+installed in Windows). Models misread small and thin text; this gives
+the agent a way to quote it exactly.</p>
+<p><strong>Your own:</strong> a helper can also be a small service on
+this PC that takes JSON over HTTP. List it under <code>"helpers"</code>
+in <code>agent.json</code> with a <code>name</code> (the tool the model
+calls), the <code>url</code> the arguments are POSTed to, a
+<code>description</code>, the JSON Schema of its
+<code>parameters</code>, and optionally <code>screenshot</code> (send
+the current remote-desktop screenshot with each call), <code>ask</code>
+(approve every call) and <code>allowRemote</code>. A skill names the
+helpers it uses in its header (<code>helpers: name1, name2</code>), and
+a run gets only those both enabled there and named by a ticked skill:
+the model cannot add one. Helpers must be on this PC unless
+<code>allowRemote</code> is set, since arguments, and screenshots if
+sent, would leave the machine. Calls follow the endpoint's Approval
+setting and are logged like other steps.</p>
+<h3 id="logs">Logs</h3>
+<p>Every goal, model reply, action, approval and result is written to
+<code>%APPDATA%\BaudHoundTerm\agent-logs\</code>, one file per day.
+<strong>Log</strong> in the panel opens the folder.</p>
+<p><strong>Keep a log of agent conversations</strong> in Agent endpoints
+(⚙) turns this off and on (on by default). Off, nothing of a
+conversation is written to disk; the panel still shows it until the tab
+closes, and files already in the folder stay until you delete them. The
+setting belongs to this PC: Sync does not carry it to others.</p>
+<h2 id="9-sync-between-pcs">9. Sync between PCs</h2>
+<p>Keeps shortcuts, folders, agent endpoints, skills and trusted host
+keys the same on several PCs through a private git repository.
+Passwords, keys, KeePassXC pairings, serial port names and key file
+paths never leave the PC.</p>
+<ol type="1">
+<li>Install <a href="https://git-scm.com/download/win">Git for
+Windows</a>.</li>
+<li>Create an <strong>empty private</strong> repository, on GitHub or
+your own server.</li>
+<li><strong>Sync</strong> on the toolbar (or <strong>Shortcut &gt; Sync
+between PCs (git)...</strong>): enter the repository address, a branch
+and this PC's name, then <strong>Connect</strong>. A browser may open to
+sign in.</li>
+</ol>
+<p>With <strong>Sync automatically</strong>, it syncs at start, a few
+seconds after each change, and every five minutes. The
+<strong>Sync</strong> button shows ✓ after a good sync and ! after a
+failed one; its tooltip says what happened.</p>
+<ul>
+<li>A public repository is refused: it is checked before connecting and
+before every push.</li>
+<li>Anything that looks like a password or key stops the commit.</li>
+<li>A shortcut changed on two PCs keeps both versions, the other one
+named <code>(conflict, PC)</code>.</li>
+<li><strong>Stop syncing</strong> disconnects this PC; nothing is
+deleted anywhere.</li>
+</ul>
+<h2 id="10-where-things-are-stored">10. Where things are stored</h2>
+<p>Everything is in <code>%APPDATA%\BaudHoundTerm\</code>:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sessions.json</code>, <code>folders.json</code></td>
+<td>Shortcuts and folders, without secrets</td>
+</tr>
+<tr>
+<td><code>credentials.dat</code></td>
+<td>Saved passwords, passphrases, API keys and KeePassXC pairings,
+encrypted with DPAPI</td>
+</tr>
+<tr>
+<td><code>known_hosts.json</code></td>
+<td>Trusted SSH host keys and TLS certificates</td>
+</tr>
+<tr>
+<td><code>agent.json</code></td>
+<td>Agent endpoints, without keys</td>
+</tr>
+<tr>
+<td><code>skills\</code>, <code>agent-logs\</code></td>
+<td>Agent skills and logs</td>
+</tr>
+<tr>
+<td><code>local-shells.json</code></td>
+<td>Settings of the Shell menu's tabs (commands, font, highlights)</td>
+</tr>
+<tr>
+<td><code>logs\</code></td>
+<td>Session transcripts</td>
+</tr>
+<tr>
+<td><code>sync.json</code>, <code>sync\</code></td>
+<td>Sync settings and the sync repository's copy</td>
+</tr>
+<tr>
+<td><code>ui.json</code></td>
+<td>Window preferences</td>
+</tr>
+<tr>
+<td><code>crash.log</code></td>
+<td>Errors the app could not handle</td>
+</tr>
+</tbody>
+</table>
+<p>Camera snapshots go to <code>Pictures\BaudHoundTerm</code>.
+<strong>Help &gt; Open log folder</strong> opens the transcripts.</p>
+<p><strong>Help &gt; Report a problem</strong> points to the <a
+href="https://mah7.com/discord">MAH7 Discord</a> for problems and
+questions; give the build number from <strong>Help &gt;
+About</strong>.</p>
+<p>An elevated window keeps its browser profile in
+<code>%ProgramData%\BaudHoundTerm</code> instead, where programs running
+as you cannot reach it.</p>
+<h3 id="what-baudhoundterm-connects-to">What BaudHoundTerm connects
+to</h3>
+<p><strong>Nothing of its own.</strong> There is no telemetry, no
+analytics, no update check and no licence check. Every connection it
+makes is one you asked for:</p>
+<table>
+<thead>
+<tr>
+<th>Connection</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SSH, telnet, serial, VNC, RDP, RTSP</td>
+<td>A shortcut or Quick connect you open</td>
+</tr>
+<tr>
+<td>A git remote</td>
+<td>Only while sync runs, to the repository you configured</td>
+</tr>
+<tr>
+<td>An AI endpoint, and helpers you declare</td>
+<td>Only while an agent runs, to the URL you set</td>
+</tr>
+<tr>
+<td>KeePassXC, the SSH agent</td>
+<td>Local pipes, when a session needs a secret</td>
+</tr>
+<tr>
+<td>UDP broadcast on the local network</td>
+<td>Only while the BaudHound window searches for devices</td>
+</tr>
+<tr>
+<td>TFTP</td>
+<td>Only while you run the built-in server</td>
+</tr>
+</tbody>
+</table>
+<p>The terminal and VNC views are drawn by Microsoft's WebView2, which
+is Chromium and would otherwise contact Microsoft on its own (component
+updates, field trials, SmartScreen, and DNS-over-HTTPS to a public
+resolver). All of that is switched off when the browser starts, and the
+pages are served from BaudHoundTerm's own files, not the web.</p>
+<p>Checked on Windows 11 for build 60, with a local shell tab open and
+no session connected: over several minutes the app and its whole process
+tree made <strong>no outbound connection and looked up no name</strong>,
+and Chromium's own network log recorded <strong>no request
+attempted</strong>. The only name it looks up is <code>wpad</code>,
+which is Windows' proxy auto-discovery, part of the system's proxy
+settings rather than anything BaudHoundTerm sends.</p>
+<h2 id="11-keyboard-shortcuts">11. Keyboard shortcuts</h2>
+<table>
+<thead>
+<tr>
+<th>Keys</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ctrl+Shift+T</td>
+<td>New shortcut</td>
+</tr>
+<tr>
+<td>Ctrl+Shift+F</td>
+<td>Find in scrollback</td>
+</tr>
+<tr>
+<td>Ctrl+Shift+A</td>
+<td>Attach or detach the agent</td>
+</tr>
+<tr>
+<td>Ctrl+Shift+H</td>
+<td>Hide addresses on or off</td>
+</tr>
+<tr>
+<td>Ctrl+Tab / Ctrl+Shift+Tab</td>
+<td>Next / previous tab (also Ctrl+PgDn / Ctrl+PgUp)</td>
+</tr>
+<tr>
+<td>F11</td>
+<td>Full screen on or off (also in a popped-out window)</td>
+</tr>
+<tr>
+<td>Ctrl+Shift+C / Ctrl+Shift+V</td>
+<td>Copy / paste in a terminal</td>
+</tr>
+<tr>
+<td>Shift+right-click</td>
+<td>Copy the selection, or paste when nothing is selected</td>
+</tr>
+<tr>
+<td>Enter (in a dropped tab)</td>
+<td>Reconnect</td>
+</tr>
+<tr>
+<td>Enter / Shift+Enter (agent goal box)</td>
+<td>Run / new line</td>
+</tr>
+</tbody>
+</table>
+</main>
+</body>
+</html>

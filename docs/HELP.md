@@ -4,16 +4,16 @@ A friendly starting point. For the full detail of every setting, see the
 [user manual](MANUAL.md).
 
 BaudHoundTerm connects you to other computers and devices, each in its own tab: a server over SSH,
-a Windows PC over Remote Desktop, a screen over VNC, a serial console, a database, a network
+a Windows PC over Remote Desktop, a screen over VNC, a serial console, a network
 camera, or a KVM board. It can also drive any of those for you with an AI agent.
 
 ---
 
 ## 1. Install and first run
 
-1. Download the `.zip` from the [releases page](https://github.com/info-mah7/baudhoundterm/releases)
-   and **extract the whole folder** (keep `BaudHoundTerm.exe` together with the `Assets`, `dll`,
-   `libvlc` and `runtimes` folders next to it).
+1. Get the BaudHoundTerm `.zip` from MAH7 and **extract the whole folder** (keep
+   `BaudHoundTerm.exe` together with the `Assets`, `dll`, `docs`, `libvlc` and `runtimes` folders
+   next to it). This guide and the user manual are in `docs`, and the **Help** menu opens them.
 2. Run `BaudHoundTerm.exe`. Windows may warn that the publisher is unknown, because the app is not
    code-signed yet: choose **More info**, then **Run anyway**.
 3. The window opens empty. Everything starts from the left-hand list and the toolbar.
@@ -55,10 +55,10 @@ safer habit. See **Passwords** below.
 - **SSH / telnet / serial / local shell** are text terminals. You type, the far end answers.
   Optional **tmux** (SSH) keeps your shell alive if the link drops; a green **tmux** chip in the
   list marks shortcuts set up for it. An idle session costs the host about 20 MB and no CPU; what
-  runs inside it keeps running (see the manual, "Ending a tmux session").
+  runs inside it keeps running (see the manual, "Ending a tmux session"). The mouse wheel scrolls
+  back through tmux's output; hold Shift to select text.
 - **RDP** opens a Windows desktop using Windows' own Remote Desktop client.
 - **VNC** shows another machine's screen. Copy and paste work both ways.
-- **SQL** gives you a query tab for SQL Server, PostgreSQL, MySQL/MariaDB or SQLite.
 - **RTSP camera** shows a camera's video, with pan/tilt/zoom if it supports it.
 - **KVM** drives a machine through a [KVM board](https://github.com/info-mah7/agentkvm): the board
   acts as a USB keyboard and mouse and shows the machine's HDMI output, so nothing is installed on
@@ -78,6 +78,8 @@ RDP or KVM desktop, toward a goal you give it.
   full permissions of whatever account the session is logged in as. Use a least-privilege login,
   keep the approval set to **Ask before risky**, and for sensitive systems use a local model or do
   not attach the agent at all. See the manual's **Security** section.
+- Every step is logged to a file on this PC. To keep no record, untick **Keep a log of agent
+  conversations** in Agent endpoints.
 
 ## 6. Moving files
 
@@ -107,8 +109,9 @@ without SFTP, and TightVNC file transfer on VNC tabs that support it.
   **Agent endpoints** and click **Restore built-in skills**.
 - **Where are my files?** Settings live in `%APPDATA%\BaudHoundTerm` (shortcuts, encrypted
   credentials, logs, skills). The **Help > Open log folder** menu opens the logs.
+- **Credits and licences:** **Help > Credits**, **Third-party licenses** and **License**.
 
 ---
 
-More detail on every option is in the [user manual](MANUAL.md). To report a problem, open an issue
-on the [repository](https://github.com/info-mah7/baudhoundterm/issues).
+More detail on every option is in the [user manual](MANUAL.md). To report a problem or ask a
+question, use **Help > Report a problem**: it points to the [MAH7 Discord](https://mah7.com/discord).

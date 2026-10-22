@@ -17,12 +17,14 @@ serial, local shells, VNC desktops and RTSP cameras. This manual covers build 0.
 
 ## 1. Install and first start
 
-1. Download the zip and `SHA256SUMS` from the
-   [releases page](https://github.com/info-mah7/baudhoundterm/releases). Builds are not code-signed
-   yet, so check the zip before running it: `Get-FileHash -Algorithm SHA256 <file>` in PowerShell
+1. Get the zip and its `SHA256SUMS` from MAH7. Builds are not code-signed yet, so check the zip
+   before running it: `Get-FileHash -Algorithm SHA256 <file>` in PowerShell
    must print the hash in `SHA256SUMS` (or run `sha256sum -c SHA256SUMS` on Linux).
 2. Extract the whole archive. `BaudHoundTerm.exe` needs the `Assets`, `dll`, `libvlc` and
-   `runtimes` folders next to it; `dll` holds the libraries it loads at run time.
+   `runtimes` folders next to it; `dll` holds the libraries it loads at run time. `docs` holds this
+   manual and the getting-started guide, which the **Help** menu opens. `LICENSE.txt`, `NOTICE.txt`
+   and `THIRD-PARTY-NOTICES.txt` give BaudHoundTerm's licence and every bundled component's;
+   **Help > Credits**, **Third-party licenses** and **License** open them.
 3. Run `BaudHoundTerm.exe`. The build is unsigned, so Windows SmartScreen reports an unknown
    publisher: choose **More info**, then **Run anyway**.
 
@@ -92,6 +94,10 @@ forward. Tabs with no shortcut in view, such as quick connections, are listed un
 shortcut. The **(administrator)** entries need BaudHoundTerm itself to be elevated: if it is not,
 it offers to start a second, elevated copy through UAC and open the shell there.
 
+What you change from such a tab (**Edit commands**, or **Properties** on the tab header) is kept
+for that shell on this PC, in `local-shells.json`, and its normal and administrator tabs share it.
+Builds before 70 dropped these changes when BaudHoundTerm closed.
+
 > [!IMPORTANT]
 > **Running as administrator needs BaudHoundTerm in a protected folder.** An elevated copy runs
 > its own `BaudHoundTerm.exe` and loads its pages and libraries from beside it, so if anything
@@ -116,7 +122,7 @@ it offers to start a second, elevated copy through UAC and open the shell there.
 
 The properties window shows only the tabs and fields that apply to the protocol you pick, so you
 never set an option that does nothing. A terminal session (SSH, serial, telnet, local shell) has
-all of them; a desktop, camera, KVM or database keeps **Connection** and the tab colour, since
+all of them; a desktop, camera or KVM keeps **Connection** and the tab colour, since
 Commands, Logging, Auto-login, Highlight, Reconnect and the terminal font are about a text stream
 it does not have. **Save** keeps the changes.
 
@@ -147,7 +153,9 @@ it does not have. **Save** keeps the changes.
   says so and keeps the plain shell. A tab whose shell really is in tmux shows a green **tmux**
   chip next to its badge, and a red **no tmux** chip when it was asked for and the host has none,
   which is the case where closing the tab loses the work. The chip is checked against the host, not
-  taken from this setting.
+  taken from this setting. The tab also turns tmux's mouse support on for that session only, so the
+  wheel scrolls back through the output (tmux's own history) instead of stepping through the
+  shell's command history. Hold Shift to select text with the mouse.
 
 **Serial**: **Port**, **Baud rate**, **Data bits**, **Parity**, **Stop bits**. Defaults are COM1,
 115200, 8, None, One.
@@ -172,15 +180,8 @@ from the vault or KeePassXC, an optional **Remote Desktop Gateway**, **Share the
 **Share this PC's drives** (off by default: the server can then read them) and **Admin session**.
 It uses Windows' own Remote Desktop client, and the remote desktop follows the tab's size.
 
-**SQL**: **Database type** (SQL Server, PostgreSQL, MySQL/MariaDB, SQLite file), **Host**,
-**Port**, **Database**, the login (or **Windows sign-in** for SQL Server), **Trust the server's
-certificate** for self-signed servers, **Read-only** and **Ask before statements that change data
-or structure** (on by default). Read-only is enforced by PostgreSQL, MySQL and SQLite; for SQL
-Server the app refuses such statements itself. In the tab, F5 or Ctrl+Enter runs the query, or
-only the selected text.
-
 **KVM (agentkvm board)**: a KVM board running
-[agentkvm](https://github.com/magicsmokepress/agentkvm), which types on the machine over USB and
+[agentkvm](https://github.com/info-mah7/agentkvm), which types on the machine over USB and
 watches its HDMI output. Nothing is installed on that machine and it need not be on the network;
 the board is. See [section 4](#kvm-tabs) for how to set one up.
 
@@ -201,8 +202,11 @@ for pan, tilt, zoom and stream lookup.
 ### Appearance
 
 **Tab colour** (hex like `#e06c75` or a colour name) for any session, and for a terminal session
-also **Theme** (Quarterdeck Dark, Solarized Light, Campbell), **Font family**, **Font size** and
-**Scrollback lines**.
+also **Theme** (BaudHoundTerm Dark, Solarized Light, Campbell), **Font family**, **Font size**,
+**Scrollback lines** and **Mouse wheel sends Up/Down in full-screen programs** (on). In a
+full-screen program that does not use the mouse (vim, less, tmux without mouse support) the wheel
+moves by sending arrow keys, as other terminals do. Untick it if the wheel steps through command
+history there instead.
 
 ### Commands
 
@@ -328,7 +332,7 @@ to another layout receives some characters wrong, and there is no way to read it
 USB keyboard.
 
 The agent attaches to a KVM tab as it does to VNC and RDP, with the same approval settings,
-skills and close-up check before a click (see [section 8](#the-ai-agent)).
+skills and close-up check before a click (see [section 8](#8-the-ai-agent)).
 
 ### Camera tabs
 
@@ -531,7 +535,7 @@ raises the step limit for runs that use the skill, for long tasks. `group: Offic
 that heading (without one: Desktop, Terminal or General), and `default: off` leaves it unticked
 until you tick it.
 
-The app also ships skills from [docs/skills](skills/), added to the folder and kept up to date (a file
+The app also ships built-in skills (the files in `docs/skills` in its source), added to the folder and kept up to date (a file
 `.builtin` lists them: one you delete stays deleted, and one you edit is never overwritten).
 **Restore built-in skills** in the endpoints window puts back any that are missing:
 
@@ -569,6 +573,11 @@ leave the machine. Calls follow the endpoint's Approval setting and are logged l
 Every goal, model reply, action, approval and result is written to
 `%APPDATA%\BaudHoundTerm\agent-logs\`, one file per day. **Log** in the panel opens the folder.
 
+**Keep a log of agent conversations** in Agent endpoints (⚙) turns this off and on (on by
+default). Off, nothing of a conversation is written to disk; the panel still shows it until the tab
+closes, and files already in the folder stay until you delete them. The setting belongs to this PC:
+Sync does not carry it to others.
+
 ## 9. Sync between PCs
 
 Keeps shortcuts, folders, agent endpoints, skills and trusted host keys the same on several PCs
@@ -600,6 +609,7 @@ Everything is in `%APPDATA%\BaudHoundTerm\`:
 | `known_hosts.json` | Trusted SSH host keys and TLS certificates |
 | `agent.json` | Agent endpoints, without keys |
 | `skills\`, `agent-logs\` | Agent skills and logs |
+| `local-shells.json` | Settings of the Shell menu's tabs (commands, font, highlights) |
 | `logs\` | Session transcripts |
 | `sync.json`, `sync\` | Sync settings and the sync repository's copy |
 | `ui.json` | Window preferences |
@@ -607,9 +617,8 @@ Everything is in `%APPDATA%\BaudHoundTerm\`:
 
 Camera snapshots go to `Pictures\BaudHoundTerm`. **Help > Open log folder** opens the transcripts.
 
-**Help > Check for updates** asks GitHub for the newest release and compares it with yours. It
-runs only when clicked, sends no version or machine details, and downloads nothing: get a newer
-build from the releases page yourself and check its SHA-256.
+**Help > Report a problem** points to the [MAH7 Discord](https://mah7.com/discord) for problems and
+questions; give the build number from **Help > About**.
 
 An elevated window keeps its browser profile in `%ProgramData%\BaudHoundTerm` instead, where
 programs running as you cannot reach it.
@@ -621,7 +630,7 @@ check. Every connection it makes is one you asked for:
 
 | Connection | When |
 |---|---|
-| SSH, telnet, serial, VNC, RDP, SQL, RTSP | A shortcut or Quick connect you open |
+| SSH, telnet, serial, VNC, RDP, RTSP | A shortcut or Quick connect you open |
 | A git remote | Only while sync runs, to the repository you configured |
 | An AI endpoint, and helpers you declare | Only while an agent runs, to the URL you set |
 | KeePassXC, the SSH agent | Local pipes, when a session needs a secret |
