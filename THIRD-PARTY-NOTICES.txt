@@ -54,7 +54,7 @@ THE SOFTWARE.
 LibVLC 3.0.24 (VideoLAN.LibVLC.Windows): libvlc.dll, libvlccore.dll and the plugins under libvlc\win-x64, unmodified separate DLLs
 ====================================================================================================
 Copyright (C) the VideoLAN team and VLC authors. https://www.videolan.org
-Source: https://download.videolan.org/pub/videolan/vlc/3.0.24/vlc-3.0.24.tar.xz
+Source: vlc-3.0.24.tar.xz is attached to every BaudHoundTerm release on GitHub, next to the zip (sha256 e7cab503d1d7d5849b89d2cf0e1ee60d0ef6d012407791b644b9cfc0cc225fdf), and is also at https://download.videolan.org/pub/videolan/vlc/3.0.24/vlc-3.0.24.tar.xz. The DLLs are VideoLAN's own 3.0.24 win64 build; the source of the libraries built into them (FFmpeg, LIVE555 and the others named below) is in VLC's contrib set for that release. Written offer: for three years from the release date, MAH7 (info@mah7.com) will supply the complete corresponding source of every LGPL component shipped in this build to anyone who asks, for no more than the cost of sending it.
 Every shipped VLC file is LGPL-2.1-or-later; the two GPL-only audio filters are left out of the build. Under the LGPL you may replace these DLLs with your own build of the same LibVLC version.
 libavcodec_plugin.dll contains FFmpeg (https://ffmpeg.org), built as LGPL-2.1-or-later.
 liblive555_plugin.dll contains LIVE555 Streaming Media (http://www.live555.com), GNU LGPL; the LGPL-3.0 text and the GPL-3.0 it builds on are included below in case the bundled release is version 3.

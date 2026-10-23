@@ -37,6 +37,10 @@ lines and licence texts in THIRD-PARTY-NOTICES.txt, which ships beside the execu
     executable - Windows SDK licence (https://aka.ms/WinSDKLicenseURL), which permits
     distributing them with an application; WinRT.Runtime is C#/WinRT, MIT License, Microsoft.
   LibVLCSharp / LibVLCSharp.WPF 3.10.1 - LGPL-2.1-or-later - https://code.videolan.org/videolan/LibVLCSharp
+    LibVLC 3.0.24 (VideoLAN's win64 build, LGPL-2.1-or-later): its source tarball is attached to
+    every release next to the zip. Written offer for the complete corresponding source of any
+    LGPL component: info@mah7.com, three years from the release date, at no more than the cost
+    of sending it.
   libsodium 1.0.22 (native, libsodium.dll beside the executable; NaCl box for the KeePassXC protocol)
     https://libsodium.org
     ISC License. Copyright (c) 2013-2026 Frank Denis <j at pureftpd dot org>
