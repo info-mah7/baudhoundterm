@@ -75,4 +75,11 @@ instructions, not the original files):
   docs/skills/network-device.md draws on "parsing-fortinet-configs" from
   github.com/mechubsec/fwskillsshare - MIT License, Copyright (c) 2026 fwskillsshare contributors.
 
+Hardware and firmware BaudHoundTerm drives, none of whose code it contains:
+
+  Sipeed NanoKVM (https://wiki.sipeed.com/nanokvm), firmware github.com/sipeed/NanoKVM,
+  Copyright Sipeed, GNU GPL-3.0. BaudHoundTerm talks to its HTTP API and to the agentkvm
+  daemon installed beside it. NanoKVM and Sipeed are Sipeed's names.
+  BaudHound (github.com/info-mah7/BaudHound), MIT, MAH7.
+
 This is AI-assisted work.
