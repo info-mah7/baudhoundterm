@@ -1276,6 +1276,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         }
 
         _released = true;
+        StopRecordingOnRelease();
         _flush.Stop();
         _lampTimer?.Stop();
         if (Web.CoreWebView2 is { } core)
