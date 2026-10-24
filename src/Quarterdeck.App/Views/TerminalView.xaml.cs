@@ -700,8 +700,17 @@ public partial class TerminalView : UserControl, ITerminalTarget
     public void RefreshPrivacy()
     {
         StatusText.Text = Privacy.Mask(_status, Definition);
-        _agent?.Remask();
+        // This runs on every shell title change; redrawing the agent's transcript each time would
+        // throw a reader scrolled back up to the bottom. Only a change of the switch redraws it.
+        var hides = Privacy.Hides(Definition);
+        if (hides != _agentMaskedHidden)
+        {
+            _agentMaskedHidden = hides;
+            _agent?.Remask();
+        }
     }
+
+    private bool _agentMaskedHidden;
 
     /// <summary>Report a bridge step to both the status bar and the page's own event log.</summary>
     private void Note(string text) => Dispatcher.BeginInvoke(() =>
@@ -1244,6 +1253,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         }
 
         _agent = new AgentPanel(this, Definition.Protocol, _vault, text => Privacy.Mask(text, Definition));
+        _agentMaskedHidden = Privacy.Hides(Definition);
         _agent.CloseRequested += (_, _) => DetachAgent();
         AgentHost.Child = _agent;
         AgentHost.Visibility = Visibility.Visible;

@@ -49,8 +49,16 @@ public partial class TerminalView : IRecordable
                     return $"already recording to {_recorder.FilePath}";
                 }
 
-                var safe = string.Concat(Definition.Name.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-'));
-                var path = Path.Combine(RecordingsFolder, $"{safe}-{DateTime.Now:yyyyMMdd-HHmmss}.mp4");
+                // Tabs of one shortcut (its tmux sessions) can start in the same second: the session
+                // name and, if still taken, a counter keep the files apart.
+                var stem = Definition.Name + (string.IsNullOrWhiteSpace(TmuxSessionName) ? "" : "-" + TmuxSessionName);
+                var safe = string.Concat(stem.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-'));
+                var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                var path = Path.Combine(RecordingsFolder, $"{safe}-{stamp}.mp4");
+                for (var n = 2; File.Exists(path); n++)
+                {
+                    path = Path.Combine(RecordingsFolder, $"{safe}-{stamp}-{n}.mp4");
+                }
                 var window = Window.GetWindow(this);
                 if (window is null)
                 {
@@ -126,13 +134,26 @@ public partial class TerminalView : IRecordable
         }
     }
 
-    /// <summary>A recording still running when the tab closes is finished, not thrown away.</summary>
+    /// <summary>
+    /// A recording still running when the tab closes is finished, not thrown away. The window
+    /// hears of it at once, so Hide addresses goes back off when it was on only for this.
+    /// </summary>
     private void StopRecordingOnRelease()
     {
         if (_recorder is { } recorder)
         {
             _recorder = null;
+            RecordingChanged?.Invoke(this, EventArgs.Empty);
             _ = recorder.StopAsync();
+        }
+    }
+
+    /// <summary>Finishes a running recording and waits for the file, as before the app closes.</summary>
+    public async Task FinishRecordingAsync()
+    {
+        if (IsRecording)
+        {
+            await RecordingAsync("stop");
         }
     }
 }
