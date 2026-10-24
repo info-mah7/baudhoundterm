@@ -42,8 +42,8 @@ safer habit. See **Passwords** below.
   connected tab ends that session.
 - **Switch tabs** with **Ctrl+Tab** and **Ctrl+Shift+Tab**, or **Ctrl+PgDn** and **Ctrl+PgUp**.
   Ctrl+Left and Ctrl+Right stay with the session, where shells use them to move by word.
-- **Full screen** (toolbar, or **F11**) hides everything but the tabs. F11 again brings it back.
-- **Pop out** (toolbar, or right-click a tab) moves the tab into its own window, still connected,
+- **Full screen** (**Terminal > Full screen**, or **F11**) hides everything but the tabs. F11 again brings it back.
+- **Pop out** (**Terminal > Pop out tab**, or right-click a tab) moves the tab into its own window, still connected,
   for a second monitor. Close that window to put the tab back; F11 works in it too.
 - **Hide addresses** (**Shortcut > Hide addresses**, or **Ctrl+Shift+H**) shows every IP, host and user name as `•••`,
   for demos and recordings. To always hide one shortcut, tick the box in its properties.
