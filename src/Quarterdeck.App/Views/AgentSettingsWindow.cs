@@ -115,8 +115,15 @@ internal sealed class AgentSettingsWindow : Window
         DockPanel.SetDock(bottom, Dock.Bottom);
         root.Children.Add(bottom);
         // Its own row above the buttons: the button row has no room left at this width.
-        DockPanel.SetDock(keepLog, Dock.Bottom);
-        root.Children.Add(keepLog);
+        var logRow = new DockPanel { Margin = new Thickness(0, 10, 0, 0) };
+        keepLog.Margin = new Thickness(0);
+        var safeguards = Btn("Safeguards...", () => new SafeguardsWindow(_config) { Owner = this }.ShowDialog(),
+            "Rules for every agent, and the text that makes it ask before every action: against instructions planted in what it reads");
+        DockPanel.SetDock(safeguards, Dock.Right);
+        logRow.Children.Add(safeguards);
+        logRow.Children.Add(keepLog);
+        DockPanel.SetDock(logRow, Dock.Bottom);
+        root.Children.Add(logRow);
 
         var left = new DockPanel();
         var leftButtons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };

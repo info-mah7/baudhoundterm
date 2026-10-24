@@ -60,6 +60,7 @@ public sealed partial class AgentRunner
     private string ScreenSystemPrompt()
     {
         var sb = new StringBuilder();
+        SafeguardsTo(sb);
         sb.AppendLine($"You operate one remote desktop: {_target.Describe}.");
         sb.AppendLine("Everything you do happens on that machine for real.");
         sb.AppendLine("You see the screen as pictures. Positions are on a 0-1000 grid over the WHOLE screen: x=0 is the left " +
@@ -647,7 +648,7 @@ public sealed partial class AgentRunner
             return "refused: this session is view only. You can look but not act; tell the user.";
         }
 
-        var ask = _endpoint.Approval switch
+        var ask = Tripped || _endpoint.Approval switch
         {
             AgentApproval.Free => false,
             AgentApproval.Always => true,
