@@ -1794,9 +1794,8 @@ public partial class MainWindow : Window
         }
 
         var popped = (Tabs.SelectedItem as TabItem) is { } selected && LiveFor(selected)?.PoppedOut is not null;
-        PopOutButton.Content = popped ? "Bring back" : "Pop out";
         PopOutMenu.Header = popped ? "_Bring tab back" : "_Pop out tab";
-        PopOutButton.IsEnabled = PopOutMenu.IsEnabled = tab;
+        PopOutMenu.IsEnabled = tab;
 
         AgentMenu.IsEnabled = view is { CanAttachAgent: true };
         EmptyHint.Visibility = Tabs.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;

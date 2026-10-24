@@ -125,9 +125,6 @@
         <Button x:Name="FindButton" Click="OnFind" ToolTip="Find in scrollback (Ctrl+Shift+F)">Find</Button>
         <Button x:Name="ClearButton" Click="OnClear" ToolTip="Clear the screen">Clear</Button>
         <Rectangle/>
-        <Button x:Name="PopOutButton" Click="OnPopOut" ToolTip="Move the active tab into its own window, still connected. Close that window to put it back.">Pop out</Button>
-        <Button Click="OnFullScreen" ToolTip="Full screen: only the tabs, nothing else (F11 again to leave). Ctrl+Tab and Ctrl+PgUp/PgDn switch tabs.">Full screen</Button>
-        <Rectangle/>
         <Button Click="OnBaudHound" ToolTip="Find BaudHound wireless serial consoles on this PC's networks and open one">BaudHound</Button>
       </WrapPanel>
     </Border>
