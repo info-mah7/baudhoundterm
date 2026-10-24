@@ -1789,6 +1789,7 @@ public partial class MainWindow : Window
                 live.View.DetachAgent();
             }
 
+            live.Tab.ContextMenu = BuildTabMenu(live.Tab, live.Definition);
             RefreshTab(live);
         }
 
@@ -1845,7 +1846,8 @@ public partial class MainWindow : Window
         PopOutMenu.IsEnabled = tab;
 
         AgentMenu.IsEnabled = view is { CanAttachAgent: true };
-        AgentMenu.Visibility = AgentSettingsMenu.Visibility = _ui.AgentEnabled ? Visibility.Visible : Visibility.Collapsed;
+        AgentSeparator.Visibility = AgentMenu.Visibility = AgentSettingsMenu.Visibility =
+            _ui.AgentEnabled ? Visibility.Visible : Visibility.Collapsed;
         EmptyHint.Visibility = Tabs.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 

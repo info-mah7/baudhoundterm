@@ -46,7 +46,7 @@
         <MenuItem Header="P_revious tab" Click="OnPreviousTab" InputGestureText="Ctrl+Shift+Tab"/>
         <MenuItem x:Name="PopOutMenu" Header="_Pop out tab" Click="OnPopOut"/>
         <MenuItem Header="F_ull screen" Click="OnFullScreen" InputGestureText="F11"/>
-        <Separator/>
+        <Separator x:Name="AgentSeparator"/>
         <MenuItem x:Name="AgentMenu" Header="_Agent on this tab" Click="OnToggleAgent" InputGestureText="Ctrl+Shift+A"/>
         <MenuItem x:Name="AgentSettingsMenu" Header="Agent _endpoints and skills..." Click="OnAgentSettings"/>
       </MenuItem>
