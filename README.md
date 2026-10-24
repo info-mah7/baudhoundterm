@@ -62,18 +62,29 @@ The [manual](docs/MANUAL.md) explains how to use it.
   logged.
 - **Session logging** to file, optionally timestamped per line and stripped of ANSI sequences,
   with size-based rolling.
+- **Recording** for demos: the **Record** menu saves the active tab, its terminal alone, or the
+  whole window as an MP4 through Windows' own capture and encoder (nothing bundled, nothing sent
+  anywhere), with pause and resume. Addresses are hidden while it records. The agent can start and
+  stop it too.
+- **Audit recording** for supervised third-party access: a shortcut set to audit records every
+  session from connect to tab close with no pause or stop, keeps addresses visible, logs
+  terminals with timestamps, and at the end writes a SHA-256 list (`sha256sum -c` format) and
+  copies the files to a folder you choose, checking the copies. Point that folder at a share the
+  person at the keyboard cannot change.
 - **Auto-login scripting**: expect/send steps with literal or regex matching and a timeout per
   step, re-run after a reconnect. The password comes from the vault, never from the script text.
 - **Auto-reconnect** with exponential backoff and an attempt cap.
 - **tmux persistence** for SSH (opt-in per session): the shell runs in a named tmux session, so a
   dropped link leaves it running and the reconnect attaches to it again. A chip in the session list
   marks which shortcuts use it, and a live tab's chip says whether the session is really there on
-  the host; the tab's menu can end that session when you want it gone.
+  the host; the tab's menu can end that session when you want it gone. A shortcut can list several
+  named tmux sessions, each in its own tab (a work shell, a log tail, a build), opened on connect or
+  from the shortcut's **Open tmux session** menu.
 - **Context-aware properties**: the shortcut editor shows only the tabs and fields the chosen
   protocol uses, and every open tab carries an × to close it.
 - **File transfer**: SFTP browser with upload and download, or SCP for hosts with no SFTP
   subsystem. Remote paths are shell-quoted.
-- **BaudHound**: the BaudHound button finds devices on the networks the PC is on (UDP broadcast,
+- **BaudHound**: **Shortcut > Find BaudHound devices...** finds devices on the networks the PC is on (UDP broadcast,
   firmware 1.4+; older firmware is found when the PC has joined the device's own AP) and opens
   one over TLS (port 992, certificate pinned on first use) when the device has it, in line mode, with the device's `~` commands on the right-click menu. Save
   it as a shortcut; saving again after a DHCP change moves the shortcut to the new address.
@@ -181,6 +192,8 @@ idle: no outbound connection, no name resolved, and no request in Chromium's net
 | `crash.log` | unhandled UI exceptions |
 | `sync.json` | this PC's sync settings and per-PC values (never synced) |
 | `sync\` | the git clone used for sync |
+
+Recordings, audit recordings and their SHA-256 lists go to `Documents\BaudHoundTerm\recordings`.
 
 ## Security
 
