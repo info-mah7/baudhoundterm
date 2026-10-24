@@ -23,6 +23,12 @@ public sealed class UiPreferences
     /// <summary>Hide addresses: every IP, host and user name the app draws is shown as dots (for demos).</summary>
     public bool HideAddresses { get; set; }
 
+    /// <summary>The agent (AI helper on a tab). Off: no agent pane, menu or button anywhere.</summary>
+    public bool AgentEnabled { get; set; } = true;
+
+    /// <summary>Sync between PCs. Off: no syncing and no Sync menu, whatever sync.json says.</summary>
+    public bool SyncEnabled { get; set; } = true;
+
     // The TFTP server's last settings, so firmware day starts where it left off.
     public string TftpFolder { get; set; } = "";
     public string TftpAddress { get; set; } = "";
