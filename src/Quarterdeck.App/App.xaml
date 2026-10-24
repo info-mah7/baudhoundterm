@@ -86,6 +86,9 @@
           <!-- The Icon slot carries the colour swatches on the tab menu. -->
           <ContentPresenter Grid.Column="0" ContentSource="Icon" Margin="6,0,0,0"
                             VerticalAlignment="Center" HorizontalAlignment="Center"/>
+          <!-- A ticked item (Show address details, Help > Features) shares the Icon column. -->
+          <TextBlock x:Name="Tick" Grid.Column="0" Text="&#10003;" Foreground="#61AFEF" Margin="6,0,0,0"
+                     VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="Collapsed"/>
           <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True"
                             Margin="4,5,12,5" VerticalAlignment="Center"/>
           <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}" Foreground="#7C8AA0"
@@ -95,6 +98,9 @@
       <ControlTemplate.Triggers>
         <Trigger Property="IsHighlighted" Value="True">
           <Setter TargetName="Box" Property="Background" Value="#2F3B52"/>
+        </Trigger>
+        <Trigger Property="IsChecked" Value="True">
+          <Setter TargetName="Tick" Property="Visibility" Value="Visible"/>
         </Trigger>
         <Trigger Property="IsEnabled" Value="False">
           <Setter Property="Foreground" Value="#5C6370"/>
@@ -110,7 +116,7 @@
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
           <ContentPresenter Grid.Column="0" ContentSource="Header" RecognizesAccessKey="True"
-                            Margin="16,5,12,5" VerticalAlignment="Center"/>
+                            Margin="26,5,12,5" VerticalAlignment="Center"/>
           <TextBlock Grid.Column="1" Text="&#9654;" Foreground="#7C8AA0" Margin="0,5,10,5"
                      VerticalAlignment="Center" FontSize="9"/>
           <Popup x:Name="PART_Popup" AllowsTransparency="True" Focusable="False"
