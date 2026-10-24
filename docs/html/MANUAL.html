@@ -473,8 +473,9 @@ whatever it used before (one AI CLI with its helpers measured about 1.2
 GB). <code>tmux ls</code> on the host lists the sessions still running;
 end the ones you no longer need.</p>
 <h3 id="recording-a-tab">Recording a tab</h3>
-<p>For demos, a tab can be recorded to an MP4. Right-click the tab and
-choose <strong>Record</strong>:</p>
+<p>For demos, a tab can be recorded to an MP4. Open the
+<strong>Record</strong> menu (it acts on the active tab), or right-click
+the tab and choose <strong>Record</strong>:</p>
 <ul>
 <li><strong>This tab</strong>: the terminal and, when it is open, the
 agent pane beside it.</li>
@@ -485,13 +486,14 @@ included, to show the app itself. A popped-out tab records its own
 window.</li>
 </ul>
 <p>The tab header shows <strong>● REC</strong> while it records and
-<strong>❚❚ REC</strong> while paused; the same menu then has
-<strong>Pause recording</strong> (or <strong>Resume recording</strong>)
-and <strong>Stop recording</strong>. A pause leaves nothing in the
-video, not even a gap. The file goes to
+<strong>❚❚ REC</strong> while paused; either menu then has <strong>Pause
+recording</strong> (or <strong>Resume recording</strong>) and
+<strong>Stop recording</strong>. A pause leaves nothing in the video,
+not even a gap. The file goes to
 <code>Documents\BaudHoundTerm\recordings</code>, named after the
-shortcut and the time; <strong>Open recordings folder</strong> opens it.
-Closing the tab finishes the file.</p>
+shortcut (and its tmux session) and the time; <strong>Open recordings
+folder</strong> opens it. Closing the tab or BaudHoundTerm finishes the
+file, and so does popping the tab out or back.</p>
 <p>Recording uses Windows' own screen capture and video encoder (what
 Game Bar and the Snipping Tool use), so nothing is installed and nothing
 leaves the PC. Other windows on top of BaudHoundTerm are not in the

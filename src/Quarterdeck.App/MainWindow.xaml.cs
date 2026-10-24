@@ -1482,15 +1482,8 @@ public partial class MainWindow : Window
             if (!recView.IsRecording)
             {
                 var rec = new MenuItem { Header = "_Record" };
-                foreach (var (header, scope, tip) in new[]
+                foreach (var item in RecordStartItems(recView))
                 {
-                    ("This _tab", "tab", "The terminal and, when it is open, the agent pane beside it"),
-                    ("Terminal _only", "terminal", "Just the terminal, nothing around it"),
-                    ("Whole _window", "window", "All of BaudHoundTerm, to show the app itself"),
-                })
-                {
-                    var item = new MenuItem { Header = header, ToolTip = tip + ". Addresses are hidden while it records." };
-                    item.Click += async (_, _) => ShowRecordingResult(await recView.RecordingAsync("start", scope));
                     rec.Items.Add(item);
                 }
 
@@ -1498,21 +1491,13 @@ public partial class MainWindow : Window
             }
             else
             {
-                var pause = new MenuItem { Header = recView.RecordingPaused ? "Res_ume recording" : "_Pause recording" };
-                pause.Click += async (_, _) => await recView.RecordingAsync(recView.RecordingPaused ? "resume" : "pause");
-                var stop = new MenuItem { Header = "_Stop recording" };
-                stop.Click += async (_, _) => ShowRecordingResult(await recView.RecordingAsync("stop"));
-                menu.Items.Add(pause);
-                menu.Items.Add(stop);
+                foreach (var item in RecordRunningItems(recView))
+                {
+                    menu.Items.Add(item);
+                }
             }
 
-            var folder = new MenuItem { Header = "Open recordings _folder" };
-            folder.Click += (_, _) =>
-            {
-                Directory.CreateDirectory(TerminalView.RecordingsFolder);
-                OpenInBrowser(TerminalView.RecordingsFolder);
-            };
-            menu.Items.Add(folder);
+            menu.Items.Add(RecordingsFolderItem());
         }
 
         var popOut = new MenuItem();
@@ -2683,6 +2668,63 @@ public partial class MainWindow : Window
         {
             Cursor = null;
         }
+    }
+
+    // ---------- recording: the Record menu and the tab's menu offer the same items ----------
+
+    private void OnRecordMenuOpened(object sender, RoutedEventArgs e)
+    {
+        RecordMenu.Items.Clear();
+        if (ActiveView is not { } view)
+        {
+            RecordMenu.Items.Add(new MenuItem { Header = "(no tab)", IsEnabled = false });
+        }
+        else
+        {
+            foreach (var item in view.IsRecording ? RecordRunningItems(view) : RecordStartItems(view))
+            {
+                RecordMenu.Items.Add(item);
+            }
+        }
+
+        RecordMenu.Items.Add(new Separator());
+        RecordMenu.Items.Add(RecordingsFolderItem());
+    }
+
+    private IEnumerable<MenuItem> RecordStartItems(TerminalView view)
+    {
+        foreach (var (header, scope, tip) in new[]
+        {
+            ("This _tab", "tab", "The terminal and, when it is open, the agent pane beside it"),
+            ("Terminal _only", "terminal", "Just the terminal, nothing around it"),
+            ("Whole _window", "window", "All of BaudHoundTerm, to show the app itself"),
+        })
+        {
+            var item = new MenuItem { Header = header, ToolTip = tip + ". Addresses are hidden while it records." };
+            item.Click += async (_, _) => ShowRecordingResult(await view.RecordingAsync("start", scope));
+            yield return item;
+        }
+    }
+
+    private IEnumerable<MenuItem> RecordRunningItems(TerminalView view)
+    {
+        var pause = new MenuItem { Header = view.RecordingPaused ? "Res_ume recording" : "_Pause recording" };
+        pause.Click += async (_, _) => await view.RecordingAsync(view.RecordingPaused ? "resume" : "pause");
+        yield return pause;
+        var stop = new MenuItem { Header = "_Stop recording" };
+        stop.Click += async (_, _) => ShowRecordingResult(await view.RecordingAsync("stop"));
+        yield return stop;
+    }
+
+    private MenuItem RecordingsFolderItem()
+    {
+        var folder = new MenuItem { Header = "Open recordings _folder" };
+        folder.Click += (_, _) =>
+        {
+            Directory.CreateDirectory(TerminalView.RecordingsFolder);
+            OpenInBrowser(TerminalView.RecordingsFolder);
+        };
+        return folder;
     }
 
     private void OnFilesMenuOpened(object sender, RoutedEventArgs e)

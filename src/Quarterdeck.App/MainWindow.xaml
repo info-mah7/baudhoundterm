@@ -54,6 +54,10 @@
       <MenuItem x:Name="FilesMenu" Header="_Files" SubmenuOpened="OnFilesMenuOpened">
         <MenuItem Header="(no tab)" IsEnabled="False"/>
       </MenuItem>
+      <!-- Filled when opened, for the active tab: start, or pause and stop. -->
+      <MenuItem x:Name="RecordMenu" Header="_Record" SubmenuOpened="OnRecordMenuOpened">
+        <MenuItem Header="(no tab)" IsEnabled="False"/>
+      </MenuItem>
       <MenuItem Header="_Help">
         <MenuItem Header="_Getting started" Click="OnGettingStarted"/>
         <MenuItem Header="_User manual" Click="OnManual"/>

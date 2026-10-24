@@ -311,17 +311,19 @@ running; end the ones you no longer need.
 
 ### Recording a tab
 
-For demos, a tab can be recorded to an MP4. Right-click the tab and choose **Record**:
+For demos, a tab can be recorded to an MP4. Open the **Record** menu (it acts on the active tab), or
+right-click the tab and choose **Record**:
 
 - **This tab**: the terminal and, when it is open, the agent pane beside it.
 - **Terminal only**: just the terminal (or the VNC screen), nothing around it.
 - **Whole window**: all of BaudHoundTerm, title bar included, to show the app itself. A popped-out
   tab records its own window.
 
-The tab header shows **● REC** while it records and **❚❚ REC** while paused; the same menu then
+The tab header shows **● REC** while it records and **❚❚ REC** while paused; either menu then
 has **Pause recording** (or **Resume recording**) and **Stop recording**. A pause leaves nothing in
 the video, not even a gap. The file goes to `Documents\BaudHoundTerm\recordings`, named after the
-shortcut and the time; **Open recordings folder** opens it. Closing the tab finishes the file.
+shortcut (and its tmux session) and the time; **Open recordings folder** opens it. Closing the tab
+or BaudHoundTerm finishes the file, and so does popping the tab out or back.
 
 Recording uses Windows' own screen capture and video encoder (what Game Bar and the Snipping Tool
 use), so nothing is installed and nothing leaves the PC. Other windows on top of BaudHoundTerm are
