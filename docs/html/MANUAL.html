@@ -510,6 +510,37 @@ a neutral prompt (<code>PS1='$ '</code>).</p>
 (with a scope of terminal, tab or window), pause, resume, stop and
 status, so a goal like "record this tab while you check the disks" gives
 a video of the run.</p>
+<h3 id="audit-recording-supervised-access">Audit recording (supervised
+access)</h3>
+<p>For a third party, such as a vendor, given supervised access to a
+sensitive system, tick <strong>Audit: record every session of this
+shortcut</strong> in its properties (Connection page), and give a folder
+to copy the recordings to. Then every tab of that shortcut:</p>
+<ul>
+<li>starts recording the moment it connects (<strong>● AUDIT</strong> on
+the tab, and "This session is recorded for audit." in the status line),
+and keeps recording until the tab closes. It cannot be paused or
+stopped, from the menus or by the agent;</li>
+<li>leaves addresses visible, since what was touched is the point of the
+record;</li>
+<li>on a terminal (SSH, telnet, serial, local shell), also keeps the
+session log, with a time on every line, whatever the Logging page
+says;</li>
+<li>when it ends, writes a SHA-256 list of the video and the log next to
+the video (in the format <code>sha256sum -c</code> reads), copies all of
+them to a folder of their own under the copy folder, and checks the
+copies against the list. A copy that fails says so in a warning, and the
+files stay in <code>Documents\BaudHoundTerm\recordings</code>.</li>
+</ul>
+<p>Popping the tab out or back closes that part and starts a new one in
+the new window; the part that ends with the session carries the log.
+Closing BaudHoundTerm ends the session first, then finishes the
+files.</p>
+<p>The record is only as safe as where it ends up: anyone who is an
+administrator on this PC can change files here. Point the copy folder at
+a share the person at the keyboard cannot write to after the fact (for
+example a NAS share that takes new files but keeps snapshots), and keep
+the vendor off the PC's administrator account.</p>
 <h3 id="link-lamps">Link lamps</h3>
 <p>Serial and telnet tabs show lamps at the bottom right: the connection
 state, <strong>TX</strong> (sent to the device) and <strong>RX</strong>

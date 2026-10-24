@@ -37,6 +37,12 @@
             <TextBox x:Name="TagsBox"/>
             <CheckBox x:Name="HideAddressBox" Margin="0,8,0,0" Content="Always hide this address and user name (show as dots)"
                       ToolTip="For demos and recordings: the list, tab and status line show ••• instead of the IP, host and user name, even with Hide addresses off. Connecting still uses the real values."/>
+            <CheckBox x:Name="AuditBox" Margin="0,8,0,0" Content="Audit: record every session of this shortcut"
+                      ToolTip="For supervised access by a third party. The recording starts when the tab connects and runs until the tab closes; it cannot be paused or stopped, and addresses stay visible. Terminals also keep a timestamped session log. At the end the files get a SHA-256 list and are copied to the folder below."/>
+            <StackPanel IsEnabled="{Binding IsChecked, ElementName=AuditBox}">
+              <TextBlock TextWrapping="Wrap" Text="Copy finished recordings to (a share the person at this PC cannot change, for example \\nas\audit; blank keeps them on this PC only)"/>
+              <TextBox x:Name="AuditFolderBox"/>
+            </StackPanel>
             <TextBlock Text="Protocol"/>
             <ComboBox x:Name="ProtocolBox" SelectionChanged="OnProtocolChanged">
               <ComboBoxItem Content="SSH"/>

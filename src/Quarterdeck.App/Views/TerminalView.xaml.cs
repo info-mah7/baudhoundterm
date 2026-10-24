@@ -58,6 +58,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         _state = state;
         ShowLinkState();
         StateChanged?.Invoke(this, new SessionStateEventArgs(state, message));
+        StartAuditIfDue(state);
     }
 
     private CameraView? _camera;
@@ -1017,6 +1018,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
         if (_controller is not null)
         {
+            NoteAuditLogs();
             await _controller.DisposeAsync();
             _controller = null;
         }
@@ -1334,6 +1336,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         // A session that failed on its own still holds a controller (or bridge); clear it first.
         if (_controller is not null)
         {
+            NoteAuditLogs();
             await _controller.DisposeAsync();
             _controller = null;
         }

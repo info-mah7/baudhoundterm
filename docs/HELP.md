@@ -50,6 +50,9 @@ safer habit. See **Passwords** below.
 - **Record** (the **Record** menu, or right-click a tab) saves a video of the tab, just its terminal, or the whole window
   to `Documents\BaudHoundTerm\recordings`, with addresses hidden while it records. The same menu
   pauses and stops it. The AI agent can start and stop a recording too.
+- **Audit recording:** for supervised vendor access, tick **Audit** in a shortcut's properties.
+  Every session is then recorded from connect to close, cannot be paused, keeps a timestamped log,
+  and is copied with a SHA-256 list to the folder you choose (see the manual).
 - **Several tmux sessions:** in a shortcut's properties, list more than one tmux session and each
   opens in its own tab. Right-click the shortcut or a tab for **Open tmux session** to open another.
 - **Right-click** a shortcut for Connect, Properties, Move, Delete. Right-click a tab's **header**

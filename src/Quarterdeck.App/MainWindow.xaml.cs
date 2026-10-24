@@ -88,6 +88,12 @@ public partial class MainWindow : Window
                 e.Cancel = true;
                 foreach (var view in recording)
                 {
+                    // An audit's log closes with the connection; its SHA-256 list needs the whole file.
+                    if (view.RecordingIsAudit)
+                    {
+                        await view.DisconnectAsync();
+                    }
+
                     await view.FinishRecordingAsync();
                 }
 
@@ -243,7 +249,7 @@ public partial class MainWindow : Window
     {
         if (live.View.IsRecording)
         {
-            ShowRecordingResult(await live.View.RecordingAsync("stop"));
+            ShowRecordingResult(await live.View.RecordingMovedAsync());
         }
     }
 
@@ -553,7 +559,8 @@ public partial class MainWindow : Window
     /// <summary>Addresses hidden while any tab records; the user's own setting back afterwards.</summary>
     private void OnRecordingChanged()
     {
-        var any = _live.Any(l => l.View.IsRecording);
+        // An audit keeps the addresses: what was touched is the point of it.
+        var any = _live.Any(l => l.View.IsRecording && !l.View.RecordingIsAudit);
         if (any && !Privacy.HideAll)
         {
             _hiddenForRecording = true;
@@ -1041,6 +1048,8 @@ public partial class MainWindow : Window
             RefreshTab(live);
         };
         view.AgentAttachedChanged += (_, _) => RefreshTab(live);
+        view.AuditProblem += (_, problem) =>
+            MessageBox.Show(this, problem, "Audit recording", MessageBoxButton.OK, MessageBoxImage.Warning);
         view.RecordingChanged += (_, _) =>
         {
             OnRecordingChanged();
@@ -1626,12 +1635,14 @@ public partial class MainWindow : Window
         {
             panel.Children.Add(new TextBlock
             {
-                Text = (view.RecordingPaused ? "❚❚ REC" : "● REC") + (view.RecordingScope == "window" ? " (window)" : ""),
+                Text = view.RecordingIsAudit ? "● AUDIT"
+                    : (view.RecordingPaused ? "❚❚ REC" : "● REC") + (view.RecordingScope == "window" ? " (window)" : ""),
                 Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x6C, 0x75)),
                 FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(4, 0, 4, 0),
                 VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = view.RecordingPaused ? "Recording paused" : "Recording this tab"
+                ToolTip = view.RecordingIsAudit ? "This session is recorded for audit until the tab closes"
+                    : view.RecordingPaused ? "Recording paused" : "Recording this tab"
             });
         }
 
@@ -2708,6 +2719,12 @@ public partial class MainWindow : Window
 
     private IEnumerable<MenuItem> RecordRunningItems(TerminalView view)
     {
+        if (view.RecordingIsAudit)
+        {
+            yield return new MenuItem { Header = "Audit recording: runs until the tab closes", IsEnabled = false };
+            yield break;
+        }
+
         var pause = new MenuItem { Header = view.RecordingPaused ? "Res_ume recording" : "_Pause recording" };
         pause.Click += async (_, _) => await view.RecordingAsync(view.RecordingPaused ? "resume" : "pause");
         yield return pause;

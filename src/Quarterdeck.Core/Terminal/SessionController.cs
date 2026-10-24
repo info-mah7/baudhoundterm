@@ -82,6 +82,11 @@ public sealed class SessionController : IAsyncDisposable
 
     public string? LogPath => _logger?.CurrentPath;
 
+    /// <summary>Every log file this connection wrote; still answers after it is disposed.</summary>
+    public IReadOnlyList<string> LogFiles => _logFiles ?? (IReadOnlyList<string>?)_logger?.Paths ?? Array.Empty<string>();
+
+    private List<string>? _logFiles;
+
     /// <summary>Bytes in and out on serial and telnet links, across reconnects. For the activity lamps.</summary>
     public LinkCounters Counters { get; } = new();
 
@@ -492,6 +497,7 @@ public sealed class SessionController : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await DisconnectAsync().ConfigureAwait(false);
+        _logFiles = _logger?.Paths;
         _logger?.Dispose();
         _logger = null;
         _life?.Dispose();

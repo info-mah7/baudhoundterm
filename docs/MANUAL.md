@@ -340,6 +340,32 @@ The agent can record too, with its `recording` tool: start (with a scope of term
 window), pause, resume, stop and status, so a goal like "record this tab while you check the
 disks" gives a video of the run.
 
+### Audit recording (supervised access)
+
+For a third party, such as a vendor, given supervised access to a sensitive system, tick
+**Audit: record every session of this shortcut** in its properties (Connection page), and give a
+folder to copy the recordings to. Then every tab of that shortcut:
+
+- starts recording the moment it connects (**● AUDIT** on the tab, and "This session is recorded
+  for audit." in the status line), and keeps recording until the tab closes. It cannot be paused
+  or stopped, from the menus or by the agent;
+- leaves addresses visible, since what was touched is the point of the record;
+- on a terminal (SSH, telnet, serial, local shell), also keeps the session log, with a time on
+  every line, whatever the Logging page says;
+- when it ends, writes a SHA-256 list of the video and the log next to the video (in the format
+  `sha256sum -c` reads), copies all of them to a folder of their own under the copy folder, and
+  checks the copies against the list. A copy that fails says so in a warning, and the files stay
+  in `Documents\BaudHoundTerm\recordings`.
+
+Popping the tab out or back closes that part and starts a new one in the new window; the part that
+ends with the session carries the log. Closing BaudHoundTerm ends the session first, then finishes
+the files.
+
+The record is only as safe as where it ends up: anyone who is an administrator on this PC can
+change files here. Point the copy folder at a share the person at the keyboard cannot write to
+after the fact (for example a NAS share that takes new files but keeps snapshots), and keep the
+vendor off the PC's administrator account.
+
 ### Link lamps
 
 Serial and telnet tabs show lamps at the bottom right: the connection state, **TX** (sent to the
