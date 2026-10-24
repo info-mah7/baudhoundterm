@@ -290,9 +290,6 @@ public sealed class AutoLoginStep
     public AutoLoginStep Copy() => (AutoLoginStep)MemberwiseClone();
 }
 
-/// <summary>
-/// One entry on the terminal's right-click menu: a label and the text it sends.
-/// </summary>
 /// <summary>One named tmux session of an SSH shortcut.</summary>
 public sealed class TmuxSessionEntry
 {
@@ -304,6 +301,9 @@ public sealed class TmuxSessionEntry
     public TmuxSessionEntry Copy() => (TmuxSessionEntry)MemberwiseClone();
 }
 
+/// <summary>
+/// One entry on the terminal's right-click menu: a label and the text it sends.
+/// </summary>
 public sealed class CommandShortcut
 {
     public string Label { get; set; } = "";

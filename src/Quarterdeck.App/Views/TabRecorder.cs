@@ -64,8 +64,39 @@ internal sealed class TabRecorder
     public TimeSpan Elapsed => (Paused ? _pausedAt : _clock.Elapsed) - _pausedTotal;
     public int FramesWritten { get; private set; }
 
-    /// <summary>Starts capturing. Called on the UI thread: the crop is read from the visual tree.</summary>
+    /// <summary>
+    /// Starts capturing. Called on the UI thread: the crop is read from the visual tree. A start
+    /// that fails part way releases what it set up and leaves no empty file behind.
+    /// </summary>
     public async Task StartAsync()
+    {
+        try
+        {
+            await StartCoreAsync();
+        }
+        catch
+        {
+            _cropTimer?.Stop();
+            _session?.Dispose();
+            _pool?.Dispose();
+            var opened = _stream is not null;
+            _stream?.Dispose();
+            if (opened)
+            {
+                try
+                {
+                    File.Delete(_path);
+                }
+                catch (IOException)
+                {
+                }
+            }
+
+            throw;
+        }
+    }
+
+    private async Task StartCoreAsync()
     {
         if (!GraphicsCaptureSession.IsSupported())
         {
@@ -118,7 +149,14 @@ internal sealed class TabRecorder
 
         // The terminal can move inside the window (sidebar toggled, window resized): follow it.
         _cropTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-        _cropTimer.Tick += (_, _) => _crop = CropRect();
+        _cropTimer.Tick += (_, _) =>
+        {
+            // A tab popped out or brought back mid-recording leaves this window; keep the last crop.
+            if (_region is null || _region.IsDescendantOf(_window))
+            {
+                _crop = CropRect();
+            }
+        };
         _cropTimer.Start();
     }
 

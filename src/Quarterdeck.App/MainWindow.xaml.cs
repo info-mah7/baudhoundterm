@@ -80,6 +80,21 @@ public partial class MainWindow : Window
                 _closeConfirmed = true;
             }
 
+            // An MP4 is unreadable until its encoder finishes, and nothing waits once closing goes
+            // on: hold the close, finish every recording, then close again.
+            var recording = _live.Select(l => l.View).Where(v => v.IsRecording).ToList();
+            if (recording.Count > 0)
+            {
+                e.Cancel = true;
+                foreach (var view in recording)
+                {
+                    await view.FinishRecordingAsync();
+                }
+
+                Close();
+                return;
+            }
+
             // Popped-out windows would otherwise keep the app running with the main window gone.
             foreach (var popped in _live.Select(l => l.PoppedOut).OfType<PopOutWindow>().ToList())
             {
@@ -209,6 +224,7 @@ public partial class MainWindow : Window
     /// </summary>
     private void PopOut(LiveTab live)
     {
+        StopRecordingForMove(live);
         live.Tab.Content = PoppedPlaceholder(live);
         var window = new PopOutWindow(live.View, Privacy.MaskName(live.Title, live.Definition), this);
         window.ReturnRequested += (_, _) => BringBack(live, closing: true);
@@ -219,6 +235,18 @@ public partial class MainWindow : Window
         UpdateConnectionToggle();
     }
 
+    /// <summary>
+    /// A recording follows the window it started in; a tab moving to another window would leave
+    /// it filming the empty place. It is finished here and the status line says where it went.
+    /// </summary>
+    private async void StopRecordingForMove(LiveTab live)
+    {
+        if (live.View.IsRecording)
+        {
+            ShowRecordingResult(await live.View.RecordingAsync("stop"));
+        }
+    }
+
     private void BringBack(LiveTab live, bool closing = false)
     {
         if (live.PoppedOut is not { } window)
@@ -226,6 +254,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        StopRecordingForMove(live);
         live.PoppedOut = null;
         window.Returned = true;
         window.Content = null;
