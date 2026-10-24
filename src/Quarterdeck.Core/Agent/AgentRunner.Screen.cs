@@ -602,8 +602,9 @@ public sealed partial class AgentRunner
 
     /// <summary>
     /// Whether what the model found at the spot is the target: at least half of the target's
-    /// naming words appear in it. A target made only of kind words ("OK" is not one, "button"
-    /// is) is compared on all its words.
+    /// naming words appear in it, and all of them when it also names something the target does
+    /// not. A target made only of kind words ("OK" is not one, "button" is) is compared on all
+    /// its words.
     /// </summary>
     public static bool SameElement(string found, string target)
     {
@@ -628,7 +629,15 @@ public sealed partial class AgentRunner
             want = naming;
         }
 
-        return want.Count > 0 && have.Count > 0 && want.Count(have.Contains) * 2 >= want.Count;
+        var matched = want.Count(have.Contains);
+        if (want.Count == 0 || have.Count == 0 || matched * 2 < want.Count)
+        {
+            return false;
+        }
+
+        // Half the words is enough only when the check named nothing else: "White pawn" shares
+        // "white" with "white knight", but "pawn" says it is another piece.
+        return matched == want.Count || seenNaming.All(want.Contains);
     }
 
     private async Task<string?> ScreenDeniedAsync(string tool, string shown, bool risky, CancellationToken token)
