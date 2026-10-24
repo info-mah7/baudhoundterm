@@ -75,7 +75,7 @@ shortcut...**, the **+** above the list, or Ctrl+Shift+T.
   stay as single rows.
 - **Address details:** **Shortcut > Show address details in the list** off leaves the list with
   names only: no `user@host:port` beside a shortcut and no address beside a host row. Remembered.
-- **Hide addresses** (toolbar, **Shortcut > Hide addresses**, or Ctrl+Shift+H), for demos and
+- **Hide addresses** (**Shortcut > Hide addresses**, or Ctrl+Shift+H), for demos and
   screen recordings: every IP address, host name and user name BaudHoundTerm draws becomes `•••`,
   in the list, tab headers and tooltips, status lines, the agent pane and popped-out windows. Ports and shortcut
   names stay, unless a name is itself an address (quick connect's `user@host`). It is remembered,
@@ -633,12 +633,12 @@ file paths never leave the PC.
 
 1. Install [Git for Windows](https://git-scm.com/download/win).
 2. Create an **empty private** repository, on GitHub or your own server.
-3. **Sync** on the toolbar (or **Shortcut > Sync between PCs (git)...**): enter the repository
+3. **Help > Sync between PCs (git)...**: enter the repository
    address, a branch and this PC's name, then **Connect**. A browser may open to sign in.
 
 With **Sync automatically**, it syncs at start, a few seconds after each change, and every five
-minutes. The **Sync** button shows ✓ after a good sync and ! after a failed one; its tooltip says
-what happened.
+minutes. The menu item shows ✓ after a good sync and ! (in amber) after a failed one; its tooltip
+says what happened.
 
 - A public repository is refused: it is checked before connecting and before every push.
 - Anything that looks like a password or key stops the commit.

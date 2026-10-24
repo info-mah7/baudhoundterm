@@ -45,7 +45,7 @@ safer habit. See **Passwords** below.
 - **Full screen** (toolbar, or **F11**) hides everything but the tabs. F11 again brings it back.
 - **Pop out** (toolbar, or right-click a tab) moves the tab into its own window, still connected,
   for a second monitor. Close that window to put the tab back; F11 works in it too.
-- **Hide addresses** (toolbar, or **Ctrl+Shift+H**) shows every IP, host and user name as `•••`,
+- **Hide addresses** (**Shortcut > Hide addresses**, or **Ctrl+Shift+H**) shows every IP, host and user name as `•••`,
   for demos and recordings. To always hide one shortcut, tick the box in its properties.
 - **Record** (right-click a tab) saves a video of the tab, just its terminal, or the whole window
   to `Documents\BaudHoundTerm\recordings`, with addresses hidden while it records. The same menu
