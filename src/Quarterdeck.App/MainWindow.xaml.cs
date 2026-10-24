@@ -43,6 +43,7 @@ public partial class MainWindow : Window
         Privacy.HideAll = _ui.HideAddresses;
         HideToggle.IsChecked = HideMenu.IsChecked = _ui.HideAddresses;
         DetailsMenu.IsChecked = _ui.ShowAddressDetails;
+        Activated += (_, _) => MarkFocusedRow();   // back from a popped-out window
         RebuildTree();
 
         // Relaunched through UAC by the Admin button: open the shell the user asked for.
@@ -211,6 +212,7 @@ public partial class MainWindow : Window
         live.Tab.Content = PoppedPlaceholder(live);
         var window = new PopOutWindow(live.View, Privacy.MaskName(live.Title, live.Definition), this);
         window.ReturnRequested += (_, _) => BringBack(live, closing: true);
+        window.Activated += (_, _) => MarkFocusedRow();
         live.PoppedOut = window;
         window.Show();
         RefreshTab(live);
@@ -434,6 +436,8 @@ public partial class MainWindow : Window
 
             SessionTree.Items.Add(open);
         }
+
+        MarkFocusedRow();
     }
 
     /// <summary>
@@ -1154,6 +1158,43 @@ public partial class MainWindow : Window
         if (_liveRows.TryGetValue(live, out var row))
         {
             row.Header = LiveRowHeader(live);
+            MarkFocusedRow();
+        }
+    }
+
+    private static readonly Brush FocusedRowBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x3D, 0x5A, 0x80)));
+
+    private static Brush Frozen(Brush brush)
+    {
+        brush.Freeze();
+        return brush;
+    }
+
+    /// <summary>
+    /// The session in focus: a popped-out window that has the keyboard, else the selected tab.
+    /// With several tabs on one host the list rows read alike, so this one is marked.
+    /// </summary>
+    private LiveTab? FocusedLive =>
+        _live.FirstOrDefault(l => l.PoppedOut is { IsActive: true })
+        ?? ((Tabs.SelectedItem as TabItem) is { } tab ? LiveFor(tab) : null);
+
+    /// <summary>Highlights the focused session's row in the list and clears the others.</summary>
+    private void MarkFocusedRow()
+    {
+        var focused = FocusedLive;
+        foreach (var (live, row) in _liveRows)
+        {
+            if (row.Header is not Panel header)
+            {
+                continue;
+            }
+
+            var on = ReferenceEquals(live, focused);
+            header.Background = on ? FocusedRowBrush : null;
+            if (header.Children.OfType<TextBlock>().FirstOrDefault() is { } title)
+            {
+                title.FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal;
+            }
         }
     }
 
@@ -1287,6 +1328,7 @@ public partial class MainWindow : Window
         }
 
         UpdateConnectionToggle();
+        MarkFocusedRow();
     }
 
     /// <summary>The palette offered when right-clicking a tab.</summary>
