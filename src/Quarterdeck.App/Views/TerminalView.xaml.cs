@@ -37,6 +37,9 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
     public SessionDefinition Definition { get; }
 
+    /// <summary>Which of the shortcut's tmux sessions this tab runs in; blank for the main one.</summary>
+    public string TmuxSessionName { get; init; } = "";
+
     public SessionController? Controller => _controller;
 
     /// <summary>Raised when the far end changes the window title, so the tab header can follow.</summary>
@@ -808,7 +811,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
             return;
         }
 
-        var controller = new SessionController(Definition, _vault, PromptForSecret);
+        var controller = new SessionController(Definition, _vault, PromptForSecret) { TmuxSessionName = TmuxSessionName };
         _controller = controller;
         controller.DataReceived += (_, e) =>
         {

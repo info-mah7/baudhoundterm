@@ -19,6 +19,7 @@ public partial class SessionEditorWindow : Window
     private readonly ObservableCollection<AutoLoginStep> _steps;
     private readonly ObservableCollection<HighlightRule> _highlights;
     private readonly ObservableCollection<CommandShortcut> _commands;
+    private readonly ObservableCollection<TmuxSessionEntry> _tmuxSessions;
 
     public SessionEditorWindow(SessionDefinition definition, CredentialVault vault)
     {
@@ -33,6 +34,9 @@ public partial class SessionEditorWindow : Window
         LoginGrid.ItemsSource = _steps;
         HighlightGrid.ItemsSource = _highlights;
         CommandGrid.ItemsSource = _commands;
+        // Copies: Cancel must leave the shortcut's own list as it was.
+        _tmuxSessions = new ObservableCollection<TmuxSessionEntry>(definition.TmuxSessionList().Select(t => t.Copy()));
+        TmuxGrid.ItemsSource = _tmuxSessions;
 
         Load();
     }
@@ -59,7 +63,6 @@ public partial class SessionEditorWindow : Window
         KeePassEntryBox.Text = d.KeePassEntry;
         AgentFilterBox.Text = d.AgentKeyFilter;
         TmuxBox.IsChecked = d.Tmux;
-        TmuxSessionBox.Text = d.TmuxSession;
         UpdateAuthPanels();
 
         foreach (var port in System.IO.Ports.SerialPort.GetPortNames().OrderBy(p => p.Length))
@@ -275,6 +278,29 @@ public partial class SessionEditorWindow : Window
         if (LoginGrid.SelectedItem is AutoLoginStep step)
         {
             _steps.Remove(step);
+        }
+    }
+
+    private void OnAddTmuxSession(object sender, RoutedEventArgs e)
+    {
+        var n = 2;
+        while (_tmuxSessions.Any(t => t.Name == $"bht-{n}"))
+        {
+            n++;
+        }
+
+        var entry = new TmuxSessionEntry { Name = $"bht-{n}", OpenOnConnect = false };
+        _tmuxSessions.Add(entry);
+        TmuxGrid.SelectedItem = entry;
+        TmuxGrid.CurrentCell = new DataGridCellInfo(entry, TmuxGrid.Columns[0]);
+        TmuxGrid.BeginEdit();
+    }
+
+    private void OnRemoveTmuxSession(object sender, RoutedEventArgs e)
+    {
+        if (TmuxGrid.SelectedItem is TmuxSessionEntry entry && _tmuxSessions.Count > 1)
+        {
+            _tmuxSessions.Remove(entry);
         }
     }
 
@@ -561,7 +587,20 @@ public partial class SessionEditorWindow : Window
         d.KeePassEntry = KeePassEntryBox.Text.Trim();
         d.AgentKeyFilter = AgentFilterBox.Text.Trim();
         d.Tmux = TmuxBox.IsChecked == true;
-        d.TmuxSession = string.IsNullOrWhiteSpace(TmuxSessionBox.Text) ? "bht" : TmuxSessionBox.Text.Trim();
+        // Names as tmux will take them, blanks and repeats dropped, at least one. The first one is
+        // also written to TmuxSession, which builds before 72 read.
+        TmuxGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        var sessions = _tmuxSessions
+            .Where(t => !string.IsNullOrWhiteSpace(t.Name))
+            .Select(t => new TmuxSessionEntry { Name = Quarterdeck.Core.Terminal.SessionController.TmuxName(t.Name.Trim()), OpenOnConnect = t.OpenOnConnect })
+            .GroupBy(t => t.Name).Select(g => g.First()).ToList();
+        if (sessions.Count == 0)
+        {
+            sessions.Add(new TmuxSessionEntry { Name = "bht", OpenOnConnect = true });
+        }
+
+        d.TmuxSessions = sessions;
+        d.TmuxSession = sessions[0].Name;
 
         d.SerialPort = SerialPortBox.Text.Trim();
         d.BaudRate = ParseInt(BaudBox.Text, 115200);

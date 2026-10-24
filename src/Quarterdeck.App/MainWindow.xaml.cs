@@ -816,7 +816,7 @@ public partial class MainWindow : Window
         var byId = !_shellTabs.ContainsKey(definition);
         foreach (var live in _live.Where(l => l.Definition is { } d && (ReferenceEquals(d, definition) || (byId && d.Id == definition.Id))))
         {
-            live.Title = definition.Name;
+            live.Title = TabTitle(definition, live.View);
             if (definition.TabColor.Length > 0)
             {
                 live.Colour = definition.TabColor;
@@ -859,9 +859,100 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void Connect(SessionDefinition definition) => await OpenTabAsync(definition);
+    /// <summary>
+    /// Opens a shortcut. One with several named tmux sessions (build 72) opens a tab for each one
+    /// ticked "open on connect"; the rest wait on the shortcut's Open tmux session menu.
+    /// </summary>
+    private async void Connect(SessionDefinition definition)
+    {
+        if (definition is { Protocol: SessionProtocol.Ssh, Tmux: true } && definition.TmuxSessions.Count > 1)
+        {
+            var open = definition.TmuxSessions.Where(t => t.OpenOnConnect).ToList();
+            if (open.Count == 0)
+            {
+                open.Add(definition.TmuxSessions[0]);
+            }
 
-    private async Task OpenTabAsync(SessionDefinition definition, string? colour = null)
+            foreach (var session in open)
+            {
+                await OpenTabAsync(definition, tmuxSession: session.Name);
+            }
+
+            return;
+        }
+
+        await OpenTabAsync(definition);
+    }
+
+    /// <summary>
+    /// The tab title: the shortcut's name, plus the tmux session when the shortcut has several
+    /// or this tab runs one other than the main session.
+    /// </summary>
+    private static string TabTitle(SessionDefinition definition, TerminalView view)
+    {
+        if (definition is not { Protocol: SessionProtocol.Ssh, Tmux: true } || string.IsNullOrWhiteSpace(view.TmuxSessionName))
+        {
+            return definition.Name;
+        }
+
+        var sessions = definition.TmuxSessionList();
+        var name = SessionController.TmuxName(view.TmuxSessionName);
+        return sessions.Count > 1 || name != SessionController.TmuxName(sessions[0].Name)
+            ? $"{definition.Name} · {name}"
+            : definition.Name;
+    }
+
+    /// <summary>"Open tmux session": each named session of the shortcut, then New tmux session.</summary>
+    private MenuItem TmuxSessionsMenu(SessionDefinition definition)
+    {
+        var menu = new MenuItem { Header = "Open t_mux session" };
+        foreach (var session in definition.TmuxSessionList())
+        {
+            var name = session.Name;
+            var item = new MenuItem
+            {
+                Header = SessionController.TmuxName(name) + (session.OpenOnConnect ? "" : "   (on demand)"),
+                ToolTip = $"A tab in the tmux session {SessionController.TmuxName(name)} on {definition.Host}: attaches if it is running, starts it if not"
+            };
+            item.Click += async (_, _) => await OpenTabAsync(definition, tmuxSession: name);
+            menu.Items.Add(item);
+        }
+
+        menu.Items.Add(new Separator());
+        var add = new MenuItem { Header = "_New tmux session...", ToolTip = "Name a new session on this host; it is added to the shortcut and opens in a tab" };
+        add.Click += async (_, _) => await NewTmuxSessionAsync(definition);
+        menu.Items.Add(add);
+        return menu;
+    }
+
+    /// <summary>Asks for a name, adds it to the shortcut's sessions (on demand), and opens it.</summary>
+    private async Task NewTmuxSessionAsync(SessionDefinition definition)
+    {
+        var dialog = new InputPromptWindow("New tmux session", "",
+            $"A name for another session on {definition.Host}, for example logs. Letters, digits, - and _.") { Owner = this };
+        if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.Value))
+        {
+            return;
+        }
+
+        var name = SessionController.TmuxName(dialog.Value.Trim());
+        if (definition.TmuxSessions.Count == 0)
+        {
+            // An older shortcut: its single session becomes the first entry, opened as before.
+            definition.TmuxSessions.Add(new TmuxSessionEntry { Name = definition.TmuxSession, OpenOnConnect = true });
+        }
+
+        if (!definition.TmuxSessions.Any(t => SessionController.TmuxName(t.Name) == name))
+        {
+            definition.TmuxSessions.Add(new TmuxSessionEntry { Name = name, OpenOnConnect = false });
+            PersistIfSaved(definition);
+            RefreshOpenTabsOf(definition);   // a single-session tab now shows its session in the title
+        }
+
+        await OpenTabAsync(definition, tmuxSession: name);
+    }
+
+    private async Task OpenTabAsync(SessionDefinition definition, string? colour = null, string? tmuxSession = null)
     {
         if (definition.Protocol == SessionProtocol.Sql)
         {
@@ -871,11 +962,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        var view = new TerminalView(definition, _vault);
+        var view = new TerminalView(definition, _vault) { TmuxSessionName = tmuxSession ?? "" };
         var tab = new TabItem { Content = view };
         var live = new LiveTab(tab, view, definition)
         {
-            Title = definition.Name,
+            Title = TabTitle(definition, view),
             Colour = string.IsNullOrEmpty(colour) ? ColourForNewTab(definition) : colour
         };
         _live.Add(live);
@@ -1249,6 +1340,12 @@ public partial class MainWindow : Window
             menu.Items.Add(cad);
         }
 
+        if (definition is { Protocol: SessionProtocol.Ssh, Tmux: true })
+        {
+            menu.Items.Add(new Separator());
+            menu.Items.Add(TmuxSessionsMenu(definition));
+        }
+
         if (ViewOf(tab) is { Tmux: TmuxState.Live } tmuxView)
         {
             var end = new MenuItem
@@ -1296,7 +1393,7 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task EndTmuxAsync(TerminalView view, SessionDefinition definition)
     {
-        var name = SessionController.TmuxName(definition.TmuxSession);
+        var name = SessionController.TmuxName(string.IsNullOrWhiteSpace(view.TmuxSessionName) ? definition.TmuxSession : view.TmuxSessionName);
         var answer = MessageBox.Show(this,
             $"End the tmux session \"{name}\" on {definition.Host}?\n\n" +
             "Everything running in it stops, and this connection ends with it. " +
@@ -1778,6 +1875,11 @@ public partial class MainWindow : Window
         {
             case SessionDefinition session:
                 menu.Items.Add(Item("_Connect", () => Connect(session)));
+                if (session is { Protocol: SessionProtocol.Ssh, Tmux: true })
+                {
+                    menu.Items.Add(TmuxSessionsMenu(session));
+                }
+
                 menu.Items.Add(new Separator());
                 menu.Items.Add(Item("_Properties...", () => OnEdit(this, none)));
                 menu.Items.Add(Item("_Move to folder...", () => OnMoveToFolder(this, none)));

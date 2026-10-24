@@ -99,8 +99,22 @@ public sealed class SessionDefinition
     /// </summary>
     public bool Tmux { get; set; }
 
-    /// <summary>The tmux session to create or attach to.</summary>
+    /// <summary>
+    /// The tmux session to create or attach to. Since build 72 it mirrors the first entry of
+    /// <see cref="TmuxSessions"/>, so builds before 72 (and other PCs on them, via Sync) still
+    /// open the main session.
+    /// </summary>
     public string TmuxSession { get; set; } = "bht";
+
+    /// <summary>
+    /// Named tmux sessions on this host, each its own tab (build 72). Empty on shortcuts made
+    /// before 72: <see cref="TmuxSessionList"/> then stands in with <see cref="TmuxSession"/>.
+    /// </summary>
+    public List<TmuxSessionEntry> TmuxSessions { get; set; } = new();
+
+    /// <summary>The sessions to offer: the list, or the single session of an older shortcut.</summary>
+    public IReadOnlyList<TmuxSessionEntry> TmuxSessionList() =>
+        TmuxSessions.Count > 0 ? TmuxSessions : new[] { new TmuxSessionEntry { Name = TmuxSession, OpenOnConnect = true } };
 
     // Serial
     public string SerialPort { get; set; } = "COM1";
@@ -214,6 +228,7 @@ public sealed class SessionDefinition
         copy.AutoLogin = AutoLogin.Select(s => s.Copy()).ToList();
         copy.Highlights = Highlights.Select(h => h.Copy()).ToList();
         copy.Commands = Commands.Select(c => c.Copy()).ToList();
+        copy.TmuxSessions = TmuxSessions.Select(t => t.Copy()).ToList();
         copy.Tags = new List<string>(Tags);
         return copy;
     }
@@ -278,6 +293,17 @@ public sealed class AutoLoginStep
 /// <summary>
 /// One entry on the terminal's right-click menu: a label and the text it sends.
 /// </summary>
+/// <summary>One named tmux session of an SSH shortcut.</summary>
+public sealed class TmuxSessionEntry
+{
+    public string Name { get; set; } = "bht";
+
+    /// <summary>Opened with the shortcut; when unticked, only on demand from the shortcut's menu.</summary>
+    public bool OpenOnConnect { get; set; } = true;
+
+    public TmuxSessionEntry Copy() => (TmuxSessionEntry)MemberwiseClone();
+}
+
 public sealed class CommandShortcut
 {
     public string Label { get; set; } = "";
