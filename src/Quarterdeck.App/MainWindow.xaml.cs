@@ -1837,17 +1837,14 @@ public partial class MainWindow : Window
     /// <summary>Closes one tab, whichever it is: the X on its header and the menus all come here.</summary>
     private async Task CloseTabAsync(TabItem tab)
     {
-        if (LiveFor(tab)?.PoppedOut is { } window)
-        {
-            window.Returned = true;
-            window.Content = null;
-            window.Close();
-        }
-
         if (ViewOf(tab) is { } view)
         {
             view.DetachAgent();
             await view.DisconnectAsync();
+
+            // While its window is still up: a popped-out tab's recording would otherwise end on
+            // its last frame held for as long as the disconnect took.
+            await view.FinishRecordingAsync();
 
             // A quick-connect session was never saved, so its stored password has nothing to
             // belong to once the tab is gone. A Shell menu tab is not one: its login steps
@@ -1857,6 +1854,13 @@ public partial class MainWindow : Window
             {
                 _vault.Remove(view.Definition.Id);
             }
+        }
+
+        if (LiveFor(tab)?.PoppedOut is { } window)
+        {
+            window.Returned = true;
+            window.Content = null;
+            window.Close();
         }
 
         Tabs.Items.Remove(tab);

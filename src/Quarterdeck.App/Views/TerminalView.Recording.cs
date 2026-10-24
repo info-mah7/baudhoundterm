@@ -302,7 +302,11 @@ public partial class TerminalView : IRecordable
     {
         var hashes = files.ToDictionary(f => f, Sha256);
         var list = Path.ChangeExtension(video, ".sha256");
-        File.WriteAllLines(list, hashes.Select(h => $"{h.Value}  {Path.GetFileName(h.Key)}"));
+
+        // Here the logs stay in their own folder, so this list points at them from the video's;
+        // in the copy everything sits side by side and its list names bare files.
+        var here = Path.GetDirectoryName(video)!;
+        File.WriteAllLines(list, hashes.Select(h => $"{h.Value}  {Path.GetRelativePath(here, h.Key).Replace('\\', '/')}"));
         if (folder.Length == 0)
         {
             return null;
@@ -320,7 +324,14 @@ public partial class TerminalView : IRecordable
             }
         }
 
-        File.Copy(list, Path.Combine(target, Path.GetFileName(list)), overwrite: false);
+        using (var copied = new StreamWriter(new FileStream(Path.Combine(target, Path.GetFileName(list)), FileMode.CreateNew, FileAccess.Write)))
+        {
+            foreach (var (file, hash) in hashes)
+            {
+                copied.WriteLine($"{hash}  {Path.GetFileName(file)}");
+            }
+        }
+
         return null;
     }
 
