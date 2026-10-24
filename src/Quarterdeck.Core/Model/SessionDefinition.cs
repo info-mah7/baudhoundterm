@@ -207,6 +207,9 @@ public sealed class SessionDefinition
     public bool WheelSendsArrows { get; set; } = true;
 
     public LoggingSettings Logging { get; set; } = new();
+
+    /// <summary>Supervised access (build 75): every session recorded, logged and copied away.</summary>
+    public AuditSettings Audit { get; set; } = new();
     public ReconnectSettings Reconnect { get; set; } = new();
     public List<AutoLoginStep> AutoLogin { get; set; } = new();
     public List<HighlightRule> Highlights { get; set; } = new();
@@ -224,6 +227,7 @@ public sealed class SessionDefinition
         copy.Name = newName ?? $"{Name} (copy)";
         copy.LastConnected = null;
         copy.Logging = Logging.Copy();
+        copy.Audit = Audit.Copy();
         copy.Reconnect = Reconnect.Copy();
         copy.AutoLogin = AutoLogin.Select(s => s.Copy()).ToList();
         copy.Highlights = Highlights.Select(h => h.Copy()).ToList();
@@ -232,6 +236,22 @@ public sealed class SessionDefinition
         copy.Tags = new List<string>(Tags);
         return copy;
     }
+}
+
+/// <summary>
+/// Audit recording, for a third party (a vendor) given supervised access: every session of the
+/// shortcut is recorded from the first connect and cannot be paused or stopped, addresses stay
+/// visible, a terminal also keeps a timestamped log, and at the end the files are hashed and
+/// copied to <see cref="CopyFolder"/>, ideally a share the person at the keyboard cannot change.
+/// </summary>
+public sealed class AuditSettings
+{
+    public bool Enabled { get; set; }
+
+    /// <summary>Where finished recordings, logs and their SHA-256 list are copied. Empty: kept here only.</summary>
+    public string CopyFolder { get; set; } = "";
+
+    public AuditSettings Copy() => (AuditSettings)MemberwiseClone();
 }
 
 public sealed class LoggingSettings

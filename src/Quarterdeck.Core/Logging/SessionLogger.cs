@@ -28,12 +28,18 @@ public sealed partial class SessionLogger : IDisposable
 
     public string? CurrentPath { get; private set; }
 
+    /// <summary>Every file this logger has written, rolls included, for an audit's SHA-256 list.</summary>
+    public List<string> Paths { get; } = new();
+
+    // An audited shortcut always logs, with a time on every line, whatever its log settings say.
+    private bool Stamp => _settings.PrefixTimestamps || _definition.Audit.Enabled;
+
     public SessionLogger(SessionDefinition definition)
     {
         _definition = definition;
         _settings = definition.Logging;
 
-        if (_settings.Enabled)
+        if (_settings.Enabled || definition.Audit.Enabled)
         {
             Open();
         }
@@ -47,6 +53,11 @@ public sealed partial class SessionLogger : IDisposable
         Directory.CreateDirectory(dir);
 
         CurrentPath = NotFull(LogPath(dir, ExpandPattern(_settings.FileNamePattern)));
+        if (!Paths.Contains(CurrentPath))
+        {
+            Paths.Add(CurrentPath);
+        }
+
         _writer = new StreamWriter(
             new FileStream(CurrentPath, FileMode.Append, FileAccess.Write, FileShare.Read),
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
@@ -164,7 +175,7 @@ public sealed partial class SessionLogger : IDisposable
 
             payload = payload.Replace("\r\n", "\n").Replace('\r', '\n');
 
-            if (_settings.PrefixTimestamps)
+            if (Stamp)
             {
                 payload = StampLines(payload);
             }

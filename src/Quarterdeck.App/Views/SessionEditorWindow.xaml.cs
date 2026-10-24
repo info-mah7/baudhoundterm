@@ -119,6 +119,8 @@ public partial class SessionEditorWindow : Window
         WheelArrowsBox.IsChecked = d.WheelSendsArrows;
         TabColorBox.Text = d.TabColor;
 
+        AuditBox.IsChecked = d.Audit.Enabled;
+        AuditFolderBox.Text = d.Audit.CopyFolder;
         LogEnabledBox.IsChecked = d.Logging.Enabled;
         LogDirBox.Text = d.Logging.Directory;
         LogPatternBox.Text = d.Logging.FileNamePattern;
@@ -694,6 +696,8 @@ public partial class SessionEditorWindow : Window
         d.WheelSendsArrows = WheelArrowsBox.IsChecked == true;
         d.TabColor = TabColorBox.Text.Trim();
 
+        d.Audit.Enabled = AuditBox.IsChecked == true;
+        d.Audit.CopyFolder = AuditFolderBox.Text.Trim();
         d.Logging.Enabled = LogEnabledBox.IsChecked == true;
         d.Logging.Directory = LogDirBox.Text.Trim();
         d.Logging.FileNamePattern = LogPatternBox.Text.Trim();
