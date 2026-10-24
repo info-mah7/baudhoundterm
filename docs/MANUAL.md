@@ -605,7 +605,9 @@ against it, set in **Terminal > Agent endpoints and skills > Safeguards...** for
 - **A tripwire.** Patterns for text aimed at the agent. When something it reads matches (on a remote
   desktop: what the agent says it read there), the pane shows a warning, the log records it, and
   every later action in that conversation waits for your yes, whatever the endpoint's Approval
-  setting. Empty the box to turn it off.
+  setting. The agent pane's header then says **⚠ Tripwire** and the bot on the tab turns amber with
+  a ⚠, so it shows from any tab; **New** in the pane starts a clean conversation and clears both.
+  Empty the box to turn it off.
 
 Rules lower the odds; they do not make a model obey. Tested with five planted attacks in terminal
 output against two local models with approvals off, the models followed the planted text 8 times in

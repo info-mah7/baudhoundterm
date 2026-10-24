@@ -61,6 +61,22 @@ internal sealed class AgentPanel : DockPanel
 
     public event EventHandler? CloseRequested;
 
+    /// <summary>Raised when the tripwire fires, or clears with a new conversation; the tab shows it too.</summary>
+    public event EventHandler? TrippedChanged;
+
+    /// <summary>Something this conversation read looked like instructions to the agent; every action now asks.</summary>
+    public bool Tripped => _runner?.Tripped == true;
+
+    private readonly TextBlock _tripBadge = new()
+    {
+        Text = "⚠ Tripwire",
+        Foreground = new SolidColorBrush(Color.FromRgb(0xE5, 0xC0, 0x7B)),
+        FontWeight = FontWeights.SemiBold,
+        Margin = new Thickness(10, 0, 0, 0),
+        VerticalAlignment = VerticalAlignment.Center,
+        Visibility = Visibility.Collapsed
+    };
+
     /// <summary>A local shell in an elevated BaudHoundTerm: it runs as administrator.</summary>
     private bool Elevated => _protocol == Core.Model.SessionProtocol.LocalShell && Elevation.IsCurrentProcessElevated;
 
@@ -110,6 +126,7 @@ internal sealed class AgentPanel : DockPanel
             Margin = new Thickness(6, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center
         });
+        title.Children.Add(_tripBadge);
         header.Children.Add(title);
         DockPanel.SetDock(header, Dock.Top);
         Children.Add(header);
@@ -140,6 +157,7 @@ internal sealed class AgentPanel : DockPanel
         _reset.Click += (_, _) =>
         {
             _runner = null;
+            ShowTripped(null);
             _transcript.Clear();
             _lines.Clear();
             Append("Conversation cleared.");
@@ -409,6 +427,7 @@ internal sealed class AgentPanel : DockPanel
                 break;
             case "warning":
                 Append(e.Text);
+                ShowTripped(e.Text);
                 break;
             default:
                 Append(e.Text);
@@ -430,10 +449,24 @@ internal sealed class AgentPanel : DockPanel
         _transcript.ScrollToEnd();
     }
 
+    /// <summary>The header's tripwire mark: the warning that set it, or null to clear it.</summary>
+    private void ShowTripped(string? warning)
+    {
+        var was = _tripBadge.Visibility == Visibility.Visible;
+        _tripBadge.Visibility = warning is null ? Visibility.Collapsed : Visibility.Visible;
+        _tripBadge.ToolTip = warning is null ? null
+            : _mask(warning.TrimStart('⚠', ' ')) + "\n\nEvery action in this conversation waits for your yes. New starts a clean one.";
+        if (was != (warning is not null))
+        {
+            TrippedChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     private void OpenSettings()
     {
         new AgentSettingsWindow(_vault) { Owner = Window.GetWindow(this) }.ShowDialog();
         _runner = null;   // approval rules may have changed; the next goal starts with them
+        ShowTripped(null);
         Reload();
     }
 

@@ -158,26 +158,28 @@ public sealed partial class AgentRunner
                 continue;
             }
 
-            // A Windows console repaint can part lines with a bare carriage return.
             foreach (var line in text.Split('\n', '\r'))
             {
-                bool match;
+                int at;
                 try
                 {
-                    match = Regex.IsMatch(line, pattern, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));
+                    var m = Regex.Match(line, pattern, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));
+                    at = m.Success ? m.Index : -1;
                 }
                 catch (ArgumentException)
                 {
-                    match = line.Contains(pattern, StringComparison.OrdinalIgnoreCase);
+                    at = line.IndexOf(pattern, StringComparison.OrdinalIgnoreCase);
                 }
                 catch (RegexMatchTimeoutException)
                 {
-                    match = false;
+                    at = -1;
                 }
 
-                if (match)
+                if (at >= 0)
                 {
-                    hit = line.Trim();
+                    // From the match on: a Windows console repaint can run lines together with
+                    // cursor moves, so the "line" may start with unrelated text.
+                    hit = line[at..].Trim();
                     return true;
                 }
             }
@@ -252,6 +254,8 @@ public sealed partial class AgentRunner
         \b(Initialize-Disk|Remove-Partition|Set-Disk|Clear-RecycleBin)\b
         \bshred\b|\bfind\b.*\s-delete\b|\btruncate\s+-s\s*0|\bcrontab\s+-r\b|\b(userdel|usermod|useradd|passwd|visudo)\b|\biptables\s+-(F|X)\b|\bufw\s+(disable|reset)\b
         BaudHoundTerm|\bagent\.json|credentials\.dat|known_hosts\.json|sessions\.json|authorized_keys
+        \bid_(rsa|dsa|ecdsa|ed25519)(_sk)?\b(?!\.pub)|\.(pem|key|pfx|p12|kdbx)\b
+        \b(curl|wget|Invoke-WebRequest|Invoke-RestMethod|iwr|irm)\b.*(\s-T\s|--upload-file|\s-d\s*@|--data(-binary|-raw)?[\s=]*@|\s-F\s+\S*=@|--post-file|-InFile\b)
         """;
 
     /// <summary>
