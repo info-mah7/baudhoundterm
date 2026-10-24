@@ -157,15 +157,15 @@ host row. Remembered.</li>
 <li><strong>Hide addresses</strong> (toolbar, <strong>Shortcut &gt; Hide
 addresses</strong>, or Ctrl+Shift+H), for demos and screen recordings:
 every IP address, host name and user name BaudHoundTerm draws becomes
-<code>•••</code>, in the list, tab headers and tooltips, status lines
-and popped-out windows. Ports and shortcut names stay, unless a name is
-itself an address (quick connect's <code>user@host</code>). It is
-remembered, so a restart mid-demo stays covered. To hide one shortcut
-always, tick <strong>Always hide this address and user name</strong> in
-its properties. Only the display changes: connecting, the filter and the
-agent use the real values. Not covered: what the far end shows (a shell
-prompt, a remote desktop), the properties dialog, and the host-key
-question on a first connection.</li>
+<code>•••</code>, in the list, tab headers and tooltips, status lines,
+the agent pane and popped-out windows. Ports and shortcut names stay,
+unless a name is itself an address (quick connect's
+<code>user@host</code>). It is remembered, so a restart mid-demo stays
+covered. To hide one shortcut always, tick <strong>Always hide this
+address and user name</strong> in its properties. Only the display
+changes: connecting, the filter and the agent use the real values. Not
+covered: what the far end shows (a shell prompt, a remote desktop), the
+properties dialog, and the host-key question on a first connection.</li>
 </ul>
 <p>Open connections appear under their shortcut with their state, and
 clicking one brings its tab forward. Tabs with no shortcut in view, such
@@ -262,7 +262,15 @@ is checked against the host, not taken from this setting. The tab also
 turns tmux's mouse support on for that session only, so the wheel
 scrolls back through the output (tmux's own history) instead of stepping
 through the shell's command history. Hold Shift to select text with the
-mouse.</p></li>
+mouse.</p>
+<p><strong>tmux sessions</strong> lists the sessions this shortcut uses,
+<code>bht</code> to start with. Each one opens in its own tab, so one
+host can have a tab for work, one for logs and one for a build. Untick
+<strong>Open on connect</strong> for a session you want only now and
+then: connecting skips it, and it opens from the shortcut's or the tab's
+<strong>Open tmux session</strong> menu. <strong>Remove</strong> takes a
+session off the shortcut only; one already running on the host keeps
+running.</p></li>
 </ul>
 <p><strong>Serial</strong>: <strong>Port</strong>, <strong>Baud
 rate</strong>, <strong>Data bits</strong>, <strong>Parity</strong>,
@@ -431,6 +439,17 @@ with traffic.</li>
 <li><strong>Bot icon:</strong> attaches or detaches the AI agent
 (section 8).</li>
 </ul>
+<h3 id="several-tmux-sessions-on-one-host">Several tmux sessions on one
+host</h3>
+<p>A shortcut with more than one tmux session (section 3) opens a tab
+for each one ticked <strong>Open on connect</strong>, all on the same
+host. The tab title adds the session name (<code>srv01 · logs</code>).
+Right-click the shortcut or a tab for <strong>Open tmux
+session</strong>: it lists the shortcut's sessions, the ones not opened
+on connect marked <em>(on demand)</em>, and <strong>New tmux
+session...</strong>, which asks for a name, adds it to the shortcut and
+opens it. Opening a session that is already running attaches to it, so
+two tabs on the same session show the same screen.</p>
 <h3 id="ending-a-tmux-session">Ending a tmux session</h3>
 <p>Closing a tab whose shell is in tmux leaves the session running on
 the host, which is the point of it. To end it instead, right-click the
@@ -449,6 +468,42 @@ a log tail or a command-line AI tool keeps running and keeps using
 whatever it used before (one AI CLI with its helpers measured about 1.2
 GB). <code>tmux ls</code> on the host lists the sessions still running;
 end the ones you no longer need.</p>
+<h3 id="recording-a-tab">Recording a tab</h3>
+<p>For demos, a tab can be recorded to an MP4. Right-click the tab and
+choose <strong>Record</strong>:</p>
+<ul>
+<li><strong>This tab</strong>: the terminal and, when it is open, the
+agent pane beside it.</li>
+<li><strong>Terminal only</strong>: just the terminal (or the VNC
+screen), nothing around it.</li>
+<li><strong>Whole window</strong>: all of BaudHoundTerm, title bar
+included, to show the app itself. A popped-out tab records its own
+window.</li>
+</ul>
+<p>The tab header shows <strong>● REC</strong> while it records and
+<strong>❚❚ REC</strong> while paused; the same menu then has
+<strong>Pause recording</strong> (or <strong>Resume recording</strong>)
+and <strong>Stop recording</strong>. A pause leaves nothing in the
+video, not even a gap. The file goes to
+<code>Documents\BaudHoundTerm\recordings</code>, named after the
+shortcut and the time; <strong>Open recordings folder</strong> opens it.
+Closing the tab finishes the file.</p>
+<p>Recording uses Windows' own screen capture and video encoder (what
+Game Bar and the Snipping Tool use), so nothing is installed and nothing
+leaves the PC. Other windows on top of BaudHoundTerm are not in the
+video, nor is the mouse pointer. The video runs at 15 frames a second,
+which suits text. Windows 11 draws a yellow outline round the window
+while it is captured; the outline is not in the file.</p>
+<p><strong>Hide addresses</strong> turns on by itself while a recording
+runs and goes back to how it was at the end, so the list, tab titles,
+status line and agent pane show <code>•••</code>. It cannot mask what
+the host itself prints: a prompt like <code>user@host:~$</code> is in
+the terminal as the host sent it. For a demo, use a demo account or set
+a neutral prompt (<code>PS1='$ '</code>).</p>
+<p>The agent can record too, with its <code>recording</code> tool: start
+(with a scope of terminal, tab or window), pause, resume, stop and
+status, so a goal like "record this tab while you check the disks" gives
+a video of the run.</p>
 <h3 id="link-lamps">Link lamps</h3>
 <p>Serial and telnet tabs show lamps at the bottom right: the connection
 state, <strong>TX</strong> (sent to the device) and <strong>RX</strong>
@@ -906,7 +961,8 @@ encrypted with DPAPI</td>
 </tr>
 </tbody>
 </table>
-<p>Camera snapshots go to <code>Pictures\BaudHoundTerm</code>.
+<p>Camera snapshots go to <code>Pictures\BaudHoundTerm</code>,
+recordings to <code>Documents\BaudHoundTerm\recordings</code>.
 <strong>Help &gt; Open log folder</strong> opens the transcripts.</p>
 <p><strong>Help &gt; Report a problem</strong> points to the <a
 href="https://mah7.com/discord">MAH7 Discord</a> for problems and

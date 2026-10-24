@@ -77,7 +77,7 @@ shortcut...**, the **+** above the list, or Ctrl+Shift+T.
   names only: no `user@host:port` beside a shortcut and no address beside a host row. Remembered.
 - **Hide addresses** (toolbar, **Shortcut > Hide addresses**, or Ctrl+Shift+H), for demos and
   screen recordings: every IP address, host name and user name BaudHoundTerm draws becomes `•••`,
-  in the list, tab headers and tooltips, status lines and popped-out windows. Ports and shortcut
+  in the list, tab headers and tooltips, status lines, the agent pane and popped-out windows. Ports and shortcut
   names stay, unless a name is itself an address (quick connect's `user@host`). It is remembered,
   so a restart mid-demo stays covered. To hide one shortcut always, tick **Always hide this address
   and user name** in its properties. Only the display changes: connecting, the filter and the
@@ -156,6 +156,12 @@ it does not have. **Save** keeps the changes.
   taken from this setting. The tab also turns tmux's mouse support on for that session only, so the
   wheel scrolls back through the output (tmux's own history) instead of stepping through the
   shell's command history. Hold Shift to select text with the mouse.
+
+  **tmux sessions** lists the sessions this shortcut uses, `bht` to start with. Each one opens in
+  its own tab, so one host can have a tab for work, one for logs and one for a build. Untick
+  **Open on connect** for a session you want only now and then: connecting skips it, and it opens
+  from the shortcut's or the tab's **Open tmux session** menu. **Remove** takes a session off the
+  shortcut only; one already running on the host keeps running.
 
 **Serial**: **Port**, **Baud rate**, **Data bits**, **Parity**, **Stop bits**. Defaults are COM1,
 115200, 8, None, One.
@@ -275,6 +281,15 @@ is a temporary file. Other tab types do not support it.
   red failed. It blinks with traffic.
 - **Bot icon:** attaches or detaches the AI agent (section 8).
 
+### Several tmux sessions on one host
+
+A shortcut with more than one tmux session (section 3) opens a tab for each one ticked **Open on
+connect**, all on the same host. The tab title adds the session name (`srv01 · logs`). Right-click
+the shortcut or a tab for **Open tmux session**: it lists the shortcut's sessions, the ones not
+opened on connect marked *(on demand)*, and **New tmux session...**, which asks for a name, adds it
+to the shortcut and opens it. Opening a session that is already running attaches to it, so two
+tabs on the same session show the same screen.
+
 ### Ending a tmux session
 
 Closing a tab whose shell is in tmux leaves the session running on the host, which is the point of
@@ -290,6 +305,35 @@ and BaudHoundTerm spends nothing on it. What runs *inside* the session is the re
 a log tail or a command-line AI tool keeps running and keeps using whatever it used before (one AI
 CLI with its helpers measured about 1.2 GB). `tmux ls` on the host lists the sessions still
 running; end the ones you no longer need.
+
+### Recording a tab
+
+For demos, a tab can be recorded to an MP4. Right-click the tab and choose **Record**:
+
+- **This tab**: the terminal and, when it is open, the agent pane beside it.
+- **Terminal only**: just the terminal (or the VNC screen), nothing around it.
+- **Whole window**: all of BaudHoundTerm, title bar included, to show the app itself. A popped-out
+  tab records its own window.
+
+The tab header shows **● REC** while it records and **❚❚ REC** while paused; the same menu then
+has **Pause recording** (or **Resume recording**) and **Stop recording**. A pause leaves nothing in
+the video, not even a gap. The file goes to `Documents\BaudHoundTerm\recordings`, named after the
+shortcut and the time; **Open recordings folder** opens it. Closing the tab finishes the file.
+
+Recording uses Windows' own screen capture and video encoder (what Game Bar and the Snipping Tool
+use), so nothing is installed and nothing leaves the PC. Other windows on top of BaudHoundTerm are
+not in the video, nor is the mouse pointer. The video runs at 15 frames a second, which suits text.
+Windows 11 draws a yellow outline round the window while it is captured; the outline is not in the
+file.
+
+**Hide addresses** turns on by itself while a recording runs and goes back to how it was at the
+end, so the list, tab titles, status line and agent pane show `•••`. It cannot mask what the host
+itself prints: a prompt like `user@host:~$` is in the terminal as the host sent it. For a demo, use
+a demo account or set a neutral prompt (`PS1='$ '`).
+
+The agent can record too, with its `recording` tool: start (with a scope of terminal, tab or
+window), pause, resume, stop and status, so a goal like "record this tab while you check the
+disks" gives a video of the run.
 
 ### Link lamps
 
@@ -615,7 +659,7 @@ Everything is in `%APPDATA%\BaudHoundTerm\`:
 | `ui.json` | Window preferences |
 | `crash.log` | Errors the app could not handle |
 
-Camera snapshots go to `Pictures\BaudHoundTerm`. **Help > Open log folder** opens the transcripts.
+Camera snapshots go to `Pictures\BaudHoundTerm`, recordings to `Documents\BaudHoundTerm\recordings`. **Help > Open log folder** opens the transcripts.
 
 **Help > Report a problem** points to the [MAH7 Discord](https://mah7.com/discord) for problems and
 questions; give the build number from **Help > About**.
