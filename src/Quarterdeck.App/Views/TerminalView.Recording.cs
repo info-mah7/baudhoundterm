@@ -173,6 +173,11 @@ public partial class TerminalView : IRecordable
         catch (Exception ex) when (ex is IOException or InvalidOperationException or System.Runtime.InteropServices.COMException)
         {
             RecordingChanged?.Invoke(this, EventArgs.Empty);
+            if (audit)
+            {
+                AuditProblem?.Invoke(this, $"The audit recording of {Definition.Name} did not finish cleanly ({ex.Message}). {done.FilePath} may be incomplete and was not copied.");
+            }
+
             return $"error: the recording did not finish cleanly ({ex.Message}); {done.FilePath} may be incomplete";
         }
 
@@ -275,8 +280,9 @@ public partial class TerminalView : IRecordable
         {
             problem = await Task.Run(() => Package(video, files, folder));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
+            // Argument and NotSupported: a copy folder that is not a path at all.
             problem = ex.Message;
         }
 
