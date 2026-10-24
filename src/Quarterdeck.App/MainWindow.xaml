@@ -48,7 +48,7 @@
         <MenuItem Header="F_ull screen" Click="OnFullScreen" InputGestureText="F11"/>
         <Separator/>
         <MenuItem x:Name="AgentMenu" Header="_Agent on this tab" Click="OnToggleAgent" InputGestureText="Ctrl+Shift+A"/>
-        <MenuItem Header="Agent _endpoints and skills..." Click="OnAgentSettings"/>
+        <MenuItem x:Name="AgentSettingsMenu" Header="Agent _endpoints and skills..." Click="OnAgentSettings"/>
       </MenuItem>
       <!-- Filled when opened: what is offered depends on the active tab's protocol. -->
       <MenuItem x:Name="FilesMenu" Header="_Files" SubmenuOpened="OnFilesMenuOpened">
@@ -66,6 +66,12 @@
         <Separator/>
         <MenuItem Header="_Open log folder" Click="OnOpenLogs"/>
         <MenuItem x:Name="SyncMenu" Header="S_ync between PCs (git)..." Click="OnSyncSettings"/>
+        <MenuItem Header="_Features">
+          <MenuItem x:Name="AgentFeatureMenu" Header="_Agent (AI helper on tabs)" IsCheckable="True" Click="OnAgentFeature"
+                    ToolTip="Off: no agent on any tab, and its menus and buttons are gone. Open agents are closed."/>
+          <MenuItem x:Name="SyncFeatureMenu" Header="_Sync between PCs" IsCheckable="True" Click="OnSyncFeature"
+                    ToolTip="Off: nothing is synced and the Sync menu is gone. The sync settings are kept for when it is back on."/>
+        </MenuItem>
         <Separator/>
         <MenuItem Header="_Credits" Click="OnCredits"/>
         <MenuItem Header="_Third-party licenses" Click="OnThirdPartyLicenses"/>

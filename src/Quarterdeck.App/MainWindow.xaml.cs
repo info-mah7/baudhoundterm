@@ -43,6 +43,9 @@ public partial class MainWindow : Window
         Privacy.HideAll = _ui.HideAddresses;
         HideMenu.IsChecked = _ui.HideAddresses;
         DetailsMenu.IsChecked = _ui.ShowAddressDetails;
+        TerminalView.AgentsAllowed = _ui.AgentEnabled;
+        AgentFeatureMenu.IsChecked = _ui.AgentEnabled;
+        SyncFeatureMenu.IsChecked = _ui.SyncEnabled;
         Activated += (_, _) => MarkFocusedRow();   // back from a popped-out window
         RebuildTree();
 
@@ -1471,7 +1474,7 @@ public partial class MainWindow : Window
             menu.Items.Add(end);
         }
 
-        if (definition.Protocol is not SessionProtocol.Rtsp)
+        if (ViewOf(tab) is { CanAttachAgent: true })
         {
             var agent = new MenuItem { Header = "_Agent on this tab" };
             agent.Click += (_, _) =>
@@ -1773,6 +1776,25 @@ public partial class MainWindow : Window
     private void OnKeePassXc(object sender, RoutedEventArgs e) =>
         new KeePassXcWindow(_vault) { Owner = this }.ShowDialog();
 
+    /// <summary>Help > Features > Agent. Off closes every open agent and takes away its way back in.</summary>
+    private void OnAgentFeature(object sender, RoutedEventArgs e)
+    {
+        _ui.AgentEnabled = AgentFeatureMenu.IsChecked;
+        SaveUi();
+        TerminalView.AgentsAllowed = _ui.AgentEnabled;
+        foreach (var live in _live)
+        {
+            if (!_ui.AgentEnabled && live.View.IsAgentAttached)
+            {
+                live.View.DetachAgent();
+            }
+
+            RefreshTab(live);
+        }
+
+        UpdateConnectionToggle();
+    }
+
     private void OnAgentSettings(object sender, RoutedEventArgs e) =>
         new AgentSettingsWindow(_vault) { Owner = this }.ShowDialog();
 
@@ -1823,6 +1845,7 @@ public partial class MainWindow : Window
         PopOutMenu.IsEnabled = tab;
 
         AgentMenu.IsEnabled = view is { CanAttachAgent: true };
+        AgentMenu.Visibility = AgentSettingsMenu.Visibility = _ui.AgentEnabled ? Visibility.Visible : Visibility.Collapsed;
         EmptyHint.Visibility = Tabs.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 

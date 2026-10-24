@@ -500,6 +500,9 @@ The agent works in one tab for you, through any OpenAI-compatible endpoint: vLLM
 Ollama, OpenRouter or OpenAI. On a terminal it types commands and reads the output. On a VNC or
 RDP tab it sees screenshots and clicks and types.
 
+To keep it out entirely, untick **Help > Features > Agent**: no tab offers it, its menus and buttons
+go, and any open agent is closed. It stays off until ticked again.
+
 > [!WARNING]
 > **Everything the agent works with is sent to the endpoint's provider:** your goals, the terminal
 > output it reads, remote desktop screenshots and your skills. That includes whatever is on screen:
@@ -658,6 +661,9 @@ Sync does not carry it to others.
 Keeps shortcuts, folders, agent endpoints, skills and trusted host keys the same on several PCs
 through a private git repository. Passwords, keys, KeePassXC pairings, serial port names and key
 file paths never leave the PC.
+
+**Help > Features > Sync between PCs** turns it off on this PC: no syncing and no Sync menu. The
+repository settings are kept for when it is ticked again.
 
 1. Install [Git for Windows](https://git-scm.com/download/win).
 2. Create an **empty private** repository, on GitHub or your own server.

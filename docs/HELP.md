@@ -88,6 +88,7 @@ RDP or KVM desktop, toward a goal you give it.
   full permissions of whatever account the session is logged in as. Use a least-privilege login,
   keep the approval set to **Ask before risky**, and for sensitive systems use a local model or do
   not attach the agent at all. See the manual's **Security** section.
+- **Help > Features** turns the agent, or sync between PCs, off for the whole app.
 - Every step is logged to a file on this PC. To keep no record, untick **Keep a log of agent
   conversations** in Agent endpoints.
 

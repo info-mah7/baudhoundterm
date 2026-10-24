@@ -25,7 +25,7 @@ public partial class MainWindow
         Environment.GetCommandLineArgs().Contains(AdminShellSwitch, StringComparer.OrdinalIgnoreCase);
 
     // Not while the shortcut list failed to load: the user should see that first.
-    private bool AutoSync => _sync.IsConnected && _sync.Automatic && !IsElevated && _store.LoadProblem is null;
+    private bool AutoSync => _ui.SyncEnabled && _sync.IsConnected && _sync.Automatic && !IsElevated && _store.LoadProblem is null;
 
     // An elevated window runs no git: git.exe, sync.json's git path and the repository's own
     // .git/config (hooks, fsmonitor, sshCommand) can all be changed by programs running as the
@@ -62,6 +62,14 @@ public partial class MainWindow
             _syncSoon.Stop();
             _syncSoon.Start();
         }
+    }
+
+    /// <summary>Help > Features > Sync. Off stops the timers; sync.json is kept for when it is back on.</summary>
+    private void OnSyncFeature(object sender, RoutedEventArgs e)
+    {
+        _ui.SyncEnabled = SyncFeatureMenu.IsChecked;
+        SaveUi();
+        SyncSettingsChanged();
     }
 
     private void OnSyncSettings(object sender, RoutedEventArgs e)
@@ -281,6 +289,7 @@ public partial class MainWindow
             ? "Share shortcuts between PCs through a private git repository"
             : $"{_sync.RepoUrl}\n{(_sync.LastSync is { } at ? $"Last sync {at:g}: " : "")}{_sync.LastResult}";
         SyncMenu.IsEnabled = !IsElevated;
+        SyncMenu.Visibility = _ui.SyncEnabled ? Visibility.Visible : Visibility.Collapsed;
         ToolTipService.SetShowOnDisabled(SyncMenu, true);
     }
 }

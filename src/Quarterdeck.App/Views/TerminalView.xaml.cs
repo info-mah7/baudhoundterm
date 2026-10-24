@@ -1244,7 +1244,10 @@ public partial class TerminalView : UserControl, ITerminalTarget
     /// Terminals get the text agent, VNC and RDP the screen agent (TerminalView.Screen.cs). A
     /// camera has nothing to act on.
     /// </summary>
-    public bool CanAttachAgent => Definition.Protocol is not SessionProtocol.Rtsp;
+    /// <summary>Help > Features > Agent: off for the whole app, every tab.</summary>
+    public static bool AgentsAllowed { get; set; } = true;
+
+    public bool CanAttachAgent => AgentsAllowed && Definition.Protocol is not SessionProtocol.Rtsp;
 
     public void AttachAgent()
     {
