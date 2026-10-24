@@ -70,6 +70,8 @@ safer habit. See **Passwords** below.
   that machine. To set one up, make a KVM shortcut, enter the board's address and web login, and
   press **Pair with portal** to fetch its key automatically. On a KVM tab, **Ctrl+V** types your
   clipboard onto the machine (there is no shared clipboard), and a right-click goes to the machine.
+- **BaudHound** is a pocket Wi-Fi serial console. **Shortcut > Find BaudHound devices...** finds the
+  ones on your network and saves each as a shortcut.
 
 ## 5. The AI agent (optional)
 

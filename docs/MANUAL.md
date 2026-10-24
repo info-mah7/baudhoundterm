@@ -408,7 +408,7 @@ a device's UART and reach that UART over Wi-Fi.
 
 1. Make sure the PC is on the same network as the BaudHound: either the network the device joined,
    or the device's own Wi-Fi, `BaudHound-XXXX`.
-2. Press **BaudHound** on the toolbar. The window searches for about two seconds.
+2. Choose **Shortcut > Find BaudHound devices...**. The window searches for about two seconds.
 3. Pick the device and press **Connect to device**, or double-click it.
 
 Each result shows the device's address, firmware, baud rate, the network it joined, and its
