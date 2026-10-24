@@ -43,7 +43,7 @@ public sealed partial class AgentRunner
     private async Task<string> CallHelperAsync(AgentHelper helper, JsonObject args, CancellationToken token)
     {
         var shown = $"call helper {helper.Name} {Truncate(args.ToJsonString(), 200)}";
-        if (_endpoint.Approval == AgentApproval.Always || helper.Ask)
+        if (_endpoint.Approval == AgentApproval.Always || helper.Ask || Tripped)
         {
             var ok = Approve is not null && await Approve(shown);
             Log(ok ? "approved" : "denied", tool: helper.Name, text: shown);

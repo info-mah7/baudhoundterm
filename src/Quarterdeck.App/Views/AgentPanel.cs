@@ -336,7 +336,10 @@ internal sealed class AgentPanel : DockPanel
                 ? new AgentRunner(endpoint, apiKey, screen, skills, _log)
                 : new AgentRunner(endpoint, apiKey, (ITerminalTarget)_target, skills, _log);
             // Helpers: only those enabled in agent.json and named by a ticked skill.
-            _runner.Helpers = AgentHelper.ForRun(AgentConfig.Load().Helpers, skills, _runner.BuiltInToolNames,
+            var config = AgentConfig.Load();
+            _runner.Safeguards = config.Safeguards;
+            _runner.InjectionPatterns = config.InjectionPatterns;
+            _runner.Helpers = AgentHelper.ForRun(config.Helpers, skills, _runner.BuiltInToolNames,
                 screen: Desktop);
             foreach (var h in AgentConfig.Load().Helpers.Where(h => skills.Any(s => s.Helpers.Contains(h.Name))))
             {
@@ -347,10 +350,13 @@ internal sealed class AgentPanel : DockPanel
             }
 
             _runner.Event += e => Dispatcher.BeginInvoke(() => Show(e));
+            var runner = _runner;
             _runner.Approve = command => Dispatcher.InvokeAsync(() => MessageBox.Show(
                 Window.GetWindow(this)!,
                 $"The agent wants to {(Desktop ? "do this" : "run")}:\n\n{command}\n\nin {_target.Describe}" +
-                (Elevated ? ", which runs as ADMINISTRATOR" : "") + ".\n\nAllow it?",
+                (Elevated ? ", which runs as ADMINISTRATOR" : "") + "." +
+                (runner.Tripped ? "\n\nCAREFUL: something the agent read earlier tried to give it instructions. " +
+                                  "Allow this only if it is what you asked for." : "") + "\n\nAllow it?",
                 "BaudHoundTerm: agent approval", MessageBoxButton.YesNo, MessageBoxImage.Question,
                 MessageBoxResult.No) == MessageBoxResult.Yes).Task;
             _runnerKey = key;
@@ -400,6 +406,9 @@ internal sealed class AgentPanel : DockPanel
                 break;
             case "final":
                 Append("✔ " + e.Text);
+                break;
+            case "warning":
+                Append(e.Text);
                 break;
             default:
                 Append(e.Text);
