@@ -615,6 +615,12 @@ output against two local models with approvals off, the models followed the plan
 text. That is a small test of known tricks, not a guarantee: keep the approval setting on and give
 the agent a login with only the rights the job needs.
 
+A planted instruction that gets through runs where the tab is connected: on the remote host for
+SSH, telnet, serial, VNC, RDP and KVM tabs; on this PC for a local shell tab. The AI endpoint only
+returns text and never runs anything. Under *Ask before risky commands* the agent also asks before
+reading a private key or key file and before uploading a file with curl, wget, Invoke-WebRequest or
+Invoke-RestMethod.
+
 ### Skills
 
 Skills are notes the agent reads with every goal, such as house rules or how a device works. Each

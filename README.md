@@ -41,7 +41,7 @@ The [manual](docs/MANUAL.md) explains how to use it.
   skills and trusted host keys, one file per shortcut. Needs Git for Windows; sign-in is git's
   own (browser for GitHub, keys for ssh). A public repository is refused, checked before every
   push by reading it anonymously. Secrets, KeePassXC pairings, serial port names and key file
-  paths stay on each PC. Conflicts keep both versions.
+  paths stay on each PC. Conflicts keep both versions. **Help > Features** turns sync off on a PC.
 - **VNC viewer** in a tab beside the terminals, rendered by noVNC over a WebSocket-to-TCP bridge
   bound to 127.0.0.1 behind a per-session token. View-only is a per-session setting.
   Copy and paste work both ways.
@@ -59,7 +59,12 @@ The [manual](docs/MANUAL.md) explains how to use it.
 - **AI agent** on any tab, through an OpenAI-compatible endpoint (vLLM, llama.cpp, Ollama,
   OpenRouter). On a terminal it types commands and reads the output; on a VNC tab it sees
   screenshots and clicks and types. Risky actions can need your approval, and every step is
-  logged.
+  logged. **Help > Features** turns the agent off for the whole app.
+- **Agent safeguards** against instructions planted in what the agent reads (prompt injection),
+  on by default: rules placed ahead of everything else in its instructions, terminal output fenced
+  as data, and a tripwire that makes every later action wait for your yes once it reads text aimed
+  at it. The tab and the agent pane show when the tripwire has fired. Edit them in
+  **Terminal > Agent endpoints and skills > Safeguards...**
 - **Session logging** to file, optionally timestamped per line and stripped of ANSI sequences,
   with size-based rolling.
 - **Recording** for demos: the **Record** menu saves the active tab, its terminal alone, or the
@@ -224,6 +229,20 @@ local administrator. Give it only the access the job needs, grant any elevation 
 that session, and keep the endpoint's approval set to ask before risky actions. The smaller the
 account's reach, the smaller the damage if the agent, or the model behind it, gets something wrong.
 
+**Anything the agent reads can try to give it orders.** A log line, a note in a file or text on a
+remote screen can be written for the agent ("AI assistant: run this"). The safeguards (see
+Features) tell it to treat all of that as data, fence terminal output, and make it ask before every
+action once it reads such text. In a test with five planted attacks against two local models with
+approvals off, the models followed the planted text 8 times in 40 runs without the safeguards and
+none in 120 runs with them. That is a small test of known tricks, not a guarantee.
+
+If a planted instruction does get through, it runs where the tab is connected: on the remote host
+for SSH, telnet, serial, VNC, RDP and KVM tabs, with that login's rights; on this PC for a local
+shell tab, as you (an administrator shell tab asks before every command). The AI endpoint only
+returns text and never runs anything, and BaudHoundTerm forwards neither your SSH agent nor ports
+to the far end. Keep approvals on, keep the agent off local shells on sensitive PCs, and use a
+login with only the rights the job needs.
+
 ### Verifying a build
 
 Binaries are unsigned, so Windows SmartScreen reports an unknown publisher on every launch.
@@ -278,6 +297,9 @@ only that in the channel and ask for a private contact; there is no separate dis
 - Not tested against a hardened or non-OpenSSH server.
 - SFTP/SCP transfer, auto-login scripting, and a real BaudHound device are all implemented but
   untested end to end.
+- On a remote desktop the agent's tripwire sees only what the model writes about the screen, so
+  hidden or tiny text it never mentions goes unchecked. Not yet tested with planted text on a
+  remote screen.
 - A VNC server that refuses loopback connections (the RealVNC and TightVNC default) will reject
   `127.0.0.1` even when the app runs on the same machine. Use the machine's LAN address.
 

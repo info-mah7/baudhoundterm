@@ -872,6 +872,13 @@ without safeguards and none in 120 runs with them, and the tripwire
 caught every planted text. That is a small test of known tricks, not a
 guarantee: keep the approval setting on and give the agent a login with
 only the rights the job needs.</p>
+<p>A planted instruction that gets through runs where the tab is
+connected: on the remote host for SSH, telnet, serial, VNC, RDP and KVM
+tabs; on this PC for a local shell tab. The AI endpoint only returns
+text and never runs anything. Under <em>Ask before risky commands</em>
+the agent also asks before reading a private key or key file and before
+uploading a file with curl, wget, Invoke-WebRequest or
+Invoke-RestMethod.</p>
 <h3 id="skills">Skills</h3>
 <p>Skills are notes the agent reads with every goal, such as house rules
 or how a device works. Each is a <code>.md</code> file in
