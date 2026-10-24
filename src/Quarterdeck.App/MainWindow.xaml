@@ -26,7 +26,6 @@
         <MenuItem x:Name="DeleteMenu" Header="_Delete shortcut" Click="OnDelete"/>
         <Separator/>
         <MenuItem Header="Passwords and _keys (KeePassXC)..." Click="OnKeePassXc"/>
-        <MenuItem Header="S_ync between PCs (git)..." Click="OnSyncSettings"/>
         <Separator/>
         <MenuItem x:Name="HideMenu" Header="_Hide addresses" IsCheckable="False" Click="OnHideAddresses" InputGestureText="Ctrl+Shift+H"
                   ToolTip="Show every IP address, host and user name as dots, for demos and recordings"/>
@@ -60,6 +59,7 @@
         <MenuItem Header="MAH7 _Discord" Click="OnDiscord"/>
         <Separator/>
         <MenuItem Header="_Open log folder" Click="OnOpenLogs"/>
+        <MenuItem x:Name="SyncMenu" Header="S_ync between PCs (git)..." Click="OnSyncSettings"/>
         <Separator/>
         <MenuItem Header="_Credits" Click="OnCredits"/>
         <MenuItem Header="_Third-party licenses" Click="OnThirdPartyLicenses"/>
@@ -129,12 +129,6 @@
         <Button Click="OnFullScreen" ToolTip="Full screen: only the tabs, nothing else (F11 again to leave). Ctrl+Tab and Ctrl+PgUp/PgDn switch tabs.">Full screen</Button>
         <Rectangle/>
         <Button Click="OnBaudHound" ToolTip="Find BaudHound wireless serial consoles on this PC's networks and open one">BaudHound</Button>
-        <Rectangle/>
-        <Button x:Name="SyncButton" Click="OnSyncSettings" ToolTip="Share shortcuts between PCs through a private git repository">Sync</Button>
-        <Rectangle/>
-        <ToggleButton x:Name="HideToggle" Click="OnHideAddresses" Foreground="#DFE4EE" Padding="10,4" Margin="1,1" MinWidth="64"
-                      AutomationProperties.Name="Hide addresses"
-                      ToolTip="Hide addresses (Ctrl+Shift+H): every IP, host and user name BaudHoundTerm shows becomes dots, for demos and recordings. What a remote screen or shell prompt shows is not covered.">Hide addresses</ToggleButton>
       </WrapPanel>
     </Border>
 

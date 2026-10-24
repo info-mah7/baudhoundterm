@@ -41,7 +41,7 @@ public partial class MainWindow : Window
         KnownHosts.Ask = q => Dispatcher.Invoke(() => AskHostKey(q));
         GroupToggle.IsChecked = _ui.GroupByHost;   // Click, not Checked: setting it here saves nothing
         Privacy.HideAll = _ui.HideAddresses;
-        HideToggle.IsChecked = HideMenu.IsChecked = _ui.HideAddresses;
+        HideMenu.IsChecked = _ui.HideAddresses;
         DetailsMenu.IsChecked = _ui.ShowAddressDetails;
         Activated += (_, _) => MarkFocusedRow();   // back from a popped-out window
         RebuildTree();
@@ -550,7 +550,7 @@ public partial class MainWindow : Window
         Privacy.HideAll = hide;
         _ui.HideAddresses = hide;
         SaveUi();
-        HideToggle.IsChecked = HideMenu.IsChecked = hide;
+        HideMenu.IsChecked = hide;
         RebuildTree();
         foreach (var live in _live)
         {

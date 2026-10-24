@@ -260,26 +260,27 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>Help > Sync between PCs: its header carries the state the toolbar button used to.</summary>
     private void UpdateSyncButton()
     {
-        if (SyncButton is null)
+        if (SyncMenu is null)
         {
             return;
         }
 
         var failed = _sync.LastResult.StartsWith("Sync failed", StringComparison.Ordinal);
-        SyncButton.Content = !_sync.IsConnected ? "Sync"
-            : _syncing ? "Syncing..."
-            : failed ? "Sync !"
-            : "Sync ✓";
-        SyncButton.Foreground = failed && _sync.IsConnected
+        SyncMenu.Header = "S_ync between PCs (git)..." + (!_sync.IsConnected ? ""
+            : _syncing ? "   syncing"
+            : failed ? "   !"
+            : "   ✓");
+        SyncMenu.Foreground = failed && _sync.IsConnected
             ? new SolidColorBrush(Color.FromRgb(0xE5, 0xC0, 0x7B))
             : new SolidColorBrush(Color.FromRgb(0xDF, 0xE4, 0xEE));
-        SyncButton.ToolTip = IsElevated ? ElevatedSyncNote
+        SyncMenu.ToolTip = IsElevated ? ElevatedSyncNote
             : !_sync.IsConnected
             ? "Share shortcuts between PCs through a private git repository"
             : $"{_sync.RepoUrl}\n{(_sync.LastSync is { } at ? $"Last sync {at:g}: " : "")}{_sync.LastResult}";
-        SyncButton.IsEnabled = !IsElevated;
-        ToolTipService.SetShowOnDisabled(SyncButton, true);
+        SyncMenu.IsEnabled = !IsElevated;
+        ToolTipService.SetShowOnDisabled(SyncMenu, true);
     }
 }
