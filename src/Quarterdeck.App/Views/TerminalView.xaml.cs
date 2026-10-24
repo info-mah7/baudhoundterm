@@ -697,7 +697,11 @@ public partial class TerminalView : UserControl, ITerminalTarget
     }
 
     /// <summary>Hide addresses was switched, or this session's own flag changed: redraw the status line.</summary>
-    public void RefreshPrivacy() => StatusText.Text = Privacy.Mask(_status, Definition);
+    public void RefreshPrivacy()
+    {
+        StatusText.Text = Privacy.Mask(_status, Definition);
+        _agent?.Remask();
+    }
 
     /// <summary>Report a bridge step to both the status bar and the page's own event log.</summary>
     private void Note(string text) => Dispatcher.BeginInvoke(() =>
@@ -1239,7 +1243,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
             return;
         }
 
-        _agent = new AgentPanel(this, Definition.Protocol, _vault);
+        _agent = new AgentPanel(this, Definition.Protocol, _vault, text => Privacy.Mask(text, Definition));
         _agent.CloseRequested += (_, _) => DetachAgent();
         AgentHost.Child = _agent;
         AgentHost.Visibility = Visibility.Visible;

@@ -68,8 +68,14 @@ internal sealed class AgentPanel : DockPanel
     private bool Desktop => _protocol is Core.Model.SessionProtocol.Vnc or Core.Model.SessionProtocol.Rdp
                                       or Core.Model.SessionProtocol.Kvm;
 
-    public AgentPanel(IAgentTarget target, Core.Model.SessionProtocol protocol, CredentialVault vault)
+    // The transcript as written; what shows is masked while Hide addresses is on, so a demo
+    // recording of the pane does not carry the login and host either.
+    private readonly List<string> _lines = new();
+    private readonly Func<string, string> _mask;
+
+    public AgentPanel(IAgentTarget target, Core.Model.SessionProtocol protocol, CredentialVault vault, Func<string, string> mask)
     {
+        _mask = mask;
         _target = target;
         _protocol = protocol;
         _vault = vault;
@@ -135,6 +141,7 @@ internal sealed class AgentPanel : DockPanel
         {
             _runner = null;
             _transcript.Clear();
+            _lines.Clear();
             Append("Conversation cleared.");
         };
         _goal.TextChanged += (_, _) => ShowRunButton();
@@ -402,7 +409,15 @@ internal sealed class AgentPanel : DockPanel
 
     private void Append(string line)
     {
-        _transcript.AppendText(line + Environment.NewLine);
+        _lines.Add(line);
+        _transcript.AppendText(_mask(line) + Environment.NewLine);
+        _transcript.ScrollToEnd();
+    }
+
+    /// <summary>Hide addresses was switched: show the transcript again through the new mask.</summary>
+    public void Remask()
+    {
+        _transcript.Text = string.Concat(_lines.Select(l => _mask(l) + Environment.NewLine));
         _transcript.ScrollToEnd();
     }
 
