@@ -687,6 +687,14 @@ public sealed partial class AgentRunner
 
     private async Task<string> ExecuteAsync(string name, JsonObject args, CancellationToken token)
     {
+        if (name == "recording" && _target is IRecordable recordable)
+        {
+            var action = Str(args, "action") ?? "status";
+            var scope = Str(args, "scope") ?? "tab";
+            Emit("action", action == "start" ? $"recording start ({scope})" : $"recording {action}");
+            return await recordable.RecordingAsync(action, scope);
+        }
+
         if (HelperNamed(name) is { } helper)
         {
             return await CallHelperAsync(helper, args, token);

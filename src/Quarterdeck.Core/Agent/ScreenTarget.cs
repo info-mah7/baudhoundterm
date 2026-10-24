@@ -10,6 +10,20 @@ public interface IAgentTarget
     bool IsConnected { get; }
 }
 
+/// <summary>
+/// A tab BaudHoundTerm can record to a video file (build 72), for demos. The agent may start,
+/// pause, resume and stop it like the user can.
+/// </summary>
+public interface IRecordable
+{
+    /// <summary>
+    /// "start", "pause", "resume", "stop" or "status"; returns what happened, in words. A start
+    /// records <paramref name="scope"/>: "terminal", "tab" (the terminal and the agent pane) or
+    /// "window" (all of BaudHoundTerm, for showing the app itself).
+    /// </summary>
+    Task<string> RecordingAsync(string action, string scope = "tab");
+}
+
 /// <summary>A JPEG of the remote screen or part of it.</summary>
 /// <param name="Jpeg">The picture.</param>
 /// <param name="Width">Its width in pixels, after scaling.</param>

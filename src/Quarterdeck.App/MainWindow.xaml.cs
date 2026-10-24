@@ -514,6 +514,33 @@ public partial class MainWindow : Window
     /// Hide addresses on or off, everywhere at once: the list, every tab's header, tooltip and
     /// status line, and popped-out windows. Remembered, so a restart mid-demo does not uncover them.
     /// </summary>
+    // Hide addresses was off when the first recording started, and goes back off with the last.
+    private bool _hiddenForRecording;
+
+    /// <summary>Addresses hidden while any tab records; the user's own setting back afterwards.</summary>
+    private void OnRecordingChanged()
+    {
+        var any = _live.Any(l => l.View.IsRecording);
+        if (any && !Privacy.HideAll)
+        {
+            _hiddenForRecording = true;
+            SetHideAddresses(true);
+        }
+        else if (!any && _hiddenForRecording)
+        {
+            _hiddenForRecording = false;
+            SetHideAddresses(false);
+        }
+    }
+
+    private void ShowRecordingResult(string result)
+    {
+        if (result.StartsWith("error", StringComparison.Ordinal))
+        {
+            MessageBox.Show(this, result, "Recording", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private void SetHideAddresses(bool hide)
     {
         Privacy.HideAll = hide;
@@ -981,6 +1008,12 @@ public partial class MainWindow : Window
             RefreshTab(live);
         };
         view.AgentAttachedChanged += (_, _) => RefreshTab(live);
+        view.RecordingChanged += (_, _) =>
+        {
+            OnRecordingChanged();
+            RefreshTab(live);
+            tab.ContextMenu = BuildTabMenu(tab, definition);
+        };
         view.TmuxChanged += (_, _) =>
         {
             RefreshTab(live);
@@ -1372,6 +1405,45 @@ public partial class MainWindow : Window
             menu.Items.Add(agent);
         }
 
+        if (ViewOf(tab) is { } recView)
+        {
+            menu.Items.Add(new Separator());
+            if (!recView.IsRecording)
+            {
+                var rec = new MenuItem { Header = "_Record" };
+                foreach (var (header, scope, tip) in new[]
+                {
+                    ("This _tab", "tab", "The terminal and, when it is open, the agent pane beside it"),
+                    ("Terminal _only", "terminal", "Just the terminal, nothing around it"),
+                    ("Whole _window", "window", "All of BaudHoundTerm, to show the app itself"),
+                })
+                {
+                    var item = new MenuItem { Header = header, ToolTip = tip + ". Addresses are hidden while it records." };
+                    item.Click += async (_, _) => ShowRecordingResult(await recView.RecordingAsync("start", scope));
+                    rec.Items.Add(item);
+                }
+
+                menu.Items.Add(rec);
+            }
+            else
+            {
+                var pause = new MenuItem { Header = recView.RecordingPaused ? "Res_ume recording" : "_Pause recording" };
+                pause.Click += async (_, _) => await recView.RecordingAsync(recView.RecordingPaused ? "resume" : "pause");
+                var stop = new MenuItem { Header = "_Stop recording" };
+                stop.Click += async (_, _) => ShowRecordingResult(await recView.RecordingAsync("stop"));
+                menu.Items.Add(pause);
+                menu.Items.Add(stop);
+            }
+
+            var folder = new MenuItem { Header = "Open recordings _folder" };
+            folder.Click += (_, _) =>
+            {
+                Directory.CreateDirectory(TerminalView.RecordingsFolder);
+                OpenInBrowser(TerminalView.RecordingsFolder);
+            };
+            menu.Items.Add(folder);
+        }
+
         var popOut = new MenuItem();
         popOut.Click += (_, _) =>
         {
@@ -1492,6 +1564,19 @@ public partial class MainWindow : Window
         if (SessionPresentation.TmuxChip(view.Tmux) is { } tmux)
         {
             panel.Children.Add(tmux);
+        }
+
+        if (view.IsRecording)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = (view.RecordingPaused ? "❚❚ REC" : "● REC") + (view.RecordingScope == "window" ? " (window)" : ""),
+                Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x6C, 0x75)),
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(4, 0, 4, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = view.RecordingPaused ? "Recording paused" : "Recording this tab"
+            });
         }
 
         var text = new TextBlock { Text = Privacy.MaskName(title, definition), VerticalAlignment = VerticalAlignment.Center };

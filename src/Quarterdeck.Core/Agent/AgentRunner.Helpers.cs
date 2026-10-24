@@ -16,6 +16,11 @@ public sealed partial class AgentRunner
     private JsonArray ToolsForRequest()
     {
         var tools = (_screen is null ? Tools : ScreenTools).DeepClone().AsArray();
+        if (_target is IRecordable)
+        {
+            tools.Add(RecordingTool.DeepClone());
+        }
+
         foreach (var h in Helpers)
         {
             tools.Add(h.ToolDefinition());
@@ -25,6 +30,15 @@ public sealed partial class AgentRunner
     }
 
     private AgentHelper? HelperNamed(string name) => Helpers.FirstOrDefault(h => h.Name == name);
+
+    /// <summary>Offered only on a tab that can be recorded (<see cref="IRecordable"/>).</summary>
+    private static readonly JsonNode RecordingTool = JsonNode.Parse("""
+        {"type":"function","function":{"name":"recording",
+          "description":"Record a video for a demo. start begins a new file; pause and resume skip a stretch without a gap in the video; stop finishes the file and returns its path; status says what is happening. Addresses are hidden while it runs.",
+          "parameters":{"type":"object","required":["action"],"properties":{
+            "action":{"type":"string","enum":["start","pause","resume","stop","status"]},
+            "scope":{"type":"string","enum":["terminal","tab","window"],"description":"For start: terminal (this terminal only), tab (the terminal and this agent pane, the default) or window (all of BaudHoundTerm)."}}}}}
+        """)!;
 
     private async Task<string> CallHelperAsync(AgentHelper helper, JsonObject args, CancellationToken token)
     {
