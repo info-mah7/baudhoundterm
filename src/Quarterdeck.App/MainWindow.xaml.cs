@@ -1710,11 +1710,23 @@ public partial class MainWindow : Window
     private static Button AgentToggle(TabItem tab, TerminalView view)
     {
         var on = view.IsAgentAttached;
-        var colour = on ? Color.FromRgb(0x56, 0xB6, 0xC2) : Color.FromRgb(0x6B, 0x75, 0x8A);
+        var tripped = on && view.AgentTripped;
+        var colour = tripped ? Color.FromRgb(0xE5, 0xC0, 0x7B) : on ? Color.FromRgb(0x56, 0xB6, 0xC2) : Color.FromRgb(0x6B, 0x75, 0x8A);
+
+        // Tripped: amber with a warning sign, so it shows from any tab, the agent pane hidden or not.
+        object content = SessionPresentation.BotIcon(14, new SolidColorBrush(colour));
+        if (tripped)
+        {
+            var both = new StackPanel { Orientation = Orientation.Horizontal };
+            both.Children.Add((UIElement)content);
+            both.Children.Add(new TextBlock { Text = "⚠", Foreground = new SolidColorBrush(colour), FontWeight = FontWeights.Bold,
+                                              Margin = new Thickness(2, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
+            content = both;
+        }
 
         var button = new Button
         {
-            Content = SessionPresentation.BotIcon(14, new SolidColorBrush(colour)),
+            Content = content,
             Padding = new Thickness(3, 1, 3, 1),
             Margin = new Thickness(8, 0, 0, 0),
             MinWidth = 0,
@@ -1725,7 +1737,10 @@ public partial class MainWindow : Window
             BorderBrush = on ? new SolidColorBrush(colour) : Brushes.Transparent,
             BorderThickness = new Thickness(1),
             Focusable = false,   // a click here must not steal the keyboard from the terminal
-            ToolTip = on
+            ToolTip = tripped
+                ? "The agent read text that tried to give it instructions. Every action it takes now waits for your yes; " +
+                  "New in the agent pane starts a clean conversation. Click to detach it."
+                : on
                 ? "An agent is attached and can type into this session. Click to detach it."
                 : "Attach an agent to this session (Ctrl+Shift+A)"
         };

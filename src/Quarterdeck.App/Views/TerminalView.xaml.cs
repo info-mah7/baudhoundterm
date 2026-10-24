@@ -1226,6 +1226,9 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
     public bool IsAgentAttached => _agent is not null;
 
+    /// <summary>The attached agent read text aimed at it (its tripwire fired); the tab header shows it.</summary>
+    public bool AgentTripped => _agent?.Tripped == true;
+
     public event EventHandler? AgentAttachedChanged;
 
     /// <summary>The tmux marker changed: the shell entered tmux, or the session went away.</summary>
@@ -1260,6 +1263,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         _agent = new AgentPanel(this, Definition.Protocol, _vault, text => Privacy.Mask(text, Definition));
         _agentMaskedHidden = Privacy.Hides(Definition);
         _agent.CloseRequested += (_, _) => DetachAgent();
+        _agent.TrippedChanged += (_, _) => AgentAttachedChanged?.Invoke(this, EventArgs.Empty);
         AgentHost.Child = _agent;
         AgentHost.Visibility = Visibility.Visible;
         AgentAttachedChanged?.Invoke(this, EventArgs.Empty);
