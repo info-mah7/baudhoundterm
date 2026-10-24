@@ -273,12 +273,17 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="TabItem">
-            <Border x:Name="Box" Background="#141922" BorderBrush="#232A38"
-                    BorderThickness="1,1,1,0" CornerRadius="3,3,0,0"
-                    Margin="0,2,2,0" Padding="11,5">
-              <ContentPresenter ContentSource="Header" VerticalAlignment="Center"
-                                HorizontalAlignment="Center"/>
-            </Border>
+            <Grid>
+              <Border x:Name="Box" Background="#141922" BorderBrush="#232A38"
+                      BorderThickness="1,1,1,0" CornerRadius="3,3,0,0"
+                      Margin="0,2,2,0" Padding="11,5">
+                <ContentPresenter ContentSource="Header" VerticalAlignment="Center"
+                                  HorizontalAlignment="Center"/>
+              </Border>
+              <!-- The tab in focus: next to its neighbours a darker box alone was hard to pick out. -->
+              <Border x:Name="Lit" Height="2" VerticalAlignment="Top" Margin="0,0,2,0"
+                      CornerRadius="3,3,0,0" Background="#61AFEF" Visibility="Collapsed"/>
+            </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsSelected" Value="True">
                 <Setter TargetName="Box" Property="Background" Value="#0F131A"/>
@@ -295,6 +300,13 @@
                 <Setter TargetName="Box" Property="Padding" Value="12,7"/>
                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
               </Trigger>
+              <MultiTrigger>
+                <MultiTrigger.Conditions>
+                  <Condition Property="IsSelected" Value="True"/>
+                  <Condition Property="TabStripPlacement" Value="Top"/>
+                </MultiTrigger.Conditions>
+                <Setter TargetName="Lit" Property="Visibility" Value="Visible"/>
+              </MultiTrigger>
               <MultiTrigger>
                 <MultiTrigger.Conditions>
                   <Condition Property="IsSelected" Value="False"/>

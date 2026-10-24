@@ -280,6 +280,9 @@ is a temporary file. Other tab types do not support it.
 - **State dot** (serial and telnet tabs): grey disconnected, amber connecting, green connected,
   red failed. It blinks with traffic.
 - **Bot icon:** attaches or detaches the AI agent (section 8).
+- **In focus:** the selected tab has a blue bar along its top, and its row in the shortcut list is
+  highlighted, so with several tabs on one host you can tell which is which. When a popped-out
+  window has the keyboard, its row is the highlighted one.
 
 ### Several tmux sessions on one host
 
