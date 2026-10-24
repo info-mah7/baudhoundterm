@@ -49,7 +49,7 @@ internal static class SessionPresentation
         {
             SessionProtocol.Ssh =>
                 (string.IsNullOrEmpty(s.Username) ? "" : s.Username + "@") + host + PortSuffix(s.Port, 22, hostShown)
-                + (s.Tmux ? "  · tmux " + SessionController.TmuxName(s.TmuxSession) : ""),
+                + (s.Tmux ? "  · tmux " + string.Join(", ", s.TmuxSessionList().Select(t => SessionController.TmuxName(t.Name))) : ""),
             SessionProtocol.Telnet => host + PortSuffix(s.Port, 23, hostShown),
             SessionProtocol.Vnc => host + PortSuffix(s.Port, 5900, hostShown) + (s.ViewOnly ? "  · view only" : ""),
             SessionProtocol.Rtsp => host + PortSuffix(s.Port, 554, hostShown) + (s.RtspPath.Length > 0 ? s.RtspPath : "  · ONVIF"),
@@ -188,7 +188,7 @@ internal static class SessionPresentation
             Padding = new Thickness(4, 0, 4, 0),
             Margin = new Thickness(6, 1, 0, 1),
             VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = $"Runs in tmux ({Quarterdeck.Core.Terminal.SessionController.TmuxName(s.TmuxSession)}): a dropped link leaves the shell running on the host, and reconnecting attaches to it.",
+            ToolTip = $"Runs in tmux ({string.Join(", ", s.TmuxSessionList().Select(t => Quarterdeck.Core.Terminal.SessionController.TmuxName(t.Name)))}): a dropped link leaves the shell running on the host, and reconnecting attaches to it.",
             Child = new TextBlock { Text = "tmux", FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = Freeze(new SolidColorBrush(colour)) }
         };
     }

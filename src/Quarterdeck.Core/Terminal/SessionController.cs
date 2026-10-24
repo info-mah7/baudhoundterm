@@ -65,6 +65,14 @@ public sealed class SessionController : IAsyncDisposable
     }
 
     public SessionDefinition Definition { get; }
+
+    /// <summary>
+    /// The tmux session this connection runs in: one of the shortcut's named sessions, chosen
+    /// per tab (build 72), or the shortcut's main session.
+    /// </summary>
+    public string TmuxSessionName { get; init; } = "";
+
+    private string TmuxTarget => string.IsNullOrWhiteSpace(TmuxSessionName) ? Definition.TmuxSession : TmuxSessionName;
     public SessionState State { get; private set; } = SessionState.Disconnected;
 
     /// <summary>The live SSH client when this is an SSH session, for the transfer pane.</summary>
@@ -154,7 +162,7 @@ public sealed class SessionController : IAsyncDisposable
 
             if (Definition is { Protocol: SessionProtocol.Ssh, Tmux: true })
             {
-                await _transport.WriteAsync(TmuxCommand(Definition.TmuxSession), token).ConfigureAwait(false);
+                await _transport.WriteAsync(TmuxCommand(TmuxTarget), token).ConfigureAwait(false);
 
                 // Asked for is not the same as running: a host without tmux keeps a plain shell,
                 // and the marker must say which of the two this is. The answer comes from the
@@ -374,7 +382,7 @@ public sealed class SessionController : IAsyncDisposable
 
         try
         {
-            using var command = client.CreateCommand($"tmux has-session -t {TmuxName(Definition.TmuxSession)}");
+            using var command = client.CreateCommand($"tmux has-session -t {TmuxName(TmuxTarget)}");
             command.CommandTimeout = TimeSpan.FromSeconds(10);
             await Task.Run(() => command.Execute(), token).ConfigureAwait(false);
             return command.ExitStatus == 0;
@@ -400,7 +408,7 @@ public sealed class SessionController : IAsyncDisposable
             return "This session has no live SSH connection.";
         }
 
-        var name = TmuxName(Definition.TmuxSession);
+        var name = TmuxName(TmuxTarget);
         try
         {
             using var command = client.CreateCommand($"tmux kill-session -t {name}");
