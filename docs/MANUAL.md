@@ -265,7 +265,9 @@ A rejected password or key is never retried.
 
 Links in the output are clickable and open in your default browser (http and https only; a link
 whose text was set by the server shows its real address first). Pasting more than one line asks
-first, since each line break runs a command. **Paste image as file** (right-click) puts an image from the
+first, since each line break runs a command, unless the program in the tab has turned on
+bracketed paste (Claude Code, tmux, bash 5.1 and later, zsh, vim): it then takes the paste as one
+block of text and runs nothing by itself, so there is nothing to ask. **Paste image as file** (right-click) puts an image from the
 clipboard on the far end and types its path: on SSH it is uploaded to `/tmp`, in a local shell it
 is a temporary file. Other tab types do not support it.
 

@@ -312,7 +312,10 @@
     if (!term || !text) return;
     const clean = text.replace(/\x1b/g, '');
     const lines = clean.replace(/(\r\n|\r|\n)$/, '').split(/\r\n|\r|\n/);
-    if (lines.length > 1) {
+    // Bracketed paste on (Claude Code, tmux, bash 5.1+, zsh, vim): the program receives the
+    // paste as one block of text and runs nothing by itself, so there is nothing to ask about.
+    // ESC is stripped above, so the text cannot end the bracket early.
+    if (lines.length > 1 && !term.modes.bracketedPasteMode) {
       // The app asks (a real dialog: confirm() inside WebView2 did not stop the paste) and
       // answers with 'pasteok' only on Yes.
       send({ t: 'pasteask', d: clean, n: lines.length });
