@@ -167,6 +167,13 @@
 
     // Right-click hands off to the host, which shows the real menu (copy, paste, and this
     // session's command shortcuts). Shift+right-click keeps the old one-gesture paste.
+    // The right button belongs to that menu alone. With mouse reporting on (tmux, vim, htop),
+    // xterm.js also sent the press to the far end, and tmux opened its own menu under ours.
+    // Stopped here, before xterm.js sees it; the contextmenu event still fires.
+    for (const type of ['mousedown', 'mouseup']) {
+      window.addEventListener(type, ev => { if (ev.button === 2) ev.stopPropagation(); }, true);
+    }
+
     document.addEventListener('contextmenu', ev => {
       ev.preventDefault();
 

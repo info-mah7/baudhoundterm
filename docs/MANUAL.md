@@ -269,6 +269,10 @@ first, since each line break runs a command. **Paste image as file** (right-clic
 clipboard on the far end and types its path: on SSH it is uploaded to `/tmp`, in a local shell it
 is a temporary file. Other tab types do not support it.
 
+A right-click always opens BaudHoundTerm's menu, even when the program in the tab uses the mouse
+(tmux, vim, htop): the right button is not passed on to it. Its other buttons and the wheel are.
+tmux's own menu is on its keyboard shortcut (the prefix, then `<` or `>`).
+
 **Disconnect** leaves the tab and its scrollback open; **Close** disconnects and closes it.
 
 ### Tab strip
