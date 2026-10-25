@@ -187,7 +187,7 @@ from the vault or KeePassXC, an optional **Remote Desktop Gateway**, **Share the
 It uses Windows' own Remote Desktop client, and the remote desktop follows the tab's size.
 
 **KVM (agentkvm board)**: a KVM board running
-[agentkvm](https://github.com/info-mah7/agentkvm), which types on the machine over USB and
+[agentkvm](https://github.com/mahseven/agentkvm), which types on the machine over USB and
 watches its HDMI output. Nothing is installed on that machine and it need not be on the network;
 the board is. See [section 4](#kvm-tabs) for how to set one up.
 
@@ -447,7 +447,7 @@ the reason in its tooltip.
 
 ## 6. BaudHound devices
 
-[BaudHound](https://github.com/info-mah7/BaudHound) is a pocket ESP32-S3 serial console: clip it to
+[BaudHound](https://github.com/mahseven/BaudHound) is a pocket ESP32-S3 serial console: clip it to
 a device's UART and reach that UART over Wi-Fi.
 
 1. Make sure the PC is on the same network as the BaudHound: either the network the device joined,

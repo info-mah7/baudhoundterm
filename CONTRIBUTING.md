@@ -1,7 +1,7 @@
 # Contributing
 
 Bug reports, patches and corrections are welcome: open an issue or a pull request on
-https://github.com/info-mah7/baudhoundterm.
+https://github.com/mahseven/baudhoundterm.
 
 ## Licence of contributions
 

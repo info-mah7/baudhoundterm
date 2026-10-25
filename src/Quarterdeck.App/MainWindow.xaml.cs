@@ -2928,7 +2928,7 @@ public partial class MainWindow : Window
         MessageBox.Show(this,
             $"BaudHoundTerm {Version}\n" +
             "Terminal and session manager for Windows: SSH, telnet, serial and local shells.\n" +
-            "The desktop console for BaudHound (github.com/info-mah7/BaudHound).\n\n" +
+            "The desktop console for BaudHound (github.com/mahseven/BaudHound).\n\n" +
             "Apache-2.0. Terminal rendering by xterm.js (MIT), SSH by SSH.NET (MIT), VNC by noVNC\n" +
             "(MPL-2.0), cameras by LibVLC (LGPL-2.1), and more. Every component and its licence is\n" +
             "listed under Help > Third-party licenses.",

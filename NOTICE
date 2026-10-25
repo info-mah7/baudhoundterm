@@ -82,6 +82,6 @@ Hardware and firmware BaudHoundTerm drives, none of whose code it contains:
   Sipeed NanoKVM (https://wiki.sipeed.com/nanokvm), firmware github.com/sipeed/NanoKVM,
   Copyright Sipeed, GNU GPL-3.0. BaudHoundTerm talks to its HTTP API and to the agentkvm
   daemon installed beside it. NanoKVM and Sipeed are Sipeed's names.
-  BaudHound (github.com/info-mah7/BaudHound), MIT, MAH7.
+  BaudHound (github.com/mahseven/BaudHound), MIT, MAH7.
 
 This is AI-assisted work.

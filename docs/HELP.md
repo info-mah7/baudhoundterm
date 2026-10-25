@@ -68,7 +68,7 @@ safer habit. See **Passwords** below.
 - **RDP** opens a Windows desktop using Windows' own Remote Desktop client.
 - **VNC** shows another machine's screen. Copy and paste work both ways.
 - **RTSP camera** shows a camera's video, with pan/tilt/zoom if it supports it.
-- **KVM** drives a machine through a [KVM board](https://github.com/info-mah7/agentkvm): the board
+- **KVM** drives a machine through a [KVM board](https://github.com/mahseven/agentkvm): the board
   acts as a USB keyboard and mouse and shows the machine's HDMI output, so nothing is installed on
   that machine. To set one up, make a KVM shortcut, enter the board's address and web login, and
   press **Pair with portal** to fetch its key automatically. On a KVM tab, **Ctrl+V** types your

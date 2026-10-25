@@ -7,7 +7,7 @@ RDP, cameras and KVM boards. One self-contained executable, no runtime to instal
 
 ![BaudHoundTerm: the session tree on the left, a KVM tab driving a browser in the middle, and the AI agent panel working on the right](docs/overview.png)
 
-It is also the desktop console for [BaudHound](https://github.com/info-mah7/BaudHound),
+It is also the desktop console for [BaudHound](https://github.com/mahseven/BaudHound),
 the pocket ESP32-S3 wireless serial tap: BaudHound puts a UART on the network over ssl, and
 BaudHoundTerm gives that connection saved sessions, logging, highlight rules and reconnect.
 
@@ -47,7 +47,7 @@ The [manual](docs/MANUAL.md) explains how to use it.
   Copy and paste work both ways.
 - **RDP** through Windows' own Remote Desktop client, with gateway, clipboard, drive sharing and
   admin-session options.
-- **KVM boards** running [agentkvm](https://github.com/info-mah7/agentkvm): the board types on the
+- **KVM boards** running [agentkvm](https://github.com/mahseven/agentkvm): the board types on the
   machine over USB and shows its HDMI output, so nothing is installed on the target and it need not
   be on the network. **Pair with portal** signs in to the board's web interface and fetches its
   key for you, so no 64-character key is copied by hand. The agent drives it like a VNC or RDP
@@ -139,7 +139,7 @@ button uses it whenever the device offers it; a saved session can turn it on wit
    it; a PC that drops off the network frees it after about 25 seconds.
 
 The device asks for no password: whoever connects first holds it. The firmware's
-[docs/TLS.md](https://github.com/info-mah7/BaudHound/blob/main/docs/TLS.md) has the
+[docs/TLS.md](https://github.com/mahseven/BaudHound/blob/main/docs/TLS.md) has the
 details.
 
 ## Agent on a remote desktop
@@ -165,7 +165,7 @@ connection: screenshots in, pointer and key events out. Nothing is installed on 
 
 ## KVM boards and agentkvm
 
-A KVM tab is backed by [**agentkvm**](https://github.com/info-mah7/agentkvm), a small daemon that
+A KVM tab is backed by [**agentkvm**](https://github.com/mahseven/agentkvm), a small daemon that
 runs on a network KVM board (a NanoKVM, or an ESP32-P4 you flash). The board presents itself to the
 target as an ordinary USB keyboard and mouse and captures its HDMI output, so BaudHoundTerm drives
 the machine with nothing installed on it and no network access to it at all; only the board is on
