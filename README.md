@@ -313,6 +313,8 @@ and .NET.
 beside the executable, has every component's copyright line and full licence text. Regenerate it
 with `python3 helpers/third_party_notices.py` after changing a package.
 
-The application icon was made for MAH7 with Claude (Anthropic).
+The application icon was generated with Claude (Anthropic) for MAH7. Purely AI-generated images are
+generally not copyrightable, so it is not covered by the Apache-2.0 licence and nobody, MAH7
+included, can claim exclusive rights to it.
 
 This is AI-assisted work.
