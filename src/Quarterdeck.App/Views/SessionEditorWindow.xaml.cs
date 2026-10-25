@@ -117,6 +117,7 @@ public partial class SessionEditorWindow : Window
         FontSizeBox.Text = d.FontSize.ToString(CultureInfo.InvariantCulture);
         ScrollbackBox.Text = d.ScrollbackLines.ToString(CultureInfo.InvariantCulture);
         WheelArrowsBox.IsChecked = d.WheelSendsArrows;
+        RemoteClipboardBox.IsChecked = d.RemoteClipboardWrite;
         TabColorBox.Text = d.TabColor;
 
         AuditBox.IsChecked = d.Audit.Enabled;
@@ -694,6 +695,7 @@ public partial class SessionEditorWindow : Window
         d.FontSize = ParseInt(FontSizeBox.Text, 13);
         d.ScrollbackLines = ParseInt(ScrollbackBox.Text, 10000);
         d.WheelSendsArrows = WheelArrowsBox.IsChecked == true;
+        d.RemoteClipboardWrite = RemoteClipboardBox.IsChecked == true;
         d.TabColor = TabColorBox.Text.Trim();
 
         d.Audit.Enabled = AuditBox.IsChecked == true;

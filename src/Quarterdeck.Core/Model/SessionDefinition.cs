@@ -206,6 +206,13 @@ public sealed class SessionDefinition
     /// </summary>
     public bool WheelSendsArrows { get; set; } = true;
 
+    /// <summary>
+    /// A program on the far end may put text on this PC's clipboard (OSC 52): tmux, vim and
+    /// Claude Code copy that way over SSH. Write only; nothing can read the clipboard this way.
+    /// Honoured for SSH and local shells; serial and telnet devices never get it.
+    /// </summary>
+    public bool RemoteClipboardWrite { get; set; } = true;
+
     public LoggingSettings Logging { get; set; } = new();
 
     /// <summary>Supervised access (build 75): every session recorded, logged and copied away.</summary>

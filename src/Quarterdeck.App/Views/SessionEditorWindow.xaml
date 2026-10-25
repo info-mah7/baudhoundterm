@@ -284,6 +284,9 @@
             <CheckBox x:Name="WheelArrowsBox" Margin="0,10,0,0"
                       Content="Mouse wheel sends Up/Down in full-screen programs"
                       ToolTip="In vim, less or tmux (when they do not use the mouse) the wheel moves by sending arrow keys, as other terminals do. Untick it if the wheel steps through command history instead of scrolling."/>
+            <CheckBox x:Name="RemoteClipboardBox" Margin="0,6,0,0"
+                      Content="Programs may copy to this PC's clipboard (SSH and local shells)"
+                      ToolTip="tmux, vim and Claude Code can put what you select or copy there onto the Windows clipboard (OSC 52). They can only write to it, never read it. The status line says each time it happens."/>
           </StackPanel>
           <TextBlock Text="Tab colour (hex or name, blank for none)"/>
           <DockPanel>

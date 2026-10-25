@@ -119,6 +119,20 @@
     fit.fit();
     term.focus();
 
+    // OSC 52: the far end puts text on the clipboard (tmux set-clipboard, vim, Claude Code).
+    // Write only: a query ("?") is never answered, so nothing can read the clipboard this way.
+    // Whether it is allowed is the app's call, per shortcut.
+    term.parser.registerOscHandler(52, data => {
+      const i = data.indexOf(';');
+      const payload = i < 0 ? '' : data.slice(i + 1);
+      if (!payload || payload === '?' || payload.length > 1400000) return true;
+      try {
+        const bytes = Uint8Array.from(atob(payload), c => c.charCodeAt(0));
+        send({ t: 'osc52', d: new TextDecoder().decode(bytes) });
+      } catch (e) { /* not base64: ignore */ }
+      return true;
+    });
+
     term.onData(d => send({ t: 'in', d: d }));
     term.onResize(({ cols, rows }) => send({ t: 'size', c: cols, r: rows }));
     term.onTitleChange(title => send({ t: 'title', d: title }));
@@ -173,6 +187,16 @@
     for (const type of ['mousedown', 'mouseup']) {
       window.addEventListener(type, ev => { if (ev.button === 2) ev.stopPropagation(); }, true);
     }
+
+    // A plain drag in a program that uses the mouse goes to the program, not to a selection
+    // here, and nothing said so. Shift+drag selects anyway (xterm.js); say that, once a minute.
+    let mouseHintAt = 0;
+    window.addEventListener('mousedown', ev => {
+      if (ev.button !== 0 || ev.shiftKey || term.modes.mouseTrackingMode === 'none') return;
+      if (!ev.target.closest || !ev.target.closest('#term')) return;
+      const now = Date.now();
+      if (now - mouseHintAt > 60000) { mouseHintAt = now; send({ t: 'mousehint' }); }
+    }, true);
 
     document.addEventListener('contextmenu', ev => {
       ev.preventDefault();

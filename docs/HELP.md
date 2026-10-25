@@ -88,6 +88,8 @@ RDP or KVM desktop, toward a goal you give it.
   full permissions of whatever account the session is logged in as. Use a least-privilege login,
   keep the approval set to **Ask before risky**, and for sensitive systems use a local model or do
   not attach the agent at all. See the manual's **Security** section.
+- **In tmux or vim** a plain drag goes to the program: hold **Shift** while you drag to select, or let
+  the program copy to the clipboard itself (on by default for SSH and local shells).
 - **Safeguards...** in Agent endpoints: rules that tell the agent everything it reads is data, and a
   tripwire that makes it ask before every action once it reads text aimed at it. When it fires, the
   agent pane says **⚠ Tripwire** and the bot on the tab turns amber; **New** clears it.

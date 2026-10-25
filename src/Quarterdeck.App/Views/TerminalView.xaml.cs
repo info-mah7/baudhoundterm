@@ -427,6 +427,14 @@ public partial class TerminalView : UserControl, ITerminalTarget
                 ConfirmPaste(root.GetProperty("d").GetString() ?? "", root.GetProperty("n").GetInt32());
                 break;
 
+            case "osc52":
+                OnRemoteCopy(root.GetProperty("d").GetString() ?? "");
+                break;
+
+            case "mousehint":
+                ShowStatus("This program is using the mouse: hold Shift while you drag to select text for the clipboard.");
+                break;
+
             case "slowrule":
                 SetStatus($"Highlight \"{root.GetProperty("name").GetString()}\" took {root.GetProperty("ms").GetInt32()} ms and was switched off for this tab. " +
                           "Simplify the pattern in Properties > Highlight.");
@@ -686,6 +694,35 @@ public partial class TerminalView : UserControl, ITerminalTarget
     /// typed.
     /// </summary>
     private void SetStatus(string text) => Dispatcher.BeginInvoke(() => ShowStatus(text));
+
+    /// <summary>
+    /// A program on the far end asked to put text on the clipboard (OSC 52; the page never
+    /// answers a request to read it). Allowed per shortcut, and only where the far end is a shell
+    /// someone chose to open: a serial or telnet device never gets to write the clipboard.
+    /// </summary>
+    private void OnRemoteCopy(string text)
+    {
+        if (text.Length == 0)
+        {
+            return;
+        }
+
+        if (!Definition.RemoteClipboardWrite || Definition.Protocol is not (SessionProtocol.Ssh or SessionProtocol.LocalShell))
+        {
+            ShowStatus("A program asked to copy to the clipboard; this shortcut does not allow it (Properties > Terminal).");
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(text);
+            ShowStatus($"Copied {text.Length:N0} characters to the clipboard from the program in this tab.");
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            ShowStatus("A program asked to copy to the clipboard, but another program held it open; nothing was copied.");
+        }
+    }
 
     // The status line as reported, kept so Hide addresses can be switched on or off over it.
     private string _status = "Disconnected.";

@@ -273,6 +273,16 @@ A right-click always opens BaudHoundTerm's menu, even when the program in the ta
 (tmux, vim, htop): the right button is not passed on to it. Its other buttons and the wheel are.
 tmux's own menu is on its keyboard shortcut (the prefix, then `<` or `>`).
 
+**Selecting text in tmux, vim and other programs that use the mouse.** A plain drag goes to the
+program, not to a BaudHoundTerm selection; the status line says so. Two ways to copy:
+
+- Hold **Shift** while you drag: that always makes a BaudHoundTerm selection, then Ctrl+Shift+C.
+- Let the program copy: tmux, vim and Claude Code can put text on this PC's clipboard over SSH
+  (OSC 52), and BaudHoundTerm accepts it on SSH and local shell tabs. The status line says each
+  time. A program can only write the clipboard this way, never read it. To turn it off for a
+  shortcut, untick **Programs may copy to this PC's clipboard** in its properties (Terminal).
+  In tmux, `set -g set-clipboard on` makes a mouse selection copy this way.
+
 **Disconnect** leaves the tab and its scrollback open; **Close** disconnects and closes it.
 
 ### Tab strip
