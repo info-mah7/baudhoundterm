@@ -17,7 +17,9 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASSETS = os.path.join(ROOT, "src/Quarterdeck.App/obj/project.assets.json")
-TARGET = "net10.0-windows10.0.19041.0/win-x64"
+# The app's own target framework, so raising the Windows SDK version cannot leave this behind.
+TARGET = re.search(r"<TargetFramework>([^<]+)</TargetFramework>",
+                   open(os.path.join(ROOT, "src/Quarterdeck.App/Quarterdeck.App.csproj")).read()).group(1) + "/win-x64"
 NUGET = os.environ.get("NUGET_PACKAGES", os.path.expanduser("~/.nuget/packages"))
 LICENSES = "/usr/share/common-licenses"
 OUT = os.path.join(ROOT, "THIRD-PARTY-NOTICES.txt")
