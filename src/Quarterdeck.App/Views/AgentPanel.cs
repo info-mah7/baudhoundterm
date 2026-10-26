@@ -357,6 +357,7 @@ internal sealed class AgentPanel : DockPanel
             var config = AgentConfig.Load();
             _runner.Safeguards = config.Safeguards;
             _runner.InjectionPatterns = config.InjectionPatterns;
+            _runner.HumanCheckPatterns = config.HumanCheckPatterns;
             _runner.Helpers = AgentHelper.ForRun(config.Helpers, skills, _runner.BuiltInToolNames,
                 screen: Desktop);
             foreach (var h in AgentConfig.Load().Helpers.Where(h => skills.Any(s => s.Helpers.Contains(h.Name))))

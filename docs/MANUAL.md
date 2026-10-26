@@ -651,6 +651,25 @@ returns text and never runs anything. Under *Ask before risky commands* the agen
 reading a private key or key file and before uploading a file with curl, wget, Invoke-WebRequest or
 Invoke-RestMethod.
 
+### CAPTCHAs and other human checks
+
+A CAPTCHA ("I'm not a robot", picking images, press and hold) is a site asking for a person, so the
+agent hands it to you instead of solving it. Two things see to that, both in **Safeguards...**:
+
+- **A rule** in the default rules: never solve, click, skip or get around a human check; stop and
+  ask the user. Rules saved before it existed get it added once (rules you emptied stay empty).
+- **A hard stop** on remote desktops. Before a click or drag, the agent's own name for the target,
+  and what the click check finds at that point, are compared with the **human checks** patterns.
+  On a match nothing is clicked: the run stops with "there is a human check on the screen" and the
+  check is yours. Complete it, then tell the agent to carry on. Empty the box to turn it off.
+
+The hard stop is there because the rule alone was not enough. On Google's reCAPTCHA demo page, the
+local 27B model ticked "I'm not a robot" (and Google let it through) in 2 of 3 runs without the
+rule and 1 of 5 runs with it. With the hard stop and no rule, it tried in 5 of 5 runs and was
+stopped every time. A CAPTCHA reached only by the keyboard (Tab, then Space) is not seen by the hard
+stop; there the rule is all that stands in the way. Merely seeing a CAPTCHA does not stop a run,
+since many pages carry "protected by reCAPTCHA" at the bottom.
+
 ### Skills
 
 Skills are notes the agent reads with every goal, such as house rules or how a device works. Each

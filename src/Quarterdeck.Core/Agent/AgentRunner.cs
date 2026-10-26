@@ -95,6 +95,9 @@ public sealed partial class AgentRunner
     /// <summary>Text aimed at the agent (<see cref="AgentConfig.InjectionPatterns"/>); a hit trips <see cref="Tripped"/>.</summary>
     public string InjectionPatterns { get; set; } = "";
 
+    /// <summary>CAPTCHAs and other human checks (<see cref="AgentConfig.HumanCheckPatterns"/>): never clicked by the agent.</summary>
+    public string HumanCheckPatterns { get; set; } = "";
+
     /// <summary>
     /// Something the agent read looked like instructions to it. From then on every action asks
     /// first, whatever the endpoint's approval mode: the model may already be following it.

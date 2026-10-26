@@ -295,6 +295,11 @@ public sealed partial class AgentRunner
                 var count = Math.Clamp(Int(args, "count", 1), 1, 3);
                 var what = $"{(count == 2 ? "double-" : "")}{(button == "left" ? "" : button + " ")}click '{target}' at ({gx}, {gy})";
 
+                if (HumanCheck(target) is { } human)
+                {
+                    return human;
+                }
+
                 if (await ScreenDeniedAsync(name, what, RiskyTarget.IsMatch(target) || NeedsApproval(_endpoint, target), token) is { } denied)
                 {
                     return denied;
@@ -384,6 +389,11 @@ public sealed partial class AgentRunner
                 }
 
                 var what = $"drag '{target}' from ({x1}, {y1}) to ({x2}, {y2})";
+                if (HumanCheck(target) is { } human)
+                {
+                    return human;
+                }
+
                 if (await ScreenDeniedAsync(name, what, RiskyTarget.IsMatch(target) || NeedsApproval(_endpoint, target), token) is { } denied)
                 {
                     return denied;
@@ -569,6 +579,12 @@ public sealed partial class AgentRunner
 
         var found = TextOf(reply["content"]).Trim().Trim('"', '\'', '.', ' ');
         found = found.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "";
+        // The model may call it "the checkbox"; the check names what is really there.
+        if (HumanCheck(found) is { } human)
+        {
+            return human;
+        }
+
         var ok = SameElement(found, target);
         Log("click_check", text: $"'{target}' at ({px}, {py}) px: {(ok ? "yes" : "no")}, the spot is \"{Truncate(found, 120)}\"");
 
@@ -588,6 +604,25 @@ public sealed partial class AgentRunner
             ? refusal + $" That is {misses + 1} misses: take a fresh look before the next try, and if you worked the point out, " +
                         $"check the numbers. After {MaxMisses} misses no more points for it are checked."
             : refusal;
+    }
+
+    /// <summary>
+    /// A click or drag aimed at a CAPTCHA, by the agent's own label or by what the click check found
+    /// there: the run ends and the check goes to the user. A rule alone was not enough (one run in five
+    /// ticked the box anyway), so this does not depend on the model agreeing.
+    /// </summary>
+    private string? HumanCheck(string text)
+    {
+        if (HumanCheckPatterns.Trim().Length == 0 || !MatchesLines(HumanCheckPatterns, text, out var hit))
+        {
+            return null;
+        }
+
+        Log("human_check", text: Truncate(text, 300));
+        Emit("action", $"✋ human check: '{Truncate(text, 80)}' not clicked");
+        _stopRun = $"Stopped: there is a human check (CAPTCHA) on the screen (\"{Truncate(text, 80)}\"). It is for a person, so " +
+                   "the agent does not touch it. Complete it yourself, then tell the agent to carry on.";
+        return "refused: that is a CAPTCHA or other human check, which is for a person. The run stops here; the user will complete it.";
     }
 
     private const int MaxMisses = 6;

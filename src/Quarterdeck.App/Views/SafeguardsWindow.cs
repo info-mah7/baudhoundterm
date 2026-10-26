@@ -8,7 +8,7 @@ namespace Quarterdeck.App.Views;
 
 /// <summary>
 /// The agent's safeguards, for every endpoint: rules put ahead of its instructions, and the
-/// patterns for text aimed at it in what it reads. Kept in agent.json.
+/// patterns for text aimed at it in what it reads, and the human checks it never touches. Kept in agent.json.
 /// </summary>
 public sealed class SafeguardsWindow : Window
 {
@@ -18,6 +18,7 @@ public sealed class SafeguardsWindow : Window
     private readonly AgentConfig _config;
     private readonly TextBox _rules = Box(170);
     private readonly TextBox _patterns = Box(130, wrap: false);
+    private readonly TextBox _humanChecks = Box(110, wrap: false);
     private readonly TextBlock _note = new() { Foreground = Grey, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
 
     public SafeguardsWindow(AgentConfig config)
@@ -35,6 +36,9 @@ public sealed class SafeguardsWindow : Window
         panel.Children.Add(Label("Text aimed at the agent, one regex per line. When anything it reads matches, every later action of that " +
                                  "conversation waits for your yes, whatever the endpoint's approval setting. Empty: off."));
         panel.Children.Add(_patterns);
+        panel.Children.Add(Label("CAPTCHAs and other human checks on a remote screen, one regex per line. The agent never clicks or drags " +
+                                 "one: the run stops and asks you to complete it. Empty: off."));
+        panel.Children.Add(_humanChecks);
         panel.Children.Add(new TextBlock
         {
             Foreground = Grey, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0),
@@ -47,6 +51,7 @@ public sealed class SafeguardsWindow : Window
         {
             _rules.Text = AgentConfig.DefaultSafeguards;
             _patterns.Text = AgentConfig.DefaultInjectionPatterns;
+            _humanChecks.Text = AgentConfig.DefaultHumanCheckPatterns;
             _note.Text = "Defaults filled in. Save to keep them.";
         }));
         buttons.Children.Add(Btn("Save", Save));
@@ -57,13 +62,15 @@ public sealed class SafeguardsWindow : Window
 
         _rules.Text = config.Safeguards;
         _patterns.Text = config.InjectionPatterns;
+        _humanChecks.Text = config.HumanCheckPatterns;
     }
 
     private void Save()
     {
-        var before = (_config.Safeguards, _config.InjectionPatterns);
+        var before = (_config.Safeguards, _config.InjectionPatterns, _config.HumanCheckPatterns);
         _config.Safeguards = _rules.Text.Trim();
         _config.InjectionPatterns = _patterns.Text.Trim();
+        _config.HumanCheckPatterns = _humanChecks.Text.Trim();
         try
         {
             _config.Save();
@@ -71,7 +78,7 @@ public sealed class SafeguardsWindow : Window
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            (_config.Safeguards, _config.InjectionPatterns) = before;
+            (_config.Safeguards, _config.InjectionPatterns, _config.HumanCheckPatterns) = before;
             _note.Text = "Not saved: " + ex.Message;
         }
     }
