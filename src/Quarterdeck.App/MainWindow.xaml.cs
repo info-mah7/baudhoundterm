@@ -2758,6 +2758,46 @@ public partial class MainWindow : Window
             item.Click += async (_, _) => ShowRecordingResult(await view.RecordingAsync("start", scope));
             yield return item;
         }
+
+        var audit = new MenuItem
+        {
+            Header = "_Audit recording...",
+            ToolTip = "Records this tab until it closes, with no pause or stop, keeps a timed log, and audits every later session of this shortcut"
+        };
+        audit.Click += async (_, _) => await StartAuditFromMenuAsync(view);
+        yield return audit;
+    }
+
+    /// <summary>
+    /// The Record menu's way into an audit: the same setting as the Properties checkbox, with
+    /// the copy folder asked here, and the recording started on this tab now.
+    /// </summary>
+    private async Task StartAuditFromMenuAsync(TerminalView view)
+    {
+        var definition = view.Definition;
+        var dialog = new InputPromptWindow(
+            $"Audit {definition.Name}: copy the recordings to",
+            definition.Audit.CopyFolder,
+            "A share the person at this PC cannot change, for example \\\\nas\\audit; blank keeps them on this PC only. "
+            + "The recording runs until the tab closes and cannot be paused or stopped. Every later session of this shortcut "
+            + "is audited too, until Audit is unticked in its Properties.")
+        {
+            Owner = this,
+            SizeToContent = SizeToContent.Height
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        foreach (var d in _sessions.Where(s => s.Id == definition.Id).Append(definition).Distinct())
+        {
+            d.Audit.Enabled = true;
+            d.Audit.CopyFolder = dialog.Value;
+        }
+
+        Save();
+        await view.StartAuditNowAsync();
     }
 
     private IEnumerable<MenuItem> RecordRunningItems(TerminalView view)

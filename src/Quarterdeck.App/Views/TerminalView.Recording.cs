@@ -239,6 +239,21 @@ public partial class TerminalView : IRecordable
     }
 
     /// <summary>
+    /// Audit turned on from the Record menu while the tab is connected: the timed log and the
+    /// recording start now instead of at the next connect.
+    /// </summary>
+    public async Task StartAuditNowAsync()
+    {
+        if (_recorder is not null || _released)
+        {
+            return;
+        }
+
+        _controller?.EnsureLog();
+        await StartAuditAsync();
+    }
+
+    /// <summary>
     /// A local shell can connect before its tab is even on screen: the audit then waits for the
     /// tab to be laid out in its window. A start that fails is reported, never left silent.
     /// </summary>

@@ -45,6 +45,18 @@ public sealed partial class SessionLogger : IDisposable
         }
     }
 
+    /// <summary>Starts writing now, for an audit turned on while the session runs.</summary>
+    public void EnsureOpen()
+    {
+        lock (_gate)
+        {
+            if (_writer is null)
+            {
+                Open();
+            }
+        }
+    }
+
     private void Open()
     {
         var dir = string.IsNullOrWhiteSpace(_settings.Directory)

@@ -87,6 +87,9 @@ public sealed class SessionController : IAsyncDisposable
 
     private List<string>? _logFiles;
 
+    /// <summary>Starts the session log now, for an audit turned on mid-session.</summary>
+    public void EnsureLog() => _logger?.EnsureOpen();
+
     /// <summary>Bytes in and out on serial and telnet links, across reconnects. For the activity lamps.</summary>
     public LinkCounters Counters { get; } = new();
 

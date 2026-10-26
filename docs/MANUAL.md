@@ -364,9 +364,11 @@ disks" gives a video of the run.
 
 ### Audit recording (supervised access)
 
-For a third party, such as a vendor, given supervised access to a sensitive system, tick
-**Audit: record every session of this shortcut** in its properties (Connection page), and give a
-folder to copy the recordings to. Then every tab of that shortcut:
+For a third party, such as a vendor, given supervised access to a sensitive system, open the
+**Record** menu (or right-click the tab, **Record**) and choose **Audit recording...**. Give a
+folder to copy the recordings to, and the audit starts on that tab at once. The same setting is
+**Audit: record every session of this shortcut** in the shortcut's properties (Connection page);
+unticking it there is the only way to turn it off. From then on every tab of that shortcut:
 
 - starts recording the moment it connects (**● AUDIT** on the tab, and "This session is recorded
   for audit." in the status line), and keeps recording until the tab closes. It cannot be paused
