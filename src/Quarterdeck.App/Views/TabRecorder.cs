@@ -60,6 +60,12 @@ internal sealed class TabRecorder
     }
 
     public string FilePath => _path;
+
+    /// <summary>
+    /// How this recording is encoded, in words, when it is not the first choice (full size,
+    /// hardware encoder); empty when it is. For the status line.
+    /// </summary>
+    public string Fallback { get; private set; } = "";
     public bool Paused { get; private set; }
     public TimeSpan Elapsed => (Paused ? _pausedAt : _clock.Elapsed) - _pausedTotal;
     public int FramesWritten { get; private set; }
@@ -120,27 +126,69 @@ internal sealed class TabRecorder
         TryOff(() => _session.IsCursorCaptureEnabled = false);
 
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        _stream = await FileRandomAccessStream.OpenAsync(_path, FileAccessMode.ReadWrite, StorageOpenOptions.None,
-                                                         FileOpenDisposition.CreateNew);
 
-        var input = VideoEncodingProperties.CreateUncompressed(MediaEncodingSubtypes.Bgra8, (uint)_width, (uint)_height);
-        var source = new MediaStreamSource(new VideoStreamDescriptor(input)) { BufferTime = TimeSpan.Zero, CanSeek = false };
-        source.SampleRequested += OnSampleRequested;
-
-        var profile = MediaEncodingProfile.CreateMp4(VideoEncodingQuality.Auto);
-        profile.Audio = null;
-        profile.Video.Width = (uint)_width;
-        profile.Video.Height = (uint)_height;
-        profile.Video.FrameRate.Numerator = Fps;
-        profile.Video.FrameRate.Denominator = 1;
-        // Text needs sharp edges more than motion needs bits; about 0.15 bit per pixel per frame.
-        profile.Video.Bitrate = (uint)Math.Clamp(_width * _height * Fps * 15L / 100, 1_000_000, 16_000_000);
-
-        var transcoder = new MediaTranscoder { HardwareAccelerationEnabled = true };
-        var prepared = await transcoder.PrepareMediaStreamSourceTranscodeAsync(source, _stream, profile);
-        if (!prepared.CanTranscode)
+        // H.264 encoders refuse frames past about 4096 wide (a high-DPI or ultrawide window gets there),
+        // and some refuse what others take. Try the full size capped to 4K with the hardware encoder,
+        // then Windows' software encoder, then half size; the transcoder scales the frames to fit.
+        // A refused attempt shuts its source and stream down, so each one gets fresh ones.
+        var (outW, outH) = Fit(_width, _height, 3840, 2160);
+        PrepareTranscodeResult? prepared = null;
+        var refusals = new List<string>();
+        Exception? first = null;
+        var setups = new[] { (outW, outH, true), (outW, outH, false), (Even(outW / 2), Even(outH / 2), false) };
+        // The setup that worked last time on this PC goes first, so a refused one is not retried every time.
+        var order = Enumerable.Range(0, setups.Length).OrderBy(i => i == RememberedSetup ? -1 : i).ToList();
+        foreach (var index in order)
         {
-            throw new InvalidOperationException($"Windows could not set up the video encoder ({prepared.FailureReason})");
+            var (w, h, hardware) = setups[index];
+            _stream?.Dispose();
+            _stream = await FileRandomAccessStream.OpenAsync(_path, FileAccessMode.ReadWrite, StorageOpenOptions.None,
+                refusals.Count == 0 ? FileOpenDisposition.CreateNew : FileOpenDisposition.TruncateExisting);
+            var input = VideoEncodingProperties.CreateUncompressed(MediaEncodingSubtypes.Bgra8, (uint)_width, (uint)_height);
+            var source = new MediaStreamSource(new VideoStreamDescriptor(input)) { BufferTime = TimeSpan.Zero, CanSeek = false };
+            source.SampleRequested += OnSampleRequested;
+            var what = $"{w}x{h} {(hardware ? "hardware" : "software")}";
+            try
+            {
+                var attempt = await new MediaTranscoder { HardwareAccelerationEnabled = hardware }
+                    .PrepareMediaStreamSourceTranscodeAsync(source, _stream, Profile(w, h));
+                if (attempt.CanTranscode)
+                {
+                    prepared = attempt;
+                    RememberedSetup = index;
+                    var notes = new List<string>();
+                    if (w != _width || h != _height)
+                    {
+                        notes.Add($"at {w}x{h} instead of {_width}x{_height}");
+                    }
+
+                    if (!hardware)
+                    {
+                        notes.Add("with Windows' software encoder");
+                    }
+
+                    if (notes.Count > 0)
+                    {
+                        Fallback = string.Join(" ", notes) + (refusals.Count > 0 ? ", because the encoder refused the first choice" : ", as on the last recording");
+                    }
+
+                    break;
+                }
+
+                refusals.Add($"{what}: {attempt.FailureReason}");
+                first ??= new InvalidOperationException($"Windows could not set up the video encoder ({attempt.FailureReason})");
+            }
+            catch (COMException ex)
+            {
+                refusals.Add($"{what}: 0x{ex.HResult:X8}");
+                first ??= ex;
+            }
+        }
+
+        if (prepared is null)
+        {
+            // The first refusal is the real one; later ones can be knock-on effects. All are named.
+            throw new COMException($"the video encoder refused every setup tried ({string.Join("; ", refusals)})", first!.HResult);
         }
 
         _transcode = prepared.TranscodeAsync().AsTask();
@@ -338,6 +386,58 @@ internal sealed class TabRecorder
             (int)Math.Round(_region.ActualHeight * dpi.DpiScaleY));
     }
 
+    // Which setup worked last on this PC (an index into the setups tried at start), kept in
+    // recording-setup.txt in the app's data folder. Missing or unreadable: the usual order.
+    private static readonly string SetupFile = Path.Combine(Quarterdeck.Core.Model.AppPaths.DataDirectory, "recording-setup.txt");
+
+    private static int RememberedSetup
+    {
+        get
+        {
+            try
+            {
+                return int.TryParse(File.ReadAllText(SetupFile).Trim(), out var i) ? i : 0;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return 0;
+            }
+        }
+        set
+        {
+            try
+            {
+                File.WriteAllText(SetupFile, value.ToString());
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    private static MediaEncodingProfile Profile(int width, int height)
+    {
+        var profile = MediaEncodingProfile.CreateMp4(VideoEncodingQuality.Auto);
+        profile.Audio = null;
+        profile.Video.Width = (uint)width;
+        profile.Video.Height = (uint)height;
+        profile.Video.FrameRate.Numerator = Fps;
+        profile.Video.FrameRate.Denominator = 1;
+        // Text needs sharp edges more than motion needs bits; about 0.15 bit per pixel per frame.
+        profile.Video.Bitrate = (uint)Math.Clamp(width * height * Fps * 15L / 100, 1_000_000, 16_000_000);
+        return profile;
+    }
+
+    /// <summary>The size scaled down, keeping its shape, to fit the box (turned for portrait).</summary>
+    private static (int Width, int Height) Fit(int width, int height, int maxLong, int maxShort)
+    {
+        var (maxW, maxH) = width >= height ? (maxLong, maxShort) : (maxShort, maxLong);
+        var scale = Math.Min(1.0, Math.Min((double)maxW / width, (double)maxH / height));
+        return (Even((int)(width * scale)), Even((int)(height * scale)));
+    }
+
+    private static int Even(int n) => Math.Max(2, n & ~1);
+
     private static void TryOff(Action set)
     {
         try
@@ -354,8 +454,16 @@ internal sealed class TabRecorder
 
     private static IDirect3DDevice CreateDevice()
     {
-        Marshal.ThrowExceptionForHR(D3D11CreateDevice(IntPtr.Zero, 1 /* hardware */, IntPtr.Zero, 0x20 /* BGRA */,
-            IntPtr.Zero, 0, 7 /* SDK version */, out var d3d, IntPtr.Zero, IntPtr.Zero));
+        // Hardware first; WARP (Windows' software renderer) where there is none to give, such as a
+        // Remote Desktop session or a display driver without Direct3D 11.
+        var hr = D3D11CreateDevice(IntPtr.Zero, 1 /* hardware */, IntPtr.Zero, 0x20 /* BGRA */,
+            IntPtr.Zero, 0, 7 /* SDK version */, out var d3d, IntPtr.Zero, IntPtr.Zero);
+        if (hr < 0)
+        {
+            hr = D3D11CreateDevice(IntPtr.Zero, 5 /* WARP */, IntPtr.Zero, 0x20, IntPtr.Zero, 0, 7, out d3d, IntPtr.Zero, IntPtr.Zero);
+        }
+
+        Marshal.ThrowExceptionForHR(hr);
         try
         {
             var dxgiGuid = new Guid("54ec77fa-1377-44e6-8c32-88fd5f44c84c");

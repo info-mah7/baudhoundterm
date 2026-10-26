@@ -140,19 +140,59 @@ public partial class TerminalView : IRecordable
         catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or IOException
                                        or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
         {
-            return $"error: recording could not start: {ex.Message}";
+            // The full exception, stack included, names the step that failed; the dialog only has room for the gist.
+            try
+            {
+                File.AppendAllText(Path.Combine(AppPaths.DataDirectory, "recording-errors.log"),
+                    $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} scope={scope} {Environment.OSVersion}\n{ex}\n\n");
+            }
+            catch (Exception logEx) when (logEx is IOException or UnauthorizedAccessException)
+            {
+            }
+
+            return $"error: recording could not start: {StartFailure(ex)}. Details: recording-errors.log in the BaudHoundTerm data folder.";
         }
 
         _recorder = recorder;
         _audit = audit;
         RecordingScope = scope;
         RecordingChanged?.Invoke(this, EventArgs.Empty);
+        // One line, so the audit notice is never replaced by the encoder note.
+        var note = recorder.Fallback.Length > 0 ? $"Recording {recorder.Fallback}." : "";
         if (audit)
         {
-            SetStatus("This session is recorded for audit.");
+            SetStatus("This session is recorded for audit." + (note.Length > 0 ? " " + note : ""));
+        }
+        else if (note.Length > 0)
+        {
+            SetStatus(note);
         }
 
-        return $"recording {(scope == "window" ? "the whole BaudHoundTerm window" : scope == "terminal" ? "this terminal" : "this tab")} to {path}";
+        return $"recording {(scope == "window" ? "the whole BaudHoundTerm window" : scope == "terminal" ? "this terminal" : "this tab")} to {path}"
+               + (recorder.Fallback.Length > 0 ? $" ({recorder.Fallback})" : "");
+    }
+
+    /// <summary>
+    /// What went wrong, in words: Windows' capture and Direct3D errors often carry no message at
+    /// all, which left the dialog reading "could not start:" and nothing else.
+    /// </summary>
+    private static string StartFailure(Exception ex)
+    {
+        var meaning = (uint)ex.HResult switch
+        {
+            0x887A0004 => "this PC has no Direct3D 11 device to capture with (DXGI_ERROR_UNSUPPORTED)",
+            0x887A0005 => "the graphics device was removed or reset (DXGI_ERROR_DEVICE_REMOVED)",
+            0x80070005 => "access denied; another program may be blocking screen capture",
+            0x80070057 => "Windows rejected the window for capture (E_INVALIDARG); is it minimized or on a disconnected display?",
+            0x80004002 => "screen capture is not available in this session (E_NOINTERFACE)",
+            0x80070050 => "a recording file with that name already exists",
+            0xC00D6D60 => "Windows has no H.264 video encoder that accepts this size (MF_E_TRANSCODE_NO_MATCHING_ENCODER); on an N edition of Windows, install the Media Feature Pack",
+            _ => "",
+        };
+        var text = string.IsNullOrWhiteSpace(ex.Message) || ex.Message.StartsWith("Exception from HRESULT", StringComparison.Ordinal)
+            ? "" : ex.Message.Trim();
+        var parts = new[] { meaning, text }.Where(p => p.Length > 0).Distinct().ToList();
+        return $"{(parts.Count > 0 ? string.Join("; ", parts) : ex.GetType().Name)} (0x{ex.HResult:X8})";
     }
 
     /// <param name="sessionOver">
