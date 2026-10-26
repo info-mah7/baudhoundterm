@@ -358,7 +358,7 @@ end, so the list, tab titles, status line and agent pane show `•••`. It ca
 itself prints: a prompt like `user@host:~$` is in the terminal as the host sent it. For a demo, use
 a demo account or set a neutral prompt (`PS1='$ '`).
 
-The agent can record too, with its `recording` tool: start (with a scope of terminal, tab or
+The agent can record too, with its `recording` tool: start (with a scope of tab or
 window), pause, resume, stop and status, so a goal like "record this tab while you check the
 disks" gives a video of the run.
 
