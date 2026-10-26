@@ -240,10 +240,16 @@ public partial class TerminalView : IRecordable
 
     /// <summary>
     /// Audit turned on from the Record menu while the tab is connected: the timed log and the
-    /// recording start now instead of at the next connect.
+    /// recording start now instead of at the next connect. A demo recording already running is
+    /// saved first, so the audit takes its place rather than being skipped.
     /// </summary>
     public async Task StartAuditNowAsync()
     {
+        if (_recorder is not null && !_audit)
+        {
+            await StopRecordingAsync();
+        }
+
         if (_recorder is not null || _released)
         {
             return;

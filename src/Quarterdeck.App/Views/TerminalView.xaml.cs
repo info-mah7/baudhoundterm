@@ -693,7 +693,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
     /// which belongs to the far end: writing into it lands in the middle of whatever is being
     /// typed.
     /// </summary>
-    private void SetStatus(string text) => Dispatcher.BeginInvoke(() => ShowStatus(text));
+    internal void SetStatus(string text) => Dispatcher.BeginInvoke(() => ShowStatus(text));
 
     /// <summary>
     /// A program on the far end asked to put text on the clipboard (OSC 52; the page never

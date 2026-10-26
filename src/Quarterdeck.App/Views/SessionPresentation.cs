@@ -207,6 +207,12 @@ internal static class SessionPresentation
             panel.Children.Add(new TextBlock { Text = Privacy.MaskName(name, s), VerticalAlignment = VerticalAlignment.Center });
         }
 
+        // Before the address, which a narrow list cuts off first.
+        if (AuditChip(s) is { } audit)
+        {
+            panel.Children.Add(audit);
+        }
+
         // The tmux mark is a chip, so its text comes out of the dimmed target line here (Target
         // itself keeps it, for the filter and the agent's description of the session).
         var target = details ? Privacy.Mask(Target(s, hostShown), s) : "";
@@ -233,6 +239,29 @@ internal static class SessionPresentation
         }
 
         return panel;
+    }
+
+    /// <summary>An audited shortcut says so before it is opened: every session of it is recorded.</summary>
+    public static Border? AuditChip(SessionDefinition s)
+    {
+        if (!s.Audit.Enabled)
+        {
+            return null;
+        }
+
+        var colour = Color.FromRgb(0xE0, 0x6C, 0x75);
+        return new Border
+        {
+            CornerRadius = new CornerRadius(3),
+            Background = Freeze(new SolidColorBrush(Color.FromArgb(0x22, colour.R, colour.G, colour.B))),
+            BorderBrush = Freeze(new SolidColorBrush(colour)),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(4, 0, 4, 0),
+            Margin = new Thickness(6, 1, 0, 1),
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "Audited: every session of this shortcut is recorded from connect until its tab closes.",
+            Child = new TextBlock { Text = "● audit", FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = Freeze(new SolidColorBrush(colour)) }
+        };
     }
 
     /// <summary>

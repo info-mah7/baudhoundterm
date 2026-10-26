@@ -130,7 +130,7 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Ctrl+Tab and Ctrl+PgDn go to the next tab, Ctrl+Shift+Tab and Ctrl+PgUp to the previous;
-    /// F11 is full screen. Seen here first (Preview), so a terminal or remote screen with the
+    /// F11 is full screen; Ctrl+Shift+R and Ctrl+Shift+P record. Seen here first (Preview), so a terminal or remote screen with the
     /// keyboard does not swallow them. Ctrl+Left/Right stay with the session: shells use them
     /// to move by word.
     /// </summary>
@@ -158,6 +158,11 @@ public partial class MainWindow : Window
         {
             SetHideAddresses(!Privacy.HideAll);
             e.Handled = true;
+        }
+        else if (e.Key is Key.R or Key.P && mods == (ModifierKeys.Control | ModifierKeys.Shift) && FocusedLive is not null)
+        {
+            e.Handled = true;
+            _ = RecordKeyAsync(e.Key);
         }
     }
 
@@ -1258,6 +1263,11 @@ public partial class MainWindow : Window
             Margin = new Thickness(8, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center
         });
+        if (LiveRowRecMark(live.View) is { } rec)
+        {
+            panel.Children.Add(rec);
+        }
+
         return panel;
     }
 
@@ -1610,7 +1620,7 @@ public partial class MainWindow : Window
     /// </summary>
     private void SetTabHeader(TabItem tab, SessionDefinition definition, string title, string colour, TerminalView view)
     {
-        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Background = Brushes.Transparent };   // hit-testable, for the record dot on hover
 
         if (!string.IsNullOrWhiteSpace(colour))
         {
@@ -1634,21 +1644,6 @@ public partial class MainWindow : Window
             panel.Children.Add(tmux);
         }
 
-        if (view.IsRecording)
-        {
-            panel.Children.Add(new TextBlock
-            {
-                Text = view.RecordingIsAudit ? "● AUDIT"
-                    : (view.RecordingPaused ? "❚❚ REC" : "● REC") + (view.RecordingScope == "window" ? " (window)" : ""),
-                Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x6C, 0x75)),
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(4, 0, 4, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = view.RecordingIsAudit ? "This session is recorded for audit until the tab closes"
-                    : view.RecordingPaused ? "Recording paused" : "Recording this tab"
-            });
-        }
-
         var text = new TextBlock { Text = Privacy.MaskName(title, definition), VerticalAlignment = VerticalAlignment.Center };
 
         // The app-wide TextBlock style would otherwise pin one colour here and the tab would
@@ -1660,6 +1655,7 @@ public partial class MainWindow : Window
         });
 
         panel.Children.Add(text);
+        panel.Children.Add(RecordControls(panel, view));
 
         if (view.CanAttachAgent)
         {
@@ -2754,7 +2750,8 @@ public partial class MainWindow : Window
             ("Whole _window", "window", "All of BaudHoundTerm, to show the app itself"),
         })
         {
-            var item = new MenuItem { Header = header, ToolTip = tip + ". Addresses are hidden while it records." };
+            var item = new MenuItem { Header = header, ToolTip = tip + ". Addresses are hidden while it records.",
+                                      InputGestureText = scope == "tab" ? "Ctrl+Shift+R" : "" };
             item.Click += async (_, _) => ShowRecordingResult(await view.RecordingAsync("start", scope));
             yield return item;
         }
@@ -2808,10 +2805,10 @@ public partial class MainWindow : Window
             yield break;
         }
 
-        var pause = new MenuItem { Header = view.RecordingPaused ? "Res_ume recording" : "_Pause recording" };
+        var pause = new MenuItem { Header = view.RecordingPaused ? "Res_ume recording" : "_Pause recording", InputGestureText = "Ctrl+Shift+P" };
         pause.Click += async (_, _) => await view.RecordingAsync(view.RecordingPaused ? "resume" : "pause");
         yield return pause;
-        var stop = new MenuItem { Header = "_Stop recording" };
+        var stop = new MenuItem { Header = "_Stop recording", InputGestureText = "Ctrl+Shift+R" };
         stop.Click += async (_, _) => ShowRecordingResult(await view.RecordingAsync("stop"));
         yield return stop;
     }

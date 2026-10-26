@@ -327,8 +327,10 @@ running; end the ones you no longer need.
 
 ### Recording a tab
 
-For demos, a tab can be recorded to an MP4. Open the **Record** menu (it acts on the active tab), or
-right-click the tab and choose **Record**:
+For demos, a tab can be recorded to an MP4. The quickest way is the tab itself: hover over it and
+click the grey **●** that appears after its name to record **This tab** (right-click the dot for the
+other kinds), or press **Ctrl+Shift+R**. The **Record** menu (it acts on the active tab) and the
+tab's right-click **Record** offer the same:
 
 - **This tab**: the terminal and, when it is open, the agent pane beside it. A red frame round the
   tab marks what is being recorded (it is not in the video). While another tab is in front, the
@@ -341,9 +343,11 @@ If the video encoder refuses the full size (a large high-DPI or ultrawide window
 records at up to 3840x2160, then tries Windows' software encoder, then half size, and the status
 line says which it used. It remembers what worked for the next recording.
 
-The tab header shows **● REC** while it records and **❚❚ REC** while paused; either menu then
-has **Pause recording** (or **Resume recording**) and **Stop recording**. A pause leaves nothing in
-the video, not even a gap. The file goes to `Documents\BaudHoundTerm\recordings`, named after the
+While it records, the tab shows a pulsing red **●**, the running time, and two buttons: **❚❚**
+pauses (then **▶** resumes) and **■** stops and saves. **Ctrl+Shift+P** pauses or resumes and
+**Ctrl+Shift+R** stops; the menus have **Pause recording** (or **Resume recording**) and **Stop
+recording** too. The tab's row in the list shows **● REC** (or **❚❚ REC**), so a recording is
+visible while its tab is not. A pause leaves nothing in the video, not even a gap. The file goes to `Documents\BaudHoundTerm\recordings`, named after the
 shortcut (and its tmux session) and the time; **Open recordings folder** opens it. Closing the tab
 or BaudHoundTerm finishes the file, and so does popping the tab out or back.
 
@@ -370,9 +374,11 @@ folder to copy the recordings to, and the audit starts on that tab at once. The 
 **Audit: record every session of this shortcut** in the shortcut's properties (Connection page);
 unticking it there is the only way to turn it off. From then on every tab of that shortcut:
 
-- starts recording the moment it connects (**● AUDIT** on the tab, and "This session is recorded
-  for audit." in the status line), and keeps recording until the tab closes. It cannot be paused
-  or stopped, from the menus or by the agent;
+- shows **● audit** beside the shortcut in the list, so whoever opens it knows beforehand;
+- starts recording the moment it connects (**● AUDIT** and the running time on the tab and its
+  row, and "This session is recorded for audit." in the status line), and keeps recording until
+  the tab closes. It has no pause or stop buttons and cannot be paused or stopped, from the menus,
+  the keyboard or by the agent;
 - leaves addresses visible, since what was touched is the point of the record;
 - on a terminal (SSH, telnet, serial, local shell), also keeps the session log, with a time on
   every line, whatever the Logging page says;
@@ -793,6 +799,8 @@ than anything BaudHoundTerm sends.
 | Ctrl+Shift+F | Find in scrollback |
 | Ctrl+Shift+A | Attach or detach the agent |
 | Ctrl+Shift+H | Hide addresses on or off |
+| Ctrl+Shift+R | Record this tab, or stop recording |
+| Ctrl+Shift+P | Pause or resume recording |
 | Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab (also Ctrl+PgDn / Ctrl+PgUp) |
 | F11 | Full screen on or off (also in a popped-out window) |
 | Ctrl+Shift+C / Ctrl+Shift+V | Copy / paste in a terminal |
