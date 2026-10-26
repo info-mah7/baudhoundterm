@@ -8,7 +8,10 @@
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
-    <Grid x:Name="RecordArea" Grid.Row="0">
+    <!-- Lit while this tab is being recorded. It sits in the 2 px margin round RecordArea, so it is
+         on screen but never in the video, which is cropped to RecordArea. -->
+    <Border x:Name="RecordFrame" Grid.Row="0" BorderThickness="2" BorderBrush="Transparent" IsHitTestVisible="False"/>
+    <Grid x:Name="RecordArea" Grid.Row="0" Margin="2">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*"/>
         <ColumnDefinition Width="Auto"/>

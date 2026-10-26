@@ -330,10 +330,16 @@ running; end the ones you no longer need.
 For demos, a tab can be recorded to an MP4. Open the **Record** menu (it acts on the active tab), or
 right-click the tab and choose **Record**:
 
-- **This tab**: the terminal and, when it is open, the agent pane beside it.
-- **Terminal only**: just the terminal (or the VNC screen), nothing around it.
-- **Whole window**: all of BaudHoundTerm, title bar included, to show the app itself. A popped-out
-  tab records its own window.
+- **This tab**: the terminal and, when it is open, the agent pane beside it. A red frame round the
+  tab marks what is being recorded (it is not in the video). While another tab is in front, the
+  video shows a card saying this tab is in the background, so no other session is ever recorded
+  and the timeline has no gaps.
+- **Whole window**: all of BaudHoundTerm, title bar included, to show the app itself. Windows marks
+  it with its own yellow border. A popped-out tab records its own window.
+
+If the video encoder refuses the full size (a large high-DPI or ultrawide window), BaudHoundTerm
+records at up to 3840x2160, then tries Windows' software encoder, then half size, and the status
+line says which it used. It remembers what worked for the next recording.
 
 The tab header shows **● REC** while it records and **❚❚ REC** while paused; either menu then
 has **Pause recording** (or **Resume recording**) and **Stop recording**. A pause leaves nothing in

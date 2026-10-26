@@ -2751,7 +2751,6 @@ public partial class MainWindow : Window
         foreach (var (header, scope, tip) in new[]
         {
             ("This _tab", "tab", "The terminal and, when it is open, the agent pane beside it"),
-            ("Terminal _only", "terminal", "Just the terminal, nothing around it"),
             ("Whole _window", "window", "All of BaudHoundTerm, to show the app itself"),
         })
         {

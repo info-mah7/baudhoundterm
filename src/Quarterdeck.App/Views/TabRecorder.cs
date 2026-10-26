@@ -52,12 +52,20 @@ internal sealed class TabRecorder
     private long _next;   // index of the next video frame, in Fps steps of recording time
     private Windows.Graphics.SizeInt32 _poolSize;
 
-    public TabRecorder(Window window, FrameworkElement? region, string path)
+    public TabRecorder(Window window, FrameworkElement? region, string path, string hiddenLabel = "")
     {
         _window = window;
         _region = region;
         _path = path;
+        _hiddenLabel = hiddenLabel;
     }
+
+    // A recorded tab that is not in front is not drawn at all, and what sits in its place is another
+    // session. While it is hidden the video shows this card instead, so no other session is ever
+    // recorded and the timeline stays whole (an audit must not have gaps). Made on the UI thread.
+    private readonly string _hiddenLabel;
+    private volatile bool _hidden;
+    private byte[]? _hiddenFrame;
 
     public string FilePath => _path;
 
@@ -121,9 +129,27 @@ internal sealed class TabRecorder
         _pool = Direct3D11CaptureFramePool.CreateFreeThreaded(device, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, _poolSize);
         _pool.FrameArrived += OnFrame;
         _session = _pool.CreateCaptureSession(_item);
-        // Windows 11 draws a yellow outline round a window being captured. It is on screen only, never
-        // in the file; turning it off (IsBorderRequired) needs a newer SDK than this build targets.
         TryOff(() => _session.IsCursorCaptureEnabled = false);
+        // Windows 11 draws a yellow border round the whole window being captured. A tab recording has
+        // its own frame round the tab (TerminalView.RecordFrame), so the window border goes; a
+        // whole-window recording keeps it. Needs Windows 11 (or Server 2022) and the user's consent,
+        // which Windows grants a desktop app without asking.
+        if (_region is not null
+            && Windows.Foundation.Metadata.ApiInformation.IsPropertyPresent("Windows.Graphics.Capture.GraphicsCaptureSession", "IsBorderRequired"))
+        {
+            try
+            {
+                var access = await GraphicsCaptureAccess.RequestAccessAsync(GraphicsCaptureAccessKind.Borderless);
+                if (access == Windows.Security.Authorization.AppCapabilityAccess.AppCapabilityAccessStatus.Allowed)
+                {
+                    _session.IsBorderRequired = false;
+                }
+            }
+            catch (Exception ex) when (ex is COMException or UnauthorizedAccessException or InvalidCastException)
+            {
+                // The border stays; the recording is unaffected.
+            }
+        }
 
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
 
@@ -191,6 +217,7 @@ internal sealed class TabRecorder
             throw new COMException($"the video encoder refused every setup tried ({string.Join("; ", refusals)})", first!.HResult);
         }
 
+        _hiddenFrame = _region is null ? null : HiddenCard(_width, _height, _hiddenLabel);
         _transcode = prepared.TranscodeAsync().AsTask();
         _clock.Start();
         _session.StartCapture();
@@ -200,7 +227,15 @@ internal sealed class TabRecorder
         _cropTimer.Tick += (_, _) =>
         {
             // A tab popped out or brought back mid-recording leaves this window; keep the last crop.
-            if (_region is null || _region.IsDescendantOf(_window))
+            if (_region is null)
+            {
+                _crop = CropRect();
+                return;
+            }
+
+            // Not in this window (popped out) or not shown (another tab in front): the card.
+            _hidden = !_region.IsVisible || !_region.IsDescendantOf(_window);
+            if (!_hidden)
             {
                 _crop = CropRect();
             }
@@ -351,7 +386,8 @@ internal sealed class TabRecorder
             }
 
             var snap = _latest;
-            var sample = MediaStreamSample.CreateFromBuffer(Crop(snap.Bgra, snap.Width, snap.Height, _crop).AsBuffer(), due);
+            var pixels = _hidden && _hiddenFrame is { } card ? card : Crop(snap.Bgra, snap.Width, snap.Height, _crop);
+            var sample = MediaStreamSample.CreateFromBuffer(pixels.AsBuffer(), due);
             sample.Duration = _interval;
             _next++;
             FramesWritten++;
@@ -413,6 +449,35 @@ internal sealed class TabRecorder
             {
             }
         }
+    }
+
+    /// <summary>The card shown while the recorded tab is not in front: BGRA at the frame size, rows ordered as Crop writes them.</summary>
+    private static byte[] HiddenCard(int width, int height, string label)
+    {
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(0x10, 0x14, 0x1C)), null, new Rect(0, 0, width, height));
+            var text = new FormattedText(
+                (label.Length > 0 ? label : "This tab") + " is in the background.\nThe recording continues; the session is not on screen.",
+                System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface("Segoe UI"),
+                Math.Max(14, Math.Min(width, height) / 22.0), new SolidColorBrush(Color.FromRgb(0x8B, 0x94, 0xA7)), 1.0)
+            { TextAlignment = TextAlignment.Center, MaxTextWidth = Math.Max(10, width - 40) };
+            dc.DrawText(text, new Point(20, (height - text.Height) / 2));
+        }
+
+        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(visual);
+        var rows = new byte[width * height * 4];
+        bitmap.CopyPixels(rows, width * 4, 0);
+        // Bottom row first, as Crop writes frames: Media Foundation reads uncompressed RGB that way.
+        var pixels = new byte[rows.Length];
+        for (var y = 0; y < height; y++)
+        {
+            System.Buffer.BlockCopy(rows, y * width * 4, pixels, (height - 1 - y) * width * 4, width * 4);
+        }
+
+        return pixels;
     }
 
     private static MediaEncodingProfile Profile(int width, int height)

@@ -501,13 +501,18 @@ end the ones you no longer need.</p>
 the tab and choose <strong>Record</strong>:</p>
 <ul>
 <li><strong>This tab</strong>: the terminal and, when it is open, the
-agent pane beside it.</li>
-<li><strong>Terminal only</strong>: just the terminal (or the VNC
-screen), nothing around it.</li>
+agent pane beside it. A red frame round the tab marks what is being
+recorded (it is not in the video). While another tab is in front, the
+video shows a card saying this tab is in the background, so no other
+session is ever recorded and the timeline has no gaps.</li>
 <li><strong>Whole window</strong>: all of BaudHoundTerm, title bar
-included, to show the app itself. A popped-out tab records its own
-window.</li>
+included, to show the app itself. Windows marks it with its own yellow
+border. A popped-out tab records its own window.</li>
 </ul>
+<p>If the video encoder refuses the full size (a large high-DPI or
+ultrawide window), BaudHoundTerm records at up to 3840x2160, then tries
+Windows' software encoder, then half size, and the status line says
+which it used. It remembers what worked for the next recording.</p>
 <p>The tab header shows <strong>● REC</strong> while it records and
 <strong>❚❚ REC</strong> while paused; either menu then has <strong>Pause
 recording</strong> (or <strong>Resume recording</strong>) and

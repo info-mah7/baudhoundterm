@@ -1,6 +1,7 @@
 using System.IO;
 using System.Security.Cryptography;
 using System.Windows;
+using System.Windows.Media;
 using Quarterdeck.Core.Agent;
 using Quarterdeck.Core.Model;
 using Quarterdeck.Core.Terminal;
@@ -37,23 +38,17 @@ public partial class TerminalView : IRecordable
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "BaudHoundTerm", "recordings");
 
     /// <summary>
-    /// What a start records. terminal: the terminal surface (also VNC's), no status line. tab: the
-    /// terminal and the agent pane beside it, when open. window: null, meaning all of BaudHoundTerm
+    /// What a start records. tab: the terminal and the agent pane beside it, when open; while another
+    /// tab is in front, a card says so (see TabRecorder). window: null, meaning all of BaudHoundTerm
     /// (the window this tab is in, so a popped-out tab gives its own window).
     /// </summary>
-    private FrameworkElement? RecordRegion(string scope) => scope switch
-    {
-        "window" => null,
-        "terminal" when Definition.Protocol is SessionProtocol.Ssh or SessionProtocol.Telnet or SessionProtocol.Serial
-                                            or SessionProtocol.LocalShell or SessionProtocol.Vnc => Web,
-        _ => RecordArea,
-    };
+    private FrameworkElement? RecordRegion(string scope) => scope == "window" ? null : RecordArea;
 
     /// <summary>The scope of the running recording, for the menu and the tab header.</summary>
     public string RecordingScope { get; private set; } = "";
 
     public Task<string> RecordingAsync(string action, string scope = "tab") =>
-        Dispatcher.InvokeAsync(() => RecordingOnUiAsync(action, scope is "terminal" or "tab" or "window" ? scope : "tab")).Task.Unwrap();
+        Dispatcher.InvokeAsync(() => RecordingOnUiAsync(action, scope == "window" ? "window" : "tab")).Task.Unwrap();
 
     private const string AuditRefusal =
         "refused: this shortcut is audited, so its recording runs until the tab closes and cannot be paused or stopped";
@@ -132,7 +127,7 @@ public partial class TerminalView : IRecordable
             return "error: the tab is not in a window";
         }
 
-        var recorder = new TabRecorder(window, RecordRegion(scope), path);
+        var recorder = new TabRecorder(window, RecordRegion(scope), path, Definition.Name);
         try
         {
             await recorder.StartAsync();
@@ -155,6 +150,8 @@ public partial class TerminalView : IRecordable
 
         _recorder = recorder;
         _audit = audit;
+        // The tab's own indicator; Windows' yellow capture border is switched off for tab recordings.
+        RecordFrame.BorderBrush = scope == "window" ? Brushes.Transparent : new SolidColorBrush(Color.FromRgb(0xE0, 0x6C, 0x75));
         RecordingScope = scope;
         RecordingChanged?.Invoke(this, EventArgs.Empty);
         // One line, so the audit notice is never replaced by the encoder note.
@@ -168,7 +165,7 @@ public partial class TerminalView : IRecordable
             SetStatus(note);
         }
 
-        return $"recording {(scope == "window" ? "the whole BaudHoundTerm window" : scope == "terminal" ? "this terminal" : "this tab")} to {path}"
+        return $"recording {(scope == "window" ? "the whole BaudHoundTerm window" : "this tab")} to {path}"
                + (recorder.Fallback.Length > 0 ? $" ({recorder.Fallback})" : "");
     }
 
@@ -204,6 +201,7 @@ public partial class TerminalView : IRecordable
         var done = _recorder!;
         var audit = _audit;
         _recorder = null;
+        RecordFrame.BorderBrush = Brushes.Transparent;
         _audit = false;
         long bytes;
         try
