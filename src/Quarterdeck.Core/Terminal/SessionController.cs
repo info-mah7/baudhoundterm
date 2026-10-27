@@ -254,6 +254,33 @@ public sealed class SessionController : IAsyncDisposable
         return "\"" + (f == "~" ? "$HOME" : f.StartsWith("~/", StringComparison.Ordinal) ? "$HOME/" + f[2..] : f) + "\"";
     }
 
+    /// <summary>
+    /// A new shortcut's tmux session: its own name in tmux's alphabet, "Rebex test" -> "rebex-test".
+    /// Every shortcut used to start as "bht", and tmux keeps one set of sessions per login on a host,
+    /// so all the shortcuts to one host opened the same session.
+    /// </summary>
+    public static string DefaultSessionName(string shortcutName) =>
+        TmuxName(string.Join('-', shortcutName.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries)));
+
+    /// <summary>
+    /// Other SSH shortcuts that open one of this shortcut's tmux sessions: the same host and login
+    /// (tmux has one set of sessions per login, whatever the port) and the same session name.
+    /// </summary>
+    public static List<(SessionDefinition Shortcut, string Session)> SharingTmux(SessionDefinition d, IEnumerable<SessionDefinition> all)
+    {
+        if (d is not { Protocol: SessionProtocol.Ssh, Tmux: true })
+        {
+            return new();
+        }
+
+        var mine = d.TmuxSessionList().Select(t => TmuxName(t.Name)).ToHashSet();
+        return all.Where(s => s.Id != d.Id && s is { Protocol: SessionProtocol.Ssh, Tmux: true }
+                              && string.Equals(s.Host.Trim(), d.Host.Trim(), StringComparison.OrdinalIgnoreCase)
+                              && string.Equals(s.Username.Trim(), d.Username.Trim(), StringComparison.Ordinal))
+                  .SelectMany(s => s.TmuxSessionList().Select(t => TmuxName(t.Name)).Where(mine.Contains).Distinct().Select(n => (s, n)))
+                  .ToList();
+    }
+
     /// <summary>tmux rejects '.' and ':' in names, and a safe name needs no quoting in any shell.</summary>
     public static string TmuxName(string session)
     {

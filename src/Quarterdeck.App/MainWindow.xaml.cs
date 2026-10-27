@@ -855,6 +855,7 @@ public partial class MainWindow : Window
         {
             _sessions.Add(definition);
             Save();
+            WarnSharedTmux(definition);
         }
     }
 
@@ -873,7 +874,28 @@ public partial class MainWindow : Window
         {
             RefreshOpenTabsOf(definition);
             Save();
+            WarnSharedTmux(definition);
         }
+    }
+
+    /// <summary>
+    /// Says so when another shortcut to the same host and login uses one of this shortcut's tmux
+    /// session names: their tabs then open the same session. Meant sometimes (Create shortcut does it
+    /// on purpose), so it is a note, not a refusal.
+    /// </summary>
+    private void WarnSharedTmux(SessionDefinition definition)
+    {
+        var shared = SessionController.SharingTmux(definition, _sessions);
+        if (shared.Count == 0)
+        {
+            return;
+        }
+
+        var lines = string.Join("\n", shared.Select(x => $"  {x.Shortcut.Name}: tmux session \"{x.Session}\""));
+        MessageBox.Show(this,
+            $"These shortcuts reach the same host and login and use the same tmux session name, so their tabs open " +
+            $"the same session:\n\n{lines}\n\nIf {definition.Name} should have a session of its own, give it another name " +
+            "in Properties > tmux sessions.", "Shared tmux session", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     /// <summary>

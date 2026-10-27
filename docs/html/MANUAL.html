@@ -264,13 +264,17 @@ scrolls back through the output (tmux's own history) instead of stepping
 through the shell's command history. Hold Shift to select text with the
 mouse.</p>
 <p><strong>tmux sessions</strong> lists the sessions this shortcut uses,
-<code>bht</code> to start with. Each one opens in its own tab, so one
-host can have a tab for work, one for logs and one for a build. Untick
-<strong>Open on connect</strong> for a session you want only now and
-then: connecting skips it, and it opens from the shortcut's or the tab's
-<strong>Open tmux session</strong> menu. <strong>Remove</strong> takes a
-session off the shortcut only; one already running on the host keeps
-running.</p>
+to start with one named after the shortcut ("Rebex test" gets
+<code>rebex-test</code>; shortcuts made before build 80 started as
+<code>bht</code>). tmux keeps one set of sessions per login on a host,
+so two shortcuts to the same host and login with the same session name
+open the same session; Save says so when that happens. Each one opens in
+its own tab, so one host can have a tab for work, one for logs and one
+for a build. Untick <strong>Open on connect</strong> for a session you
+want only now and then: connecting skips it, and it opens from the
+shortcut's or the tab's <strong>Open tmux session</strong> menu.
+<strong>Remove</strong> takes a session off the shortcut only; one
+already running on the host keeps running.</p>
 <p>A session can also have a <strong>Folder</strong> to start in
 (<code>~/work/myproject</code>) and a <strong>Start command</strong>,
 any program it runs: a coding agent, <code>htop</code>,

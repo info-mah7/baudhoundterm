@@ -292,13 +292,15 @@ public partial class SessionEditorWindow : Window
 
     private void OnAddTmuxSession(object sender, RoutedEventArgs e)
     {
+        // Named after the shortcut, like its first session: "bht-2" in every shortcut was one session.
+        var stem = Quarterdeck.Core.Terminal.SessionController.DefaultSessionName(NameBox.Text);
         var n = 2;
-        while (_tmuxSessions.Any(t => t.Name == $"bht-{n}"))
+        while (_tmuxSessions.Any(t => t.Name == $"{stem}-{n}"))
         {
             n++;
         }
 
-        var entry = new TmuxSessionEntry { Name = $"bht-{n}", OpenOnConnect = false };
+        var entry = new TmuxSessionEntry { Name = $"{stem}-{n}", OpenOnConnect = false };
         _tmuxSessions.Add(entry);
         TmuxGrid.SelectedItem = entry;
         TmuxGrid.CurrentCell = new DataGridCellInfo(entry, TmuxGrid.Columns[0]);
@@ -686,6 +688,13 @@ public partial class SessionEditorWindow : Window
         if (sessions.Count == 0)
         {
             sessions.Add(new TmuxSessionEntry { Name = "bht", OpenOnConnect = true });
+        }
+
+        // A shortcut never connected that still has only the starting "bht" gets a session of its own,
+        // named after it. One already used keeps its name: renaming would leave its running session behind.
+        if (d.LastConnected is null && sessions is [{ Name: "bht" } only])
+        {
+            only.Name = Quarterdeck.Core.Terminal.SessionController.DefaultSessionName(d.Name);
         }
 
         d.TmuxSessions = sessions;

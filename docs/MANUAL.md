@@ -157,7 +157,10 @@ it does not have. **Save** keeps the changes.
   wheel scrolls back through the output (tmux's own history) instead of stepping through the
   shell's command history. Hold Shift to select text with the mouse.
 
-  **tmux sessions** lists the sessions this shortcut uses, `bht` to start with. Each one opens in
+  **tmux sessions** lists the sessions this shortcut uses, to start with one named after the
+  shortcut ("Rebex test" gets `rebex-test`; shortcuts made before build 80 started as `bht`). tmux
+  keeps one set of sessions per login on a host, so two shortcuts to the same host and login with
+  the same session name open the same session; Save says so when that happens. Each one opens in
   its own tab, so one host can have a tab for work, one for logs and one for a build. Untick
   **Open on connect** for a session you want only now and then: connecting skips it, and it opens
   from the shortcut's or the tab's **Open tmux session** menu. **Remove** takes a session off the
