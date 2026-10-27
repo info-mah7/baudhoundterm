@@ -327,18 +327,9 @@ session's text (up to its last 5,000 lines, without colours) is copied
 into a new tmux session on the host, through the tab's own connection,
 so nothing is typed into the session, and the new shortcut opens on it.
 A program still running in the old tab cannot be moved: tmux holds only
-what it starts. It keeps running in that tab until you close it.</p>
-<p><strong>Keep an open SSH session in tmux.</strong> Right-click a
-plain SSH tab (one not in tmux), or its row in the list, and choose
-<strong>Create tmux shortcut from this session...</strong>. Its text
-(the last 5,000 lines) and its folder (read from the tab's title, such
-as <code>jamz@srv01: ~/work</code>) go into a new tmux session on the
-host, and a shortcut to it is saved and opened, so that history is kept
-from then on. The text goes up on a second channel of the tab's own
-connection: nothing is typed into the session. Programs still running in
-the old tab cannot move into tmux; they stay there until you close it. A
-tmux session of the same name that already runs is left alone and you
-are told.</p>
+what it starts. It keeps running in that tab until you close it. A tmux
+session of the same name that already runs is left alone, and you are
+told.</p>
 <p><strong>A shortcut from a running session.</strong> Right-click a tab
 whose shell is in tmux (or its row in the list) and choose
 <strong>Create shortcut for this tmux session...</strong>. BaudHoundTerm
