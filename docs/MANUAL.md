@@ -195,6 +195,15 @@ it does not have. **Save** keeps the changes.
   window (the session name follows as you type), add a folder or start command if you like, and
   **Save**. It sits beside the original under the host.
 
+  **A tmux shortcut from an open plain SSH session.** Right-click an SSH tab that is not in tmux (or
+  its row in the list) and choose **Create tmux shortcut from this session...**. The properties
+  window opens for a new shortcut to the same host and login with tmux on, its folder taken from
+  the tab's title when the shell shows one (`user@host: ~/work`). On **Save**, the session's text
+  (up to its last 5,000 lines, without colours) is copied into a new tmux session on the host,
+  through the tab's own connection, so nothing is typed into the session, and the new shortcut
+  opens on it. A program still running in the old tab cannot be moved: tmux holds only what it
+  starts. It keeps running in that tab until you close it.
+
   **A shortcut from a running session.** Right-click a tab whose shell is in tmux (or its row in
   the list) and choose **Create shortcut for this tmux session...**. BaudHoundTerm asks the host
   which folder the session is in and what program runs there, and opens the properties of a new

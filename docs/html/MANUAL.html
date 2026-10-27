@@ -317,6 +317,17 @@ own named after it, and the stored password or key passphrase copied.
 Name it in the properties window (the session name follows as you type),
 add a folder or start command if you like, and <strong>Save</strong>. It
 sits beside the original under the host.</p>
+<p><strong>A tmux shortcut from an open plain SSH session.</strong>
+Right-click an SSH tab that is not in tmux (or its row in the list) and
+choose <strong>Create tmux shortcut from this session...</strong>. The
+properties window opens for a new shortcut to the same host and login
+with tmux on, its folder taken from the tab's title when the shell shows
+one (<code>user@host: ~/work</code>). On <strong>Save</strong>, the
+session's text (up to its last 5,000 lines, without colours) is copied
+into a new tmux session on the host, through the tab's own connection,
+so nothing is typed into the session, and the new shortcut opens on it.
+A program still running in the old tab cannot be moved: tmux holds only
+what it starts. It keeps running in that tab until you close it.</p>
 <p><strong>A shortcut from a running session.</strong> Right-click a tab
 whose shell is in tmux (or its row in the list) and choose
 <strong>Create shortcut for this tmux session...</strong>. BaudHoundTerm

@@ -1091,7 +1091,7 @@ public partial class MainWindow : Window
     /// Opens the properties of a shortcut copied from another, with the original's stored password or
     /// key passphrase, so it logs in the same way; saved on Save, its secrets dropped on Cancel.
     /// </summary>
-    private void SaveCopy(SessionDefinition from, SessionDefinition copy, bool warnShared, bool keepTmuxNames = false)
+    private bool SaveCopy(SessionDefinition from, SessionDefinition copy, bool warnShared, bool keepTmuxNames = false)
     {
         foreach (var key in new[] { "password", "passphrase" })
         {
@@ -1110,11 +1110,61 @@ public partial class MainWindow : Window
             {
                 WarnSharedTmux(copy);
             }
+
+            return true;
         }
-        else
+
+        _vault.Remove(copy.Id);
+        return false;
+    }
+
+    private MenuItem CreateTmuxFromSessionItem(LiveTab live)
+    {
+        var item = new MenuItem
         {
-            _vault.Remove(copy.Id);
+            Header = "Create t_mux shortcut from this session...",
+            ToolTip = "Keeps this session's text and folder in a tmux session of its own, with a shortcut to it. " +
+                      "Programs running here stay in this tab: tmux cannot take them over."
+        };
+        item.Click += async (_, _) => await CreateTmuxFromSessionAsync(live);
+        return item;
+    }
+
+    /// <summary>
+    /// A plain SSH session into tmux, as far as that can go: its text and folder go into a new tmux
+    /// session on the host (programs running in it cannot move), and a shortcut to that session is
+    /// saved and opened. The old tab stays as it is.
+    /// </summary>
+    private async Task CreateTmuxFromSessionAsync(LiveTab live)
+    {
+        if (live.View.Controller is not { State: SessionState.Connected } controller)
+        {
+            MessageBox.Show(this, "Connect the tab first: its text is copied through its own connection.", "Create tmux shortcut");
+            return;
         }
+
+        var from = live.Definition;
+        var copy = from.Clone($"{from.Name} tmux");
+        copy.Tmux = true;
+        copy.TmuxSessions = [new TmuxSessionEntry { Name = "bht", Folder = SessionController.FolderFromTitle(live.ShellTitle) }];
+        copy.TmuxSession = "bht";
+        if (!SaveCopy(from, copy, warnShared: true))
+        {
+            return;
+        }
+
+        var entry = copy.TmuxSessions[0];
+        var text = $"--- copied by BaudHoundTerm from {from.Name}, {DateTime.Now:yyyy-MM-dd HH:mm} ---\n" +
+                   live.View.Transcript.Tail(5000, 400_000).TrimEnd('\n') + "\n--- end of the copy ---\n";
+        var error = await controller.SeedTmuxSessionAsync(entry.Name, entry.Folder, text);
+        if (error is not null)
+        {
+            MessageBox.Show(this, $"{copy.Name} was saved, but this session's text could not be copied into tmux session " +
+                $"\"{entry.Name}\": {error}.\n\nOpening it attaches to that session if it exists, or starts an empty one.",
+                "Create tmux shortcut", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
+        Connect(copy);
     }
 
     /// <summary>Asks for a name, adds it to the shortcut's sessions (on demand), and opens it.</summary>
@@ -1593,6 +1643,13 @@ public partial class MainWindow : Window
         {
             menu.Items.Add(new Separator());
             menu.Items.Add(TmuxSessionsMenu(definition));
+        }
+
+        // A plain SSH session (no tmux, or tmux missing on the host): keep its text in tmux from here on.
+        if (definition.Protocol == SessionProtocol.Ssh && ViewOf(tab) is { Tmux: not TmuxState.Live } && LiveFor(tab) is { } plainLive)
+        {
+            menu.Items.Add(new Separator());
+            menu.Items.Add(CreateTmuxFromSessionItem(plainLive));
         }
 
         if (ViewOf(tab) is { Tmux: TmuxState.Live } tmuxView)
@@ -2209,6 +2266,10 @@ public partial class MainWindow : Window
         {
             case LiveTab { View.Tmux: TmuxState.Live } live:
                 menu.Items.Add(CreateShortcutItem(live.View, live.Definition));
+                break;
+
+            case LiveTab { Definition.Protocol: SessionProtocol.Ssh } plain:
+                menu.Items.Add(CreateTmuxFromSessionItem(plain));
                 break;
 
             case SessionDefinition session:

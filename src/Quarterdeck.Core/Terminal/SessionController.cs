@@ -281,6 +281,17 @@ public sealed class SessionController : IAsyncDisposable
                   .ToList();
     }
 
+    /// <summary>
+    /// The folder a shell's title shows, "jamz@srv01: ~/work/proj" -> "~/work/proj" (bash and zsh set
+    /// such titles); "" when the title is something else or the folder has characters a shell acts on.
+    /// </summary>
+    public static string FolderFromTitle(string title)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(title.Trim(), @"^[^@\s]+@[^:\s]+:\s*(\S.*?)\s*[$#]?$");
+        var folder = m.Success ? m.Groups[1].Value.Trim() : "";
+        return folder.Length > 0 && (folder[0] is '~' or '/') && TmuxFolderOk(folder) ? folder : "";
+    }
+
     /// <summary>tmux rejects '.' and ':' in names, and a safe name needs no quoting in any shell.</summary>
     public static string TmuxName(string session)
     {
@@ -468,6 +479,67 @@ public sealed class SessionController : IAsyncDisposable
         catch (Exception ex) when (ex is Renci.SshNet.Common.SshException or ObjectDisposedException or InvalidOperationException or OperationCanceledException)
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Starts tmux session <paramref name="session"/> on the host holding <paramref name="text"/>, what a
+    /// plain session printed, so it is kept from then on: the text goes up on second channels of this
+    /// connection (nothing is typed into the session), the tmux session prints it and deletes the file,
+    /// then gives a shell in <paramref name="folder"/>. A running program cannot be moved into tmux;
+    /// this keeps its output. Null when done, else why not; an existing session of that name is left alone.
+    /// </summary>
+    public async Task<string?> SeedTmuxSessionAsync(string session, string folder, string text, CancellationToken token = default)
+    {
+        if (Ssh?.Client is not { IsConnected: true } client)
+        {
+            return "the session is not connected";
+        }
+
+        var name = TmuxName(session);
+        var file = $"\"$HOME/.cache/baudhoundterm/{name}";
+
+        string Run(string command)
+        {
+            using var c = client.CreateCommand(command);
+            c.CommandTimeout = TimeSpan.FromSeconds(30);
+            var output = c.Execute();
+            if (c.ExitStatus is { } code and not 0)
+            {
+                throw new IOException($"\"{command[..Math.Min(command.Length, 40)]}...\" failed ({code}): {(c.Error ?? output).Trim()}");
+            }
+
+            return output;
+        }
+
+        try
+        {
+            return await Task.Run(() =>
+            {
+                if (Run($"tmux has-session -t {name} 2>/dev/null && echo yes || echo no").Trim() == "yes")
+                {
+                    return $"a tmux session called {name} already runs on the host";
+                }
+
+                // Base64 has no character any shell acts on, so the text needs no quoting on its way up.
+                var b64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(text));
+                Run($"mkdir -p \"$HOME/.cache/baudhoundterm\" && rm -f {file}.b64\"");
+                for (var i = 0; i < b64.Length; i += 48_000)
+                {
+                    token.ThrowIfCancellationRequested();
+                    Run($"printf %s {b64.Substring(i, Math.Min(48_000, b64.Length - i))} >> {file}.b64\"");
+                }
+
+                Run($"base64 -d {file}.b64\" > {file}.txt\" && rm -f {file}.b64\"");
+                var dir = TmuxFolder(folder) is { } d ? $" -c {d}" : "";
+                Run($"tmux new-session -d -s {name} -x {Math.Max(_columns, 20)} -y {Math.Max(_rows, 5)}{dir} " +
+                    $"'cat {file}.txt\"; rm -f {file}.txt\"; exec \"$SHELL\"'");
+                return (string?)null;
+            }, token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or Renci.SshNet.Common.SshException or ObjectDisposedException or InvalidOperationException)
+        {
+            return ex.Message;
         }
     }
 
