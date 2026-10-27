@@ -303,6 +303,10 @@ only that in the channel and ask for a private contact; there is no separate dis
 - A VNC server that refuses loopback connections (the RealVNC and TightVNC default) will reject
   `127.0.0.1` even when the app runs on the same machine. Use the machine's LAN address.
 
+## Authors
+
+Written by MAH7 with Claude (Anthropic) as co-author. See [AUTHORS](AUTHORS).
+
 ## Credits
 
 BaudHoundTerm is built on open-source work: [xterm.js](https://github.com/xtermjs/xterm.js)
@@ -316,5 +320,3 @@ with `python3 helpers/third_party_notices.py` after changing a package.
 The application icon was generated with Claude (Anthropic) for MAH7. Purely AI-generated images are
 generally not copyrightable, so it is not covered by the Apache-2.0 licence and nobody, MAH7
 included, can claim exclusive rights to it.
-
-This is AI-assisted work.
