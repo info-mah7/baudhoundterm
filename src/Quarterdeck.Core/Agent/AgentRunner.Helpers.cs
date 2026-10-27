@@ -11,11 +11,13 @@ public sealed partial class AgentRunner
 
     /// <summary>The names of the tools the agent always has, so a helper cannot take one over.</summary>
     public IEnumerable<string> BuiltInToolNames =>
-        (_screen is null ? Tools : ScreenTools).Select(t => t?["function"]?["name"]?.ToString() ?? "");
+        ModeTools.Select(t => t?["function"]?["name"]?.ToString() ?? "");
+
+    private JsonArray ModeTools => _web is not null ? WebTools : _screen is not null ? ScreenTools : Tools;
 
     private JsonArray ToolsForRequest()
     {
-        var tools = (_screen is null ? Tools : ScreenTools).DeepClone().AsArray();
+        var tools = ModeTools.DeepClone().AsArray();
         if (_target is IRecordable)
         {
             tools.Add(RecordingTool.DeepClone());

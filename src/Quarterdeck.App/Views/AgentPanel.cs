@@ -80,6 +80,9 @@ internal sealed class AgentPanel : DockPanel
     /// <summary>A local shell in an elevated BaudHoundTerm: it runs as administrator.</summary>
     private bool Elevated => _protocol == Core.Model.SessionProtocol.LocalShell && Elevation.IsCurrentProcessElevated;
 
+    /// <summary>A Web tab: the page agent, which reads the page as text.</summary>
+    private bool WebTab => _protocol == Core.Model.SessionProtocol.Web;
+
     /// <summary>A remote desktop (VNC or RDP): the screen agent, not the terminal one.</summary>
     private bool Desktop => _protocol is Core.Model.SessionProtocol.Vnc or Core.Model.SessionProtocol.Rdp
                                       or Core.Model.SessionProtocol.Kvm;
@@ -88,6 +91,9 @@ internal sealed class AgentPanel : DockPanel
     // recording of the pane does not carry the login and host either.
     private readonly List<string> _lines = new();
     private readonly Func<string, string> _mask;
+
+    /// <summary>A Web tab whose shortcut lets the agent change settings (asking as the endpoint says).</summary>
+    public bool WebAllowChanges { get; init; }
 
     public AgentPanel(IAgentTarget target, Core.Model.SessionProtocol protocol, CredentialVault vault, Func<string, string> mask)
     {
@@ -199,6 +205,13 @@ internal sealed class AgentPanel : DockPanel
         if (Elevated)
         {
             Append("This shell runs as administrator: every command the agent wants to type asks you first, whatever the endpoint's Approval setting.");
+        }
+        if (WebTab)
+        {
+            Append("This is a web page: the agent reads it as text (tables, fields and their values) and clicks and types in it. " +
+                   (WebAllowChanges
+                       ? "It may change settings, asking as the endpoint's Approval setting says."
+                       : "It is read-only: anything that changes the device (Apply, Save, switches, a form) waits for your yes."));
         }
         if (Desktop)
         {
@@ -350,7 +363,9 @@ internal sealed class AgentPanel : DockPanel
                 endpoint.Approval = AgentApproval.Always;
             }
 
-            _runner = Desktop && _target is IScreenTarget screen
+            _runner = WebTab && _target is IWebTarget page
+                ? new AgentRunner(endpoint, apiKey, page, skills, _log) { WebReadOnly = !WebAllowChanges }
+                : Desktop && _target is IScreenTarget screen
                 ? new AgentRunner(endpoint, apiKey, screen, skills, _log)
                 : new AgentRunner(endpoint, apiKey, (ITerminalTarget)_target, skills, _log);
             // Helpers: only those enabled in agent.json and named by a ticked skill.

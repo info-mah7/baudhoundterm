@@ -645,9 +645,11 @@ public partial class MainWindow : Window
                 SessionProtocol.Rtsp => 554,
                 SessionProtocol.Rdp => 3389,
                 SessionProtocol.Telnet => 23,
+                SessionProtocol.Web => 443,
                 _ => 22
             },
-            Username = siblings.FirstOrDefault(s => s.Protocol == SessionProtocol.Ssh)?.Username ?? ""
+            Username = siblings.FirstOrDefault(s => s.Protocol == SessionProtocol.Ssh)?.Username ?? "",
+            WebUrl = protocol == SessionProtocol.Web ? "https://" + template.Host.Trim() : ""
         };
 
         var editor = new SessionEditorWindow(definition, _vault) { Owner = this };
@@ -1000,6 +1002,61 @@ public partial class MainWindow : Window
         return menu;
     }
 
+    private MenuItem CreateShortcutItem(TerminalView view, SessionDefinition definition)
+    {
+        var item = new MenuItem
+        {
+            Header = "Create _shortcut for this tmux session...",
+            ToolTip = "A shortcut of its own that opens this tmux session, with its folder and the program running in it"
+        };
+        item.Click += async (_, _) => await CreateShortcutFromTmuxAsync(view, definition);
+        return item;
+    }
+
+    /// <summary>
+    /// A new shortcut for one running tmux session: this connection, named after the session,
+    /// with only that session. Its folder, and the program running in it, are read from the host;
+    /// the properties window opens so they can be checked before it is saved.
+    /// </summary>
+    private async Task CreateShortcutFromTmuxAsync(TerminalView view, SessionDefinition definition)
+    {
+        var name = SessionController.TmuxName(string.IsNullOrWhiteSpace(view.TmuxSessionName) ? definition.TmuxSession : view.TmuxSessionName);
+        var pane = view.Controller is { } controller ? await controller.TmuxPaneAsync() : null;
+
+        var copy = definition.Clone(name);
+        var known = definition.TmuxSessionList().FirstOrDefault(t => SessionController.TmuxName(t.Name) == name);
+        var entry = new TmuxSessionEntry { Name = name, Folder = known?.Folder ?? "", Command = known?.StartCommand ?? "" };
+        if (pane is { } p)
+        {
+            entry.Folder = entry.Folder.Length > 0 ? entry.Folder : p.Folder;
+            entry.Command = entry.Command.Length > 0 ? entry.Command : TmuxStart.FromRunning(p.Running);
+        }
+
+        copy.Tmux = true;
+        copy.TmuxSessions = [entry];
+        copy.TmuxSession = name;
+
+        // The stored secrets come along, so the new shortcut logs in the same way.
+        foreach (var key in new[] { "password", "passphrase" })
+        {
+            if (_vault.Get(definition.Id, key) is { } secret)
+            {
+                _vault.Set(copy.Id, secret, key);
+            }
+        }
+
+        var editor = new SessionEditorWindow(copy, _vault) { Owner = this };
+        if (editor.ShowDialog() == true)
+        {
+            _sessions.Add(copy);
+            Save();
+        }
+        else
+        {
+            _vault.Remove(copy.Id);
+        }
+    }
+
     /// <summary>Asks for a name, adds it to the shortcut's sessions (on demand), and opens it.</summary>
     private async Task NewTmuxSessionAsync(SessionDefinition definition)
     {
@@ -1027,7 +1084,7 @@ public partial class MainWindow : Window
         await OpenTabAsync(definition, tmuxSession: name);
     }
 
-    private async Task OpenTabAsync(SessionDefinition definition, string? colour = null, string? tmuxSession = null)
+    private async Task OpenTabAsync(SessionDefinition definition, string? colour = null, string? tmuxSession = null, string? localWebFolder = null)
     {
         if (definition.Protocol == SessionProtocol.Sql)
         {
@@ -1037,7 +1094,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var view = new TerminalView(definition, _vault) { TmuxSessionName = tmuxSession ?? "" };
+        var view = new TerminalView(definition, _vault) { TmuxSessionName = tmuxSession ?? "", LocalWebFolder = localWebFolder };
         var tab = new TabItem { Content = view };
         var live = new LiveTab(tab, view, definition)
         {
@@ -1481,6 +1538,7 @@ public partial class MainWindow : Window
             };
             end.Click += async (_, _) => await EndTmuxAsync(tmuxView, definition);
             menu.Items.Add(new Separator());
+            menu.Items.Add(CreateShortcutItem(tmuxView, definition));
             menu.Items.Add(end);
         }
 
@@ -1642,6 +1700,11 @@ public partial class MainWindow : Window
         if (SessionPresentation.TmuxChip(view.Tmux) is { } tmux)
         {
             panel.Children.Add(tmux);
+        }
+
+        if (SessionPresentation.ProgramChip(definition, view.TmuxSessionName) is { } program)
+        {
+            panel.Children.Add(program);
         }
 
         var text = new TextBlock { Text = Privacy.MaskName(title, definition), VerticalAlignment = VerticalAlignment.Center };
@@ -2050,7 +2113,7 @@ public partial class MainWindow : Window
         MenuItem AddProtocolMenu()
         {
             var add = new MenuItem { Header = "_Add protocol for this host" };
-            foreach (var (label, protocol) in new[] { ("SSH...", "Ssh"), ("RDP...", "Rdp"), ("VNC...", "Vnc"), ("Telnet...", "Telnet"), ("RTSP camera...", "Rtsp") })
+            foreach (var (label, protocol) in new[] { ("SSH...", "Ssh"), ("RDP...", "Rdp"), ("VNC...", "Vnc"), ("Telnet...", "Telnet"), ("RTSP camera...", "Rtsp"), ("Web page...", "Web") })
             {
                 var item = new MenuItem { Header = label, Tag = protocol };
                 item.Click += OnAddProtocol;
@@ -2064,6 +2127,10 @@ public partial class MainWindow : Window
 
         switch (tag)
         {
+            case LiveTab { View.Tmux: TmuxState.Live } live:
+                menu.Items.Add(CreateShortcutItem(live.View, live.Definition));
+                break;
+
             case SessionDefinition session:
                 menu.Items.Add(Item("_Connect", () => Connect(session)));
                 if (session is { Protocol: SessionProtocol.Ssh, Tmux: true })
@@ -2601,7 +2668,7 @@ public partial class MainWindow : Window
                 : "Needs a VNC tab",
             async () => await OpenVncFilesAsync(view!.Definition)));
 
-        var terminal = view is not null && protocol is not (SessionProtocol.Vnc or SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Kvm);
+        var terminal = view is not null && protocol is not (SessionProtocol.Vnc or SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Kvm or SessionProtocol.Web);
         items.Add(Item("Send _text file...", terminal && view!.IsConnected && !view.IsSending,
             !terminal ? "Needs a terminal tab"
             : !view!.IsConnected ? "Connect the tab first"
@@ -2890,23 +2957,40 @@ public partial class MainWindow : Window
         }
     }
 
-    // The guide and manual ship as HTML in the docs folder beside the exe, so Help works offline
-    // and does not depend on the source repository being reachable.
-    private void OnGettingStarted(object sender, RoutedEventArgs e) => OpenLocalDoc("HELP.html");
+    // The guide and manual ship as HTML in the docs folder beside the exe, so Help works offline and
+    // does not depend on the source repository being reachable. They open in the Home tab.
+    private async void OnHome(object sender, RoutedEventArgs e) => await OpenHomeAsync("home.html");
 
-    private void OnManual(object sender, RoutedEventArgs e) => OpenLocalDoc("MANUAL.html");
+    private async void OnGettingStarted(object sender, RoutedEventArgs e) => await OpenHomeAsync("HELP.html");
 
-    private void OpenLocalDoc(string name)
+    private async void OnManual(object sender, RoutedEventArgs e) => await OpenHomeAsync("MANUAL.html");
+
+    /// <summary>The Home tab on a page: brought to the front when it is open, opened when not.</summary>
+    private async Task OpenHomeAsync(string page)
     {
-        var path = System.IO.Path.Combine(AppContext.BaseDirectory, "docs", name);
-        if (!File.Exists(path))
+        if (_live.FirstOrDefault(l => l.Definition.Id == HomePage.Id) is { } open)
         {
-            MessageBox.Show(this, $"{name} was not found in the docs folder beside BaudHoundTerm.exe:\n{path}\n\n" +
-                "Extract the whole zip, not just the executable.", "BaudHoundTerm");
+            Tabs.SelectedItem = open.Tab;
+            await open.View.NavigateAsync(HomePage.Url(page), CancellationToken.None);
             return;
         }
 
-        OpenInBrowser(path);
+        string folder;
+        try
+        {
+            folder = HomePage.Prepare(Version);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, "The Home pages could not be written: " + ex.Message, "BaudHoundTerm");
+            return;
+        }
+
+        var definition = new SessionDefinition
+        {
+            Id = HomePage.Id, Name = "Home", Protocol = SessionProtocol.Web, WebUrl = HomePage.Url(page)
+        };
+        await OpenTabAsync(definition, localWebFolder: folder);
     }
 
     // Credits and licences are the text files the zip carries beside the exe, so what Help shows is

@@ -59,6 +59,8 @@
         <MenuItem Header="(no tab)" IsEnabled="False"/>
       </MenuItem>
       <MenuItem Header="_Help">
+        <MenuItem Header="_Home" Click="OnHome"
+                  ToolTip="BaudHoundTerm's own pages in a tab: the build, the guides, credits and licences"/>
         <MenuItem Header="_Getting started" Click="OnGettingStarted"/>
         <MenuItem Header="_User manual" Click="OnManual"/>
         <MenuItem Header="_Report a problem" Click="OnReportProblem"/>

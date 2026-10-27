@@ -170,7 +170,8 @@ public sealed class SessionController : IAsyncDisposable
 
             if (Definition is { Protocol: SessionProtocol.Ssh, Tmux: true })
             {
-                await _transport.WriteAsync(TmuxCommand(TmuxTarget), token).ConfigureAwait(false);
+                var entry = Definition.TmuxSessionList().FirstOrDefault(t => TmuxName(t.Name) == TmuxName(TmuxTarget));
+                await _transport.WriteAsync(TmuxCommand(TmuxTarget, entry), token).ConfigureAwait(false);
 
                 // Asked for is not the same as running: a host without tmux keeps a plain shell,
                 // and the marker must say which of the two this is. The answer comes from the
@@ -225,11 +226,32 @@ public sealed class SessionController : IAsyncDisposable
     /// this session only: with it off, tmux turns the wheel into Up/Down keys, so scrolling
     /// paged through the shell's command history instead of the output.
     /// </summary>
-    internal static string TmuxCommand(string session)
+    internal static string TmuxCommand(string session, TmuxSessionEntry? entry = null)
     {
         var name = TmuxName(session);
-        return $" command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s {name} \\; set-option -q mouse on"
+        // With -A an existing session is attached as it is: the folder and command only apply
+        // when tmux creates it, so a running program is never restarted or typed into.
+        var folder = entry is null ? null : TmuxFolder(entry.Folder);
+        var command = entry?.StartCommand ?? "";
+        var run = command.Length > 0 && TmuxStart.Ok(command) ? $" '{command}; exec \"$SHELL\"'" : "";
+        return $" command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s {name}{(folder is null ? "" : $" -c {folder}")}{run} \\; set-option -q mouse on"
             + " || echo '[baudhoundterm] tmux not found on this host: plain shell, not kept on disconnect'\r";
+    }
+
+    /// <summary>Characters a folder may use: enough for paths, nothing a shell would act on.</summary>
+    public static bool TmuxFolderOk(string folder) =>
+        folder.All(c => char.IsAsciiLetterOrDigit(c) || c is ' ' or '/' or '.' or '_' or '-' or '~' or '+' or '@' or ',');
+
+    /// <summary>The folder for tmux -c, double-quoted so the shell expands $HOME (tmux does not expand ~).</summary>
+    private static string? TmuxFolder(string folder)
+    {
+        var f = folder.Trim();
+        if (f.Length == 0 || !TmuxFolderOk(f))
+        {
+            return null;
+        }
+
+        return "\"" + (f == "~" ? "$HOME" : f.StartsWith("~/", StringComparison.Ordinal) ? "$HOME/" + f[2..] : f) + "\"";
     }
 
     /// <summary>tmux rejects '.' and ':' in names, and a safe name needs no quoting in any shell.</summary>
@@ -378,6 +400,47 @@ public sealed class SessionController : IAsyncDisposable
         if (Tmux != was)
         {
             TmuxChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>
+    /// The tmux session's folder ("~/..." under the home folder) and the command line of the program
+    /// running in it ("" for a bare shell), asked on a second channel like <see cref="RefreshTmuxAsync"/>.
+    /// Null when the host does not answer.
+    /// </summary>
+    public async Task<(string Folder, string Running)?> TmuxPaneAsync(CancellationToken token = default)
+    {
+        if (Ssh?.Client is not { IsConnected: true } client)
+        {
+            return null;
+        }
+
+        try
+        {
+            // One value per line: tmux prints a tab inside a format as "_". A program started by the
+            // session runs as a child of the pane's shell, which tmux names as the pane's command, so
+            // the command line is read from the shell's first child.
+            var name = TmuxName(TmuxTarget);
+            using var command = client.CreateCommand(
+                $"printf '%s\\n' \"$HOME\"; tmux display-message -p -t {name} '#{{pane_current_path}}'; " +
+                $"ps -o args= -p \"$(pgrep -P \"$(tmux display-message -p -t {name} '#{{pane_pid}}')\" | head -n 1)\" 2>/dev/null; true");
+            command.CommandTimeout = TimeSpan.FromSeconds(10);
+            var text = await Task.Run(() => command.Execute(), token).ConfigureAwait(false);
+            var parts = text.Replace("\r", "").TrimEnd('\n').Split('\n');
+            if (parts.Length < 2)
+            {
+                return null;
+            }
+
+            var (home, path) = (parts[0].TrimEnd('/'), parts[1]);
+            var folder = home.Length > 0 && path == home ? "~"
+                : home.Length > 0 && path.StartsWith(home + "/", StringComparison.Ordinal) ? "~" + path[home.Length..]
+                : path;
+            return (TmuxFolderOk(folder) ? folder : "", parts.Length > 2 ? parts[2].Trim() : "");
+        }
+        catch (Exception ex) when (ex is Renci.SshNet.Common.SshException or ObjectDisposedException or InvalidOperationException or OperationCanceledException)
+        {
+            return null;
         }
     }
 

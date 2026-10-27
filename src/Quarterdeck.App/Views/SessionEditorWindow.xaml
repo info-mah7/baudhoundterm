@@ -56,6 +56,7 @@
                    the stored protocol number and KVM comes after it. -->
               <ComboBoxItem Content="SQL database (removed)" Visibility="Collapsed" IsEnabled="False"/>
               <ComboBoxItem Content="KVM (agentkvm board)"/>
+              <ComboBoxItem Content="Web page (a device's admin page)"/>
             </ComboBox>
 
             <StackPanel x:Name="SshPanel">
@@ -119,17 +120,23 @@
                         ToolTip="Starts or attaches a tmux session after login; a reconnect attaches to it again. Needs tmux on the host."/>
               <StackPanel IsEnabled="{Binding IsChecked, ElementName=TmuxBox}">
                 <TextBlock TextWrapping="Wrap"
-                           Text="tmux sessions: each opens in its own tab. Untick Open on connect for one you open only from the shortcut's menu (Open tmux session)."/>
+                           Text="tmux sessions: each opens in its own tab. Untick Open on connect for one you open only from the shortcut's menu (Open tmux session). Folder and Start command apply when tmux starts the session; while it runs, the tab attaches to it as it is."/>
                 <DataGrid x:Name="TmuxGrid" AutoGenerateColumns="False" CanUserAddRows="False" CanUserSortColumns="False"
-                          Height="112" Margin="0,4,0,0" HeadersVisibility="Column"
+                          Height="130" Margin="0,4,0,0" HeadersVisibility="Column"
                           Background="#10141C" RowBackground="#10141C" Foreground="#DFE4EE" GridLinesVisibility="Horizontal">
                   <DataGrid.Columns>
                     <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
-                    <DataGridCheckBoxColumn Header="Open on connect" Binding="{Binding OpenOnConnect}" Width="120"/>
+                    <DataGridCheckBoxColumn Header="Open on connect" Binding="{Binding OpenOnConnect}" Width="105"/>
+                    <DataGridTextColumn Header="Folder" Binding="{Binding Folder}" Width="1.2*"/>
+                    <DataGridTextColumn Binding="{Binding Command}" Width="2*">
+                      <DataGridTextColumn.Header><TextBlock Text="Start command" ToolTip="What the session runs when tmux creates it, any program: claude --continue || claude, htop, npm run dev. Empty: a shell. Presets fills in common ones."/></DataGridTextColumn.Header>
+                    </DataGridTextColumn>
                   </DataGrid.Columns>
                 </DataGrid>
                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                   <Button Content="Add" Width="80" Click="OnAddTmuxSession"/>
+                  <Button Content="Presets..." Width="80" Margin="8,0,0,0" Click="OnTmuxPresets"
+                          ToolTip="Fills in the selected session's start command: Claude Code, Codex, Aider, htop and others. Edit it afterwards as you like."/>
                   <Button Content="Remove" Width="80" Margin="8,0,0,0" Click="OnRemoveTmuxSession"
                           ToolTip="Removes it from the shortcut only: a session already running on the host keeps running"/>
                 </StackPanel>
@@ -236,6 +243,20 @@
                 <TextBlock x:Name="KvmPairStatus" VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="Wrap" Foreground="#8B94A7"/>
               </DockPanel>
               <TextBlock Text="Pairing fills in the daemon key automatically: enter the address and the web interface login above, then Pair. The board types on the target over USB and watches its HDMI output, so nothing is installed on the target and it need not be on the network. The keyboard is a US layout: a target set to another one receives some characters wrong."
+                         Foreground="#5C6370" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <StackPanel x:Name="WebPanel" Visibility="Collapsed">
+              <TextBlock Text="Address (https://10.0.10.99, or a host name; the tab stays on this site)"/>
+              <TextBox x:Name="WebUrlBox" LostFocus="OnWebUrlChanged"/>
+              <CheckBox x:Name="WebAllowChangesBox" Margin="0,8,0,0" Content="The agent may change settings (asking as the endpoint's Approval setting says)"
+                        ToolTip="Off: the agent only reads and checks. Anything that would change the device (Apply, Save, OK, Delete, a switch or check box, a form) waits for your yes, whatever the endpoint says."/>
+              <DockPanel Margin="0,8,0,0">
+                <Button DockPanel.Dock="Left" Content="Forget certificate" Padding="10,3" Click="OnWebForgetCert"
+                        ToolTip="For a device whose certificate was replaced on purpose: the next visit shows the new one for you to accept."/>
+                <TextBlock x:Name="WebCertText" VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="Wrap" Foreground="#8B94A7"/>
+              </DockPanel>
+              <TextBlock Text="Log in on the page yourself: the agent never types passwords. The tab keeps its own cookies for this shortcut. Other sites, new windows and downloads do not open in it."
                          Foreground="#5C6370" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel>
 

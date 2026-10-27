@@ -35,7 +35,9 @@ public partial class SessionEditorWindow : Window
         HighlightGrid.ItemsSource = _highlights;
         CommandGrid.ItemsSource = _commands;
         // Copies: Cancel must leave the shortcut's own list as it was.
-        _tmuxSessions = new ObservableCollection<TmuxSessionEntry>(definition.TmuxSessionList().Select(t => t.Copy()));
+        // Entries from the Claude-tick test builds show as the command they stood for.
+        _tmuxSessions = new ObservableCollection<TmuxSessionEntry>(definition.TmuxSessionList().Select(t =>
+            new TmuxSessionEntry { Name = t.Name, OpenOnConnect = t.OpenOnConnect, Folder = t.Folder, Command = t.StartCommand }));
         TmuxGrid.ItemsSource = _tmuxSessions;
 
         Load();
@@ -102,6 +104,9 @@ public partial class SessionEditorWindow : Window
         RdpDrivesBox.IsChecked = d.RdpDrives;
         RdpAdminBox.IsChecked = d.RdpAdmin;
         KvmHostBox.Text = d.Host;
+        WebUrlBox.Text = d.WebUrl;
+        WebAllowChangesBox.IsChecked = d.WebAllowChanges;
+        ShowWebCertificate();
         KvmPortBox.Text = (d.KvmPort > 0 ? d.KvmPort : 9200).ToString(CultureInfo.InvariantCulture);
         KvmTlsBox.IsChecked = d.KvmTls;
         KvmVideoUrlBox.Text = d.KvmVideoUrl;
@@ -157,6 +162,7 @@ public partial class SessionEditorWindow : Window
         RtspPanel.Visibility = protocol == SessionProtocol.Rtsp ? Visibility.Visible : Visibility.Collapsed;
         RdpPanel.Visibility = protocol == SessionProtocol.Rdp ? Visibility.Visible : Visibility.Collapsed;
         KvmPanel.Visibility = protocol == SessionProtocol.Kvm ? Visibility.Visible : Visibility.Collapsed;
+        WebPanel.Visibility = protocol == SessionProtocol.Web ? Visibility.Visible : Visibility.Collapsed;
 
         // Only the tabs that mean something for this protocol. Commands, Logging, Auto-login,
         // Highlight and Reconnect are all about a terminal's text stream, which only ssh, serial,
@@ -297,6 +303,57 @@ public partial class SessionEditorWindow : Window
         TmuxGrid.SelectedItem = entry;
         TmuxGrid.CurrentCell = new DataGridCellInfo(entry, TmuxGrid.Columns[0]);
         TmuxGrid.BeginEdit();
+    }
+
+    private void ShowWebCertificate()
+    {
+        var home = BrowserView.Home(WebUrlBox.Text);
+        var known = home is null ? null : Quarterdeck.Core.Security.WebCertificates.Fingerprint($"{home.Host}:{home.Port}");
+        WebCertText.Text = known is null ? "No certificate remembered for this address." : "Trusted certificate, SHA-256 " + known;
+    }
+
+    private void OnWebUrlChanged(object sender, RoutedEventArgs e) => ShowWebCertificate();
+
+    private void OnWebForgetCert(object sender, RoutedEventArgs e)
+    {
+        if (BrowserView.Home(WebUrlBox.Text) is { } home)
+        {
+            Quarterdeck.Core.Security.WebCertificates.Forget($"{home.Host}:{home.Port}");
+        }
+
+        ShowWebCertificate();
+    }
+
+    /// <summary>The presets as a menu under the button; a pick fills the selected session's start command.</summary>
+    private void OnTmuxPresets(object sender, RoutedEventArgs e)
+    {
+        TmuxGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        var target = TmuxGrid.SelectedItem as TmuxSessionEntry ?? _tmuxSessions.FirstOrDefault();
+        if (target is null || sender is not FrameworkElement anchor)
+        {
+            return;
+        }
+
+        var menu = new ContextMenu { PlacementTarget = anchor, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        foreach (var (label, make) in Quarterdeck.Core.Terminal.TmuxStart.Presets)
+        {
+            var item = new MenuItem { Header = label };
+            item.Click += (_, _) =>
+            {
+                var index = _tmuxSessions.IndexOf(target);
+                if (index >= 0)
+                {
+                    // Replaced, not changed in place: the grid has no change notice to redraw a cell from.
+                    var c = target.Copy();
+                    c.Command = make();
+                    _tmuxSessions[index] = c;
+                    TmuxGrid.SelectedItem = c;
+                }
+            };
+            menu.Items.Add(item);
+        }
+
+        menu.IsOpen = true;
     }
 
     private void OnRemoveTmuxSession(object sender, RoutedEventArgs e)
@@ -556,6 +613,30 @@ public partial class SessionEditorWindow : Window
 
     private void OnSave(object sender, RoutedEventArgs e)
     {
+        if ((SessionProtocol)Math.Max(0, ProtocolBox.SelectedIndex) == SessionProtocol.Web && BrowserView.Home(WebUrlBox.Text) is null)
+        {
+            MessageBox.Show(this, "The address must be an http or https address, or a host name (https is then used).",
+                "Shortcut properties", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        TmuxGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        if (_tmuxSessions.FirstOrDefault(t => !Quarterdeck.Core.Terminal.SessionController.TmuxFolderOk(t.Folder.Trim())) is { } badFolder)
+        {
+            MessageBox.Show(this, $"The folder of tmux session \"{badFolder.Name}\" has characters a shell would act on. " +
+                                  "Use letters, digits, spaces and / . _ - ~ + @ , only.", "Shortcut properties",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (_tmuxSessions.FirstOrDefault(t => !Quarterdeck.Core.Terminal.TmuxStart.Ok(t.Command)) is { } badCommand)
+        {
+            MessageBox.Show(this, $"The start command of tmux session \"{badCommand.Name}\" has a single quote, a backslash or a " +
+                                  "line break, which cannot be passed to the host safely. Put the command in a script and start that.",
+                "Shortcut properties", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         var d = Definition;
 
         // A blank name takes the host (or port): in a host group that reads as just the badge
@@ -569,6 +650,7 @@ public partial class SessionEditorWindow : Window
             SessionProtocol.Rtsp => RtspHostBox.Text,
             SessionProtocol.Rdp => RdpHostBox.Text,
             SessionProtocol.Kvm => KvmHostBox.Text,
+            SessionProtocol.Web => BrowserView.Home(WebUrlBox.Text)?.Host ?? WebUrlBox.Text,
             SessionProtocol.Serial => SerialPortBox.Text,
             _ => "Local shell"
         }).Trim();
@@ -595,7 +677,11 @@ public partial class SessionEditorWindow : Window
         TmuxGrid.CommitEdit(DataGridEditingUnit.Row, true);
         var sessions = _tmuxSessions
             .Where(t => !string.IsNullOrWhiteSpace(t.Name))
-            .Select(t => new TmuxSessionEntry { Name = Quarterdeck.Core.Terminal.SessionController.TmuxName(t.Name.Trim()), OpenOnConnect = t.OpenOnConnect })
+            .Select(t => new TmuxSessionEntry
+            {
+                Name = Quarterdeck.Core.Terminal.SessionController.TmuxName(t.Name.Trim()), OpenOnConnect = t.OpenOnConnect,
+                Folder = t.Folder.Trim(), Command = t.Command.Trim()
+            })
             .GroupBy(t => t.Name).Select(g => g.First()).ToList();
         if (sessions.Count == 0)
         {
@@ -671,6 +757,18 @@ public partial class SessionEditorWindow : Window
             if (!string.IsNullOrEmpty(KvmVideoSecretBox.Password))
             {
                 _vault.Set(d.Id, KvmVideoSecretBox.Password);
+            }
+        }
+
+        if (d.Protocol == SessionProtocol.Web)
+        {
+            d.WebUrl = WebUrlBox.Text.Trim();
+            d.WebAllowChanges = WebAllowChangesBox.IsChecked == true;
+            // Host and port as well, so the page groups with the device's SSH and other shortcuts.
+            if (BrowserView.Home(d.WebUrl) is { } home)
+            {
+                d.Host = home.Host;
+                d.Port = home.Port;
             }
         }
 

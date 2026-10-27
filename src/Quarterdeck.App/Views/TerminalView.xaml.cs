@@ -66,6 +66,11 @@ public partial class TerminalView : UserControl, ITerminalTarget
     private RdpView? _rdp;
     private readonly TaskCompletionSource _rdpReady = new();
     private KvmView? _kvm;
+    private BrowserView? _browser;
+
+    /// <summary>The Home tab's folder of BaudHoundTerm's own pages (see <see cref="HomePage"/>); null for a device's page.</summary>
+    public string? LocalWebFolder { get; init; }
+    private readonly TaskCompletionSource _browserReady = new();
     private readonly TaskCompletionSource _kvmReady = new();
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -83,6 +88,20 @@ public partial class TerminalView : UserControl, ITerminalTarget
             });
             ((Grid)Web.Parent).Children.Add(_camera);
             _cameraReady.TrySetResult();
+            return;
+        }
+
+        if (Definition.Protocol == SessionProtocol.Web)
+        {
+            // A device's admin page, in a browser of its own: not the terminal surface's WebView.
+            Web.Visibility = Visibility.Collapsed;
+            _browser = new BrowserView(Definition, (state, message) =>
+            {
+                ShowStatus(message ?? state.ToString());
+                RaiseState(state, message);
+            }, LocalWebFolder, LocalWebFolder is null ? null : uri => OpenLink(uri, osc8: false));
+            ((Grid)Web.Parent).Children.Add(_browser);
+            _browserReady.TrySetResult();
             return;
         }
 
@@ -138,23 +157,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         // rather than blocked at the firewall.
         var options = new CoreWebView2EnvironmentOptions
         {
-            AdditionalBrowserArguments = string.Join(' ',
-                "--disable-background-networking",
-                "--disable-component-update",
-                "--disable-domain-reliability",
-                "--disable-sync",
-                "--disable-breakpad",
-                "--no-pings",
-                "--no-first-run",
-                // Chromium resolves through its own DNS-over-HTTPS by default, which on a
-                // stock machine means Cloudflare. A net-log capture showed exactly that and
-                // nothing else. The only name this page ever resolves is a local virtual
-                // host, so secure DNS buys nothing and costs an outbound connection that
-                // bypasses the network's own resolver.
-                "--disable-features=OptimizationHints,Translate,msSmartScreenProtection," +
-                "EdgeCollections,MsEdgeShoppingAssistant,CalculateNativeWinOcclusion," +
-                "DnsOverHttps,DnsOverHttpsUpgrade",
-                "--disable-async-dns"),
+            AdditionalBrowserArguments = PrivateBrowserArguments,
             EnableTrackingPrevention = true
         };
 
@@ -232,6 +235,25 @@ public partial class TerminalView : UserControl, ITerminalTarget
             ? "https://baudhound.assets/vnc.html"
             : "https://baudhound.assets/terminal.html");
     }
+
+    /// <summary>Chromium switches for every BaudHoundTerm browser: the terminal surface and Web tabs.</summary>
+    internal static string PrivateBrowserArguments => string.Join(' ',
+            "--disable-background-networking",
+            "--disable-component-update",
+            "--disable-domain-reliability",
+            "--disable-sync",
+            "--disable-breakpad",
+            "--no-pings",
+            "--no-first-run",
+            // Chromium resolves through its own DNS-over-HTTPS by default, which on a
+            // stock machine means Cloudflare. A net-log capture showed exactly that and
+            // nothing else. Names go to the network's own resolver instead, the one that
+            // knows local devices (a Web tab's firewall); secure DNS would cost an outbound
+            // connection that bypasses it.
+            "--disable-features=OptimizationHints,Translate,msSmartScreenProtection," +
+            "EdgeCollections,MsEdgeShoppingAssistant,CalculateNativeWinOcclusion," +
+            "DnsOverHttps,DnsOverHttpsUpgrade",
+            "--disable-async-dns");
 
     private LocalSocketBridge? _bridge;
 
@@ -855,6 +877,13 @@ public partial class TerminalView : UserControl, ITerminalTarget
             return;
         }
 
+        if (Definition.Protocol == SessionProtocol.Web)
+        {
+            await _browserReady.Task;
+            await _browser!.StartAsync();
+            return;
+        }
+
         // A VNC session is driven entirely by the page: the bridge starts once the document
         // is loaded, so there is no controller and no pty to build here.
         if (Definition.Protocol == SessionProtocol.Vnc)
@@ -1035,6 +1064,12 @@ public partial class TerminalView : UserControl, ITerminalTarget
         if (_kvm is not null)
         {
             await _kvm.DisconnectAsync();
+            return;
+        }
+
+        if (_browser is not null)
+        {
+            RaiseState(SessionState.Disconnected, "Closed.");
             return;
         }
 
@@ -1297,7 +1332,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
             return;
         }
 
-        _agent = new AgentPanel(this, Definition.Protocol, _vault, text => Privacy.Mask(text, Definition));
+        _agent = new AgentPanel(this, Definition.Protocol, _vault, text => Privacy.Mask(text, Definition)) { WebAllowChanges = Definition.WebAllowChanges };
         _agentMaskedHidden = Privacy.Hides(Definition);
         _agent.CloseRequested += (_, _) => DetachAgent();
         _agent.TrippedChanged += (_, _) => AgentAttachedChanged?.Invoke(this, EventArgs.Empty);
@@ -1349,6 +1384,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         ((object?)_camera as IDisposable)?.Dispose();
         _rdp?.Dispose();
         _kvm?.Dispose();
+        _browser?.Dispose();
     }
 
     /// <summary>The same tab, connected again: scrollback stays, the session starts over.</summary>
@@ -1393,7 +1429,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
         RaiseState(SessionState.Connecting, null);
 
-        if (Definition.Protocol is SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Kvm)
+        if (Definition.Protocol is SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Kvm or SessionProtocol.Web)
         {
             await ConnectAsync();
             return;

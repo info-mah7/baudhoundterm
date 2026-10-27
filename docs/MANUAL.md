@@ -163,6 +163,37 @@ it does not have. **Save** keeps the changes.
   from the shortcut's or the tab's **Open tmux session** menu. **Remove** takes a session off the
   shortcut only; one already running on the host keeps running.
 
+  A session can also have a **Folder** to start in (`~/work/myproject`) and a **Start command**,
+  any program it runs: a coding agent, `htop`, `npm run dev`, `journalctl -f`. So one tab can always
+  be one project, or one job. Both apply only when tmux starts the session: while it runs, the tab
+  attaches to it as it is and nothing is typed into it. Quitting the program leaves a shell in the
+  session. **Presets...** fills in the selected session's start command, editable afterwards:
+  - **Claude Code: the folder's latest conversation**, `claude --continue || claude`: after the
+    host restarts, opening the tab picks up where you left off; with no conversation yet it starts
+    one (a conversation made with `claude -p` does not count).
+  - **Claude Code: always one conversation**, kept by its id. `/clear` in Claude starts a new
+    conversation, which this does not follow.
+  - **Claude Code, no permission prompts**, and **Codex**, **Aider**, **htop**, **Follow the
+    system log**.
+
+  The tab shows the program's name next to its badge. When the command lets a coding agent act
+  without asking (`--permission-mode bypassPermissions` or `--dangerously-skip-permissions` for
+  Claude Code, `--dangerously-bypass-approvals-and-sandbox` for Codex, `--yolo` for Gemini CLI,
+  `--yes-always` for Aider), the name turns amber with a ⚠. Leave those off for a tab the agent
+  may attach to.
+
+  A folder may use letters, digits, spaces and `/ . _ - ~ + @ ,`; a folder that does not exist
+  starts the session in the home folder. A start command may use anything but a single quote, a
+  backslash or a line break (put such a command in a script and start the script).
+
+  **A shortcut from a running session.** Right-click a tab whose shell is in tmux (or its row in
+  the list) and choose **Create shortcut for this tmux session...**. BaudHoundTerm asks the host
+  which folder the session is in and what program runs there, and opens the properties of a new
+  shortcut: this connection, named after the session, with only that session, its folder and start
+  command filled in (for Claude Code, the folder's-latest form, keeping a no-prompts flag). Check
+  it and **Save**; the stored password or key passphrase comes along. The new shortcut opens
+  straight into that session.
+
 **Serial**: **Port**, **Baud rate**, **Data bits**, **Parity**, **Stop bits**. Defaults are COM1,
 115200, 8, None, One.
 
@@ -200,6 +231,12 @@ the board is. See [section 4](#kvm-tabs) for how to set one up.
 - **Picture from**, **Web interface username** and **Web interface password**: the board's own web
   interface, which is where the picture comes from. Blank means the same board. A single `-` means
   a board with no capture: it still types, and says so.
+
+**Web page (a device's admin page)**: **Address** (`https://10.0.10.99`, or a host name, which
+then means https). The tab stays on that site. **The agent may change settings** is off by default:
+the agent then only reads and checks (see [section 8](#the-agent-on-a-web-page)). **Forget
+certificate** drops the remembered certificate, for a device whose certificate was replaced on
+purpose. See [Web tabs](#web-tabs).
 
 **RTSP camera**: **Camera host**, **RTSP port** (554), **Stream path** (blank asks the camera over
 ONVIF), **Username**, **Password**, **RTP over TCP**, **Low latency**, and the **ONVIF port** used
@@ -439,6 +476,32 @@ USB keyboard.
 The agent attaches to a KVM tab as it does to VNC and RDP, with the same approval settings,
 skills and close-up check before a click (see [section 8](#8-the-ai-agent)).
 
+### Web tabs
+
+A Web tab opens a device's admin page, such as a firewall, a switch or a hypervisor, in a browser of
+its own. Add one from **New** (protocol **Web page**) or from a host's **Add protocol for this host >
+Web page...**, which fills in `https://` and the host. Log in on the page yourself.
+
+- **One site.** The tab stays on the address's scheme, host and port. A link to another site, a new
+  window, and a download are refused, and the status line says so. A sign-in that sends you to
+  another site (single sign-on) does not work in a Web tab.
+- **Its own browser.** Each Web shortcut has its own cookies and logins, kept apart from the
+  terminal pages and from other shortcuts. The page cannot reach BaudHoundTerm: it has no link to
+  the app, and camera, microphone, location and notification requests are refused.
+- **Certificates.** Devices nearly always have a certificate of their own, which the browser does
+  not trust. The first time, BaudHoundTerm shows it with its SHA-256 fingerprint and asks: compare
+  it with the device's own (on a FortiGate: **System > Certificates**). A yes remembers it for that
+  host and port. The same certificate later opens without asking; a different one is refused, since
+  that is what an intercepted connection looks like. **Forget certificate** in the properties
+  undoes the yes.
+- **←**, **⟳** and **⌂** go back, reload, and return to the shortcut's address. Hide addresses
+  masks the address bar too.
+
+**Help > Home** opens BaudHoundTerm's own pages in a Web tab: the build, the getting-started guide,
+this manual, and the credits and licences, all from the files beside the exe. **Getting started**
+and **User manual** open there too. Links to other sites (the MAH7 Discord, releases) open in your
+own browser. The agent can be attached to it and asked how to do something; it reads these pages.
+
 ### Camera tabs
 
 Video on the left; on the right, a pan, tilt and zoom pad (arrows move while held), presets,
@@ -615,6 +678,25 @@ point and must match what it meant to click, or nothing is clicked. Clicks on th
 Shut down, and keys such as Win+R, Ctrl+Alt+Del and Alt+F4, need approval under *Ask before risky
 commands*. A view-only VNC tab can be looked at but not driven.
 
+### The agent on a web page
+
+On a Web tab the agent reads the page as text, not as pictures: headings, table rows with their
+cells, and every control numbered, with its current value (a field's text, a list's choice, a
+switch on or off). It clicks and types by those numbers, with real clicks at the control's place.
+So a rule table or a setting comes through exactly, and a model that cannot take images works too.
+
+It is built for checking settings. Unless the shortcut allows changes, anything that would change
+the device (Apply, Save, OK, Delete, a switch or check box, a button that sends a form, Enter in a
+field) waits for your yes, whatever the endpoint's Approval setting. It never types a password: log
+in yourself. It moves around through the site's own menu; an address it guesses that does not
+exist is reported as such, and after two it must use the menu.
+
+Tested against a mock FortiGate with known findings (rules open from the internet, admin access
+over HTTP, administrators without two-factor). The local 27B model found every one and asked
+before the one change it was told to make. The 80B (text only) found them too, but in one run of
+two counted a guest-to-LAN rule as open to the internet; check its findings against the rows it
+quotes.
+
 On an RDP tab the agent's clicks and keys go into the session through the Remote Desktop control,
 without taking the keyboard focus from you. Keys are sent as this PC's keyboard layout, which RDP
 expects to match the remote one; a character this layout cannot type stops the action with an error.
@@ -769,6 +851,7 @@ Everything is in `%APPDATA%\BaudHoundTerm\`:
 | `sessions.json`, `folders.json` | Shortcuts and folders, without secrets |
 | `credentials.dat` | Saved passwords, passphrases, API keys and KeePassXC pairings, encrypted with DPAPI |
 | `known_hosts.json` | Trusted SSH host keys and TLS certificates |
+| `web_certs.json`, `web\` | Certificates trusted in Web tabs; each Web shortcut's own browser profile |
 | `agent.json` | Agent endpoints, without keys |
 | `skills\`, `agent-logs\` | Agent skills and logs |
 | `local-shells.json` | Settings of the Shell menu's tabs (commands, font, highlights) |
@@ -792,7 +875,7 @@ check. Every connection it makes is one you asked for:
 
 | Connection | When |
 |---|---|
-| SSH, telnet, serial, VNC, RDP, RTSP | A shortcut or Quick connect you open |
+| SSH, telnet, serial, VNC, RDP, RTSP, a Web tab's site | A shortcut or Quick connect you open |
 | A git remote | Only while sync runs, to the repository you configured |
 | An AI endpoint, and helpers you declare | Only while an agent runs, to the URL you set |
 | KeePassXC, the SSH agent | Local pipes, when a session needs a secret |

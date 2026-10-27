@@ -23,6 +23,7 @@ internal static class SessionPresentation
         SessionProtocol.Telnet => ("TEL", Color.FromRgb(0xE5, 0xC0, 0x7B)),
         SessionProtocol.Serial => ("COM", Color.FromRgb(0x98, 0xC3, 0x79)),
         SessionProtocol.Kvm => ("KVM", Color.FromRgb(0xB4, 0x8E, 0xAD)),
+        SessionProtocol.Web => ("WEB", Color.FromRgb(0x8F, 0xBC, 0xBB)),
         _ => (ShellBadge(s.ShellCommand), Color.FromRgb(0x56, 0xB6, 0xC2))
     };
 
@@ -56,11 +57,24 @@ internal static class SessionPresentation
             SessionProtocol.Serial => $"{s.SerialPort} · {s.BaudRate} {Framing(s)}",
             SessionProtocol.Sql => "SQL tabs were removed in build 70",
             SessionProtocol.Kvm => host + PortSuffix(s.KvmPort, 9200, hostShown),
+            SessionProtocol.Web => WebTarget(s, hostShown),
             SessionProtocol.Rdp =>
                 (string.IsNullOrEmpty(s.Username) ? "" : s.Username + "@") + host + PortSuffix(s.Port, 3389, hostShown)
                 + (s.RdpGateway.Length > 0 ? "  · via " + s.RdpGateway : ""),
             _ => s.ShellCommand
         };
+    }
+
+    /// <summary>The page's address: in a host group just its path (the group shows the host).</summary>
+    private static string WebTarget(SessionDefinition s, bool hostShown)
+    {
+        if (BrowserView.Home(s.WebUrl) is not { } u)
+        {
+            return s.WebUrl;
+        }
+
+        var port = u.IsDefaultPort ? "" : ":" + u.Port;
+        return hostShown ? $"{u.Scheme}{port} {u.AbsolutePath}".TrimEnd('/') : $"{u.Scheme}://{u.Host}{port}{u.AbsolutePath}".TrimEnd('/');
     }
 
     // Inside a group the port is the only thing telling two rows apart, so it always shows;
@@ -80,7 +94,7 @@ internal static class SessionPresentation
     /// port or a local shell never groups.
     /// </summary>
     public static string? HostKey(SessionDefinition s) =>
-        (s.Protocol is SessionProtocol.Ssh or SessionProtocol.Telnet or SessionProtocol.Vnc or SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Kvm)
+        (s.Protocol is SessionProtocol.Ssh or SessionProtocol.Telnet or SessionProtocol.Vnc or SessionProtocol.Rtsp or SessionProtocol.Rdp or SessionProtocol.Kvm or SessionProtocol.Web)
         && !string.IsNullOrWhiteSpace(s.Host)
             ? s.Host.Trim().ToLowerInvariant()
             : null;
@@ -96,6 +110,7 @@ internal static class SessionPresentation
     {
         "ssh" => SessionProtocol.Ssh,
         "kvm" => SessionProtocol.Kvm,
+        "web" => SessionProtocol.Web,
         "vnc" => SessionProtocol.Vnc,
         "rdp" => SessionProtocol.Rdp,
         "rtsp" or "cam" or "camera" => SessionProtocol.Rtsp,
@@ -239,6 +254,45 @@ internal static class SessionPresentation
         }
 
         return panel;
+    }
+
+    /// <summary>
+    /// A tab whose tmux session has a start command: the program's name. Amber with a warning sign
+    /// when the command lets an agent act without asking (Claude Code, Codex, Gemini CLI, Aider),
+    /// so a tab like that is never mistaken for one that asks.
+    /// </summary>
+    public static Border? ProgramChip(SessionDefinition s, string tmuxSession)
+    {
+        if (s is not { Protocol: SessionProtocol.Ssh, Tmux: true })
+        {
+            return null;
+        }
+
+        var name = Quarterdeck.Core.Terminal.SessionController.TmuxName(string.IsNullOrWhiteSpace(tmuxSession) ? s.TmuxSession : tmuxSession);
+        var command = s.TmuxSessionList().FirstOrDefault(t => Quarterdeck.Core.Terminal.SessionController.TmuxName(t.Name) == name)?.StartCommand ?? "";
+        if (command.Length == 0)
+        {
+            return null;
+        }
+
+        var skip = Quarterdeck.Core.Terminal.TmuxStart.SkipsPrompts(command);
+        var colour = skip ? Color.FromRgb(0xE5, 0xC0, 0x7B) : Color.FromRgb(0xC6, 0x9C, 0x6D);
+        return new Border
+        {
+            CornerRadius = new CornerRadius(3),
+            Background = Freeze(new SolidColorBrush(Color.FromArgb(0x22, colour.R, colour.G, colour.B))),
+            BorderBrush = Freeze(new SolidColorBrush(colour)),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(4, 0, 4, 0),
+            Margin = new Thickness(0, 1, 6, 1),
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "Started with: " + command + (skip ? "\nIt acts without asking first: nothing it does waits for a yes." : ""),
+            Child = new TextBlock
+            {
+                Text = Quarterdeck.Core.Terminal.TmuxStart.Program(command) + (skip ? " ⚠" : ""),
+                FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = Freeze(new SolidColorBrush(colour))
+            }
+        };
     }
 
     /// <summary>An audited shortcut says so before it is opened: every session of it is recorded.</summary>

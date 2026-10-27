@@ -19,6 +19,8 @@
   <ItemGroup>
     <!-- Built-in agent skills, one copy: docs/skills is what the manual links to. -->
     <EmbeddedResource Include="../../docs/skills/*.md" LogicalName="skills/%(Filename)%(Extension)" />
+    <!-- The agent's reader for web pages; it puts this into the page itself. -->
+    <EmbeddedResource Include="Agent/weboutline.js" LogicalName="weboutline.js" />
   </ItemGroup>
 
 </Project>

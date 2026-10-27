@@ -34,7 +34,13 @@ public enum SessionProtocol
     /// video, the typing from a USB gadget the target takes for a keyboard. Nothing is installed
     /// on the target, so a BIOS screen or an installer can be worked like any other screen.
     /// </summary>
-    Kvm
+    Kvm,
+
+    /// <summary>
+    /// A device's web admin page (a firewall, a switch, a hypervisor) in a browser of its own, kept
+    /// to one site. The agent reads it as text and acts on its controls by number.
+    /// </summary>
+    Web
 }
 
 public enum SshAuthMethod
@@ -111,6 +117,15 @@ public sealed class SessionDefinition
     /// before 72: <see cref="TmuxSessionList"/> then stands in with <see cref="TmuxSession"/>.
     /// </summary>
     public List<TmuxSessionEntry> TmuxSessions { get; set; } = new();
+
+    /// <summary>Web: the page to open, "https://10.0.10.99". The tab stays on this scheme, host and port.</summary>
+    public string WebUrl { get; set; } = "";
+
+    /// <summary>
+    /// Web: the agent may change settings, asking as the endpoint's approval setting says. Off (the
+    /// default), every change it tries (Apply, Save, a switch, a form) waits for the user's yes.
+    /// </summary>
+    public bool WebAllowChanges { get; set; }
 
     /// <summary>The sessions to offer: the list, or the single session of an older shortcut.</summary>
     public IReadOnlyList<TmuxSessionEntry> TmuxSessionList() =>
@@ -324,6 +339,45 @@ public sealed class TmuxSessionEntry
 
     /// <summary>Opened with the shortcut; when unticked, only on demand from the shortcut's menu.</summary>
     public bool OpenOnConnect { get; set; } = true;
+
+    /// <summary>The folder the session starts in (a project), "~/..." for the home folder. Empty: home.</summary>
+    public string Folder { get; set; } = "";
+
+    /// <summary>
+    /// What the session runs when tmux creates it, any program ("claude --continue || claude",
+    /// "htop", "npm run dev"). While it runs, opening the tab attaches to it and nothing is typed.
+    /// Quitting the program leaves a shell, so the session stays. Empty: a plain shell.
+    /// </summary>
+    public string Command { get; set; } = "";
+
+    // Test builds of 2026-10-26 had Claude ticks instead of a command: read so their entries keep
+    // working, written only while set (the editor turns them into a command on the next save).
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Claude { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ClaudeSkipPermissions { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public string? ClaudeSessionId { get; set; }
+
+    /// <summary><see cref="Command"/>, or the command the old Claude ticks stood for.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string StartCommand
+    {
+        get
+        {
+            if (Command.Trim().Length > 0 || !Claude)
+            {
+                return Command.Trim();
+            }
+
+            var skip = ClaudeSkipPermissions ? " --permission-mode bypassPermissions" : "";
+            return Guid.TryParse(ClaudeSessionId, out var id)
+                ? $"claude --resume {id}{skip} || claude --session-id {id}{skip}"
+                : $"claude --continue{skip} || claude{skip}";
+        }
+    }
 
     public TmuxSessionEntry Copy() => (TmuxSessionEntry)MemberwiseClone();
 }

@@ -270,7 +270,52 @@ host can have a tab for work, one for logs and one for a build. Untick
 then: connecting skips it, and it opens from the shortcut's or the tab's
 <strong>Open tmux session</strong> menu. <strong>Remove</strong> takes a
 session off the shortcut only; one already running on the host keeps
-running.</p></li>
+running.</p>
+<p>A session can also have a <strong>Folder</strong> to start in
+(<code>~/work/myproject</code>) and a <strong>Start command</strong>,
+any program it runs: a coding agent, <code>htop</code>,
+<code>npm run dev</code>, <code>journalctl -f</code>. So one tab can
+always be one project, or one job. Both apply only when tmux starts the
+session: while it runs, the tab attaches to it as it is and nothing is
+typed into it. Quitting the program leaves a shell in the session.
+<strong>Presets...</strong> fills in the selected session's start
+command, editable afterwards:</p>
+<ul>
+<li><strong>Claude Code: the folder's latest conversation</strong>,
+<code>claude --continue || claude</code>: after the host restarts,
+opening the tab picks up where you left off; with no conversation yet it
+starts one (a conversation made with <code>claude -p</code> does not
+count).</li>
+<li><strong>Claude Code: always one conversation</strong>, kept by its
+id. <code>/clear</code> in Claude starts a new conversation, which this
+does not follow.</li>
+<li><strong>Claude Code, no permission prompts</strong>, and
+<strong>Codex</strong>, <strong>Aider</strong>, <strong>htop</strong>,
+<strong>Follow the system log</strong>.</li>
+</ul>
+<p>The tab shows the program's name next to its badge. When the command
+lets a coding agent act without asking
+(<code>--permission-mode bypassPermissions</code> or
+<code>--dangerously-skip-permissions</code> for Claude Code,
+<code>--dangerously-bypass-approvals-and-sandbox</code> for Codex,
+<code>--yolo</code> for Gemini CLI, <code>--yes-always</code> for
+Aider), the name turns amber with a ⚠. Leave those off for a tab the
+agent may attach to.</p>
+<p>A folder may use letters, digits, spaces and
+<code>/ . _ - ~ + @ ,</code>; a folder that does not exist starts the
+session in the home folder. A start command may use anything but a
+single quote, a backslash or a line break (put such a command in a
+script and start the script).</p>
+<p><strong>A shortcut from a running session.</strong> Right-click a tab
+whose shell is in tmux (or its row in the list) and choose
+<strong>Create shortcut for this tmux session...</strong>. BaudHoundTerm
+asks the host which folder the session is in and what program runs
+there, and opens the properties of a new shortcut: this connection,
+named after the session, with only that session, its folder and start
+command filled in (for Claude Code, the folder's-latest form, keeping a
+no-prompts flag). Check it and <strong>Save</strong>; the stored
+password or key passphrase comes along. The new shortcut opens straight
+into that session.</p></li>
 </ul>
 <p><strong>Serial</strong>: <strong>Port</strong>, <strong>Baud
 rate</strong>, <strong>Data bits</strong>, <strong>Parity</strong>,
@@ -323,6 +368,14 @@ board's own web interface, which is where the picture comes from. Blank
 means the same board. A single <code>-</code> means a board with no
 capture: it still types, and says so.</li>
 </ul>
+<p><strong>Web page (a device's admin page)</strong>:
+<strong>Address</strong> (<code>https://10.0.10.99</code>, or a host
+name, which then means https). The tab stays on that site. <strong>The
+agent may change settings</strong> is off by default: the agent then
+only reads and checks (see <a href="#the-agent-on-a-web-page">section
+8</a>). <strong>Forget certificate</strong> drops the remembered
+certificate, for a device whose certificate was replaced on purpose. See
+<a href="#web-tabs">Web tabs</a>.</p>
 <p><strong>RTSP camera</strong>: <strong>Camera host</strong>,
 <strong>RTSP port</strong> (554), <strong>Stream path</strong> (blank
 asks the camera over ONVIF), <strong>Username</strong>,
@@ -625,6 +678,42 @@ USB keyboard.</p>
 <p>The agent attaches to a KVM tab as it does to VNC and RDP, with the
 same approval settings, skills and close-up check before a click (see <a
 href="#8-the-ai-agent">section 8</a>).</p>
+<h3 id="web-tabs">Web tabs</h3>
+<p>A Web tab opens a device's admin page, such as a firewall, a switch
+or a hypervisor, in a browser of its own. Add one from
+<strong>New</strong> (protocol <strong>Web page</strong>) or from a
+host's <strong>Add protocol for this host &gt; Web page...</strong>,
+which fills in <code>https://</code> and the host. Log in on the page
+yourself.</p>
+<ul>
+<li><strong>One site.</strong> The tab stays on the address's scheme,
+host and port. A link to another site, a new window, and a download are
+refused, and the status line says so. A sign-in that sends you to
+another site (single sign-on) does not work in a Web tab.</li>
+<li><strong>Its own browser.</strong> Each Web shortcut has its own
+cookies and logins, kept apart from the terminal pages and from other
+shortcuts. The page cannot reach BaudHoundTerm: it has no link to the
+app, and camera, microphone, location and notification requests are
+refused.</li>
+<li><strong>Certificates.</strong> Devices nearly always have a
+certificate of their own, which the browser does not trust. The first
+time, BaudHoundTerm shows it with its SHA-256 fingerprint and asks:
+compare it with the device's own (on a FortiGate: <strong>System &gt;
+Certificates</strong>). A yes remembers it for that host and port. The
+same certificate later opens without asking; a different one is refused,
+since that is what an intercepted connection looks like. <strong>Forget
+certificate</strong> in the properties undoes the yes.</li>
+<li><strong>←</strong>, <strong>⟳</strong> and <strong>⌂</strong> go
+back, reload, and return to the shortcut's address. Hide addresses masks
+the address bar too.</li>
+</ul>
+<p><strong>Help &gt; Home</strong> opens BaudHoundTerm's own pages in a
+Web tab: the build, the getting-started guide, this manual, and the
+credits and licences, all from the files beside the exe. <strong>Getting
+started</strong> and <strong>User manual</strong> open there too. Links
+to other sites (the MAH7 Discord, releases) open in your own browser.
+The agent can be attached to it and asked how to do something; it reads
+these pages.</p>
 <h3 id="camera-tabs">Camera tabs</h3>
 <p>Video on the left; on the right, a pan, tilt and zoom pad (arrows
 move while held), presets, <strong>Snapshot</strong> (a PNG in
@@ -877,6 +966,26 @@ nothing is clicked. Clicks on things like Delete or Shut down, and keys
 such as Win+R, Ctrl+Alt+Del and Alt+F4, need approval under <em>Ask
 before risky commands</em>. A view-only VNC tab can be looked at but not
 driven.</p>
+<h3 id="the-agent-on-a-web-page">The agent on a web page</h3>
+<p>On a Web tab the agent reads the page as text, not as pictures:
+headings, table rows with their cells, and every control numbered, with
+its current value (a field's text, a list's choice, a switch on or off).
+It clicks and types by those numbers, with real clicks at the control's
+place. So a rule table or a setting comes through exactly, and a model
+that cannot take images works too.</p>
+<p>It is built for checking settings. Unless the shortcut allows
+changes, anything that would change the device (Apply, Save, OK, Delete,
+a switch or check box, a button that sends a form, Enter in a field)
+waits for your yes, whatever the endpoint's Approval setting. It never
+types a password: log in yourself. It moves around through the site's
+own menu; an address it guesses that does not exist is reported as such,
+and after two it must use the menu.</p>
+<p>Tested against a mock FortiGate with known findings (rules open from
+the internet, admin access over HTTP, administrators without
+two-factor). The local 27B model found every one and asked before the
+one change it was told to make. The 80B (text only) found them too, but
+in one run of two counted a guest-to-LAN rule as open to the internet;
+check its findings against the rows it quotes.</p>
 <p>On an RDP tab the agent's clicks and keys go into the session through
 the Remote Desktop control, without taking the keyboard focus from you.
 Keys are sent as this PC's keyboard layout, which RDP expects to match
@@ -1082,6 +1191,11 @@ encrypted with DPAPI</td>
 <td>Trusted SSH host keys and TLS certificates</td>
 </tr>
 <tr>
+<td><code>web_certs.json</code>, <code>web\</code></td>
+<td>Certificates trusted in Web tabs; each Web shortcut's own browser
+profile</td>
+</tr>
+<tr>
 <td><code>agent.json</code></td>
 <td>Agent endpoints, without keys</td>
 </tr>
@@ -1135,7 +1249,7 @@ makes is one you asked for:</p>
 </thead>
 <tbody>
 <tr>
-<td>SSH, telnet, serial, VNC, RDP, RTSP</td>
+<td>SSH, telnet, serial, VNC, RDP, RTSP, a Web tab's site</td>
 <td>A shortcut or Quick connect you open</td>
 </tr>
 <tr>

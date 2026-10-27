@@ -86,7 +86,7 @@ public sealed partial class AgentRunner
         set
         {
             _safeguards = value ?? "";
-            _messages[0] = new JsonObject { ["role"] = "system", ["content"] = _screen is null ? SystemPrompt() : ScreenSystemPrompt() };
+            _messages[0] = new JsonObject { ["role"] = "system", ["content"] = ModePrompt() };
         }
     }
 
@@ -331,11 +331,20 @@ public sealed partial class AgentRunner
     {
     }
 
+    public AgentRunner(AgentEndpoint endpoint, string? apiKey, IWebTarget target,
+                       IReadOnlyList<AgentSkill> skills, AgentLog log)
+        : this(endpoint, apiKey, target, null, null, skills, log, target)
+    {
+    }
+
+    private string ModePrompt() => _web is not null ? WebSystemPrompt() : _screen is not null ? ScreenSystemPrompt() : SystemPrompt();
+
     // The mode is chosen by the constructor called, not by type tests: one view can be both
     // kinds of target, and a terminal tab must never get the screen tools.
     private AgentRunner(AgentEndpoint endpoint, string? apiKey, IAgentTarget target, ITerminalTarget? terminal,
-                        IScreenTarget? screen, IReadOnlyList<AgentSkill> skills, AgentLog log)
+                        IScreenTarget? screen, IReadOnlyList<AgentSkill> skills, AgentLog log, IWebTarget? web = null)
     {
+        _web = web;
         _endpoint = endpoint;
         _apiKey = apiKey;
         _target = target;
@@ -343,7 +352,7 @@ public sealed partial class AgentRunner
         _screen = screen;
         _skills = skills;
         _log = log;
-        _messages.Add(new JsonObject { ["role"] = "system", ["content"] = _screen is null ? SystemPrompt() : ScreenSystemPrompt() });
+        _messages.Add(new JsonObject { ["role"] = "system", ["content"] = ModePrompt() });
     }
 
     private void AppendSkills(StringBuilder sb)
@@ -453,7 +462,7 @@ public sealed partial class AgentRunner
             ["role"] = "user",
             ["content"] = "The user interrupts you: " + words + "\n\nThis comes before the goal: do what it says, " +
                           "even if that means stopping or changing course. Your last step may have been cut short" +
-                          (_screen is not null ? ", so look at the screen before you act." : ", so check the terminal before you act.")
+                          (_web is not null ? ", so read the page before you act." : _screen is not null ? ", so look at the screen before you act." : ", so check the terminal before you act.")
         });
         maxSteps = Math.Max(maxSteps, step + Math.Max(1, _endpoint.MaxSteps));
         return true;
@@ -469,6 +478,7 @@ public sealed partial class AgentRunner
         _goalMessage = new JsonObject { ["role"] = "user", ["content"] = goal };
         _messages.Add(_goalMessage);
         _stopRun = null;
+        _missedGotos = 0;
         _commandsRun.Clear();   // the loop guard is per goal: a check repeated after a fix is not a loop
         _repeatEvents = 0;
         await StartScreenGoalAsync(token);
@@ -818,6 +828,11 @@ public sealed partial class AgentRunner
         if (HelperNamed(name) is { } helper)
         {
             return Untrusted(await CallHelperAsync(helper, args, token), "helper result");
+        }
+
+        if (_web is not null)
+        {
+            return await ExecuteWebAsync(name, args, token);
         }
 
         if (_screen is not null)

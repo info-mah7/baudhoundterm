@@ -138,6 +138,7 @@ public static class SkillLibrary
         if (group.Length == 0)
         {
             group = protocols.Contains(SessionProtocol.Vnc) || protocols.Contains(SessionProtocol.Rdp) || protocols.Contains(SessionProtocol.Kvm) ? "Desktop"
+                : protocols.Contains(SessionProtocol.Web) ? "Web"
                 : restricted ? "Terminal"
                 : "General";
         }
@@ -157,6 +158,7 @@ public static class SkillLibrary
         "telnet" => SessionProtocol.Telnet,
         "vnc" or "desktop" => SessionProtocol.Vnc,
         "rdp" => SessionProtocol.Rdp,
+        "web" => SessionProtocol.Web,
         "kvm" => SessionProtocol.Kvm,
         _ => null
     };
