@@ -1143,10 +1143,21 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Claude Code running in this tab: the new session continues its conversation (the process
+        // itself cannot move), in its folder and with its flags.
+        var claude = await controller.FindClaudeAsync();
         var from = live.Definition;
         var copy = from.Clone($"{from.Name} tmux");
         copy.Tmux = true;
-        copy.TmuxSessions = [new TmuxSessionEntry { Name = "bht", Folder = SessionController.FolderFromTitle(live.ShellTitle) }];
+        copy.TmuxSessions =
+        [
+            new TmuxSessionEntry
+            {
+                Name = "bht",
+                Folder = claude is { Folder.Length: > 0 } ? claude.Folder : SessionController.FolderFromTitle(live.ShellTitle),
+                Command = claude is null ? "" : TmuxStart.FromRunning(claude.Args)
+            }
+        ];
         copy.TmuxSession = "bht";
         if (!SaveCopy(from, copy, warnShared: true))
         {
@@ -1154,9 +1165,19 @@ public partial class MainWindow : Window
         }
 
         var entry = copy.TmuxSessions[0];
-        var text = $"--- copied by BaudHoundTerm from {from.Name}, {DateTime.Now:yyyy-MM-dd HH:mm} ---\n" +
-                   live.View.Transcript.Tail(5000, 400_000).TrimEnd('\n') + "\n--- end of the copy ---\n";
-        var error = await controller.SeedTmuxSessionAsync(entry.Name, entry.Folder, text);
+        // With Claude to continue, the new session waits for the one here to exit first: two Claudes on
+        // one conversation would both write it. Its screen text is not copied: Claude redraws in place,
+        // so the text is mostly debris, and the resumed conversation shows itself.
+        var wait = claude is not null && entry.StartCommand.Contains("claude", StringComparison.Ordinal) ? claude.Pid : 0;
+        var text = wait > 0
+            ? $"--- {from.Name}: Claude continues here (BaudHoundTerm, {DateTime.Now:yyyy-MM-dd HH:mm}) ---\n"
+            : $"--- copied by BaudHoundTerm from {from.Name}, {DateTime.Now:yyyy-MM-dd HH:mm} ---\n" +
+              live.View.Transcript.Tail(5000, 400_000).TrimEnd('\n') + "\n--- end of the copy ---\n";
+        var error = await controller.SeedTmuxSessionAsync(entry.Name, entry.Folder, text, entry.StartCommand, wait);
+        if (error is null && wait > 0)
+        {
+            live.View.SetStatus($"Type /exit in Claude here: {copy.Name} then continues the same conversation in tmux.");
+        }
         if (error is not null)
         {
             MessageBox.Show(this, $"{copy.Name} was saved, but this session's text could not be copied into tmux session " +

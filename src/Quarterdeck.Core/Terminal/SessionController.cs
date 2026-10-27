@@ -234,7 +234,9 @@ public sealed class SessionController : IAsyncDisposable
         var folder = entry is null ? null : TmuxFolder(entry.Folder);
         var command = entry?.StartCommand ?? "";
         var run = command.Length > 0 && TmuxStart.Ok(command) ? $" '{command}; exec \"$SHELL\"'" : "";
-        return $" command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s {name}{(folder is null ? "" : $" -c {folder}")}{run} \\; set-option -q mouse on"
+        // -u: UTF-8 whatever the login's locale says. With none set (some sshd setups pass no LANG),
+        // tmux drew every box-drawing and symbol character as "_".
+        return $" command -v tmux >/dev/null 2>&1 && exec tmux -u new-session -A -s {name}{(folder is null ? "" : $" -c {folder}")}{run} \\; set-option -q mouse on"
             + " || echo '[baudhoundterm] tmux not found on this host: plain shell, not kept on disconnect'\r";
     }
 
@@ -482,22 +484,87 @@ public sealed class SessionController : IAsyncDisposable
         }
     }
 
+    /// <summary>A Claude Code process found in a plain session: its id, its folder ("~/..."), its command line.</summary>
+    public sealed record ClaudeProcess(int Pid, string Folder, string Args);
+
+    // Run in sh on the host, whatever the login shell: the sshd process serving this connection (every
+    // channel of it, the tab's shell included, descends from it), then each claude process of this user
+    // with whether it is inside tmux, whether it descends from this connection, its folder and command line.
+    private const string FindClaudeScript =
+        "me=$$; while [ \"$me\" -gt 1 ] 2>/dev/null; do case \"$(ps -o comm= -p \"$me\")\" in sshd*) break;; esac; " +
+        "me=$(ps -o ppid= -p \"$me\" | tr -d \" \"); done; printf \"%s|%s\\n\" \"$HOME\" \"$me\"; " +
+        "for p in $(pgrep -u \"$(id -u)\" -x claude); do t=0; o=0; q=$p; while [ \"$q\" -gt 1 ] 2>/dev/null; do " +
+        "[ \"$q\" = \"$me\" ] && o=1; case \"$(ps -o comm= -p \"$q\")\" in tmux*) t=1;; esac; " +
+        "q=$(ps -o ppid= -p \"$q\" | tr -d \" \"); done; " +
+        "echo \"$p|$t|$o|$(readlink /proc/$p/cwd)|$(ps -o args= -p $p)\"; done";
+
+    /// <summary>
+    /// The Claude Code running in this tab's own shell, not in tmux, asked on a second channel. Null when
+    /// there is none, the host cannot tell (no /proc), or it does not answer.
+    /// </summary>
+    public async Task<ClaudeProcess?> FindClaudeAsync(CancellationToken token = default)
+    {
+        if (Ssh?.Client is not { IsConnected: true } client)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var command = client.CreateCommand($"sh -c '{FindClaudeScript}'");
+            command.CommandTimeout = TimeSpan.FromSeconds(15);
+            var lines = (await Task.Run(() => command.Execute(), token).ConfigureAwait(false))
+                .Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            if (lines.Length == 0)
+            {
+                return null;
+            }
+
+            var home = lines[0].Split('|')[0].TrimEnd('/');
+            var mine = lines.Skip(1).Select(l => l.Split('|', 5)).Where(f => f.Length == 5 && f[1] == "0" && f[2] == "1")
+                            .Select(f => (Pid: int.TryParse(f[0], out var p) ? p : 0, Cwd: f[3], Args: f[4].Trim()))
+                            .Where(x => x.Pid > 0).OrderByDescending(x => x.Pid).ToList();
+            if (mine.Count == 0)
+            {
+                return null;
+            }
+
+            var (pid, cwd, args) = mine[0];
+            var folder = home.Length > 0 && cwd == home ? "~"
+                : home.Length > 0 && cwd.StartsWith(home + "/", StringComparison.Ordinal) ? "~" + cwd[home.Length..] : cwd;
+            return new ClaudeProcess(pid, TmuxFolderOk(folder) ? folder : "", args);
+        }
+        catch (Exception ex) when (ex is Renci.SshNet.Common.SshException or ObjectDisposedException or InvalidOperationException or OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>
     /// Starts tmux session <paramref name="session"/> on the host holding <paramref name="text"/>, what a
-    /// plain session printed, so it is kept from then on: the text goes up on second channels of this
-    /// connection (nothing is typed into the session), the tmux session prints it and deletes the file,
-    /// then gives a shell in <paramref name="folder"/>. A running program cannot be moved into tmux;
-    /// this keeps its output. Null when done, else why not; an existing session of that name is left alone.
+    /// plain session printed, so it is kept from then on. The text and a small sh script go up on second
+    /// channels of this connection (nothing is typed into the session); the tmux session runs the script,
+    /// which prints the text, waits for process <paramref name="waitForPid"/> to end when given (the Claude
+    /// in the old tab: two Claudes on one conversation would both write it), runs
+    /// <paramref name="startCommand"/> (claude --continue picks the conversation up), then gives a shell.
+    /// A running program cannot be moved into tmux; its conversation can. Null when done, else why not;
+    /// an existing session of that name is left alone.
     /// </summary>
-    public async Task<string?> SeedTmuxSessionAsync(string session, string folder, string text, CancellationToken token = default)
+    public async Task<string?> SeedTmuxSessionAsync(string session, string folder, string text,
+        string startCommand = "", int waitForPid = 0, CancellationToken token = default)
     {
         if (Ssh?.Client is not { IsConnected: true } client)
         {
             return "the session is not connected";
         }
 
+        if (startCommand.Length > 0 && !TmuxStart.Ok(startCommand))
+        {
+            return "the start command has a quote, backslash or line break";
+        }
+
         var name = TmuxName(session);
-        var file = $"\"$HOME/.cache/baudhoundterm/{name}";
+        var dir = "\"$HOME/.cache/baudhoundterm";
 
         string Run(string command)
         {
@@ -512,6 +579,39 @@ public sealed class SessionController : IAsyncDisposable
             return output;
         }
 
+        // Base64 has no character any shell acts on, so nothing needs quoting on its way up.
+        void Upload(string file, string content)
+        {
+            var b64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(content));
+            Run($"rm -f {dir}/{file}.b64\"");
+            for (var i = 0; i < b64.Length; i += 48_000)
+            {
+                token.ThrowIfCancellationRequested();
+                Run($"printf %s {b64.Substring(i, Math.Min(48_000, b64.Length - i))} >> {dir}/{file}.b64\"");
+            }
+
+            Run($"base64 -d {dir}/{file}.b64\" > {dir}/{file}\" && rm -f {dir}/{file}.b64\"");
+        }
+
+        var script = new System.Text.StringBuilder()
+            .Append("#!/bin/sh\n# Written by BaudHoundTerm: how tmux session ").Append(name).Append(" starts. It deletes itself.\n")
+            .Append("d=\"$HOME/.cache/baudhoundterm\"\n")
+            .Append("cat \"$d/").Append(name).Append(".txt\"; rm -f \"$d/").Append(name).Append(".txt\" \"$d/").Append(name).Append(".sh\"\n");
+        if (waitForPid > 0)
+        {
+            script.Append("if kill -0 ").Append(waitForPid).Append(" 2>/dev/null; then\n")
+                  .Append("  printf '\\n[baudhoundterm] Waiting for Claude in the old tab to finish (type /exit there); it then continues here.\\n'\n")
+                  .Append("  while kill -0 ").Append(waitForPid).Append(" 2>/dev/null; do sleep 1; done\nfi\n");
+        }
+
+        // The start command and the shell after it run in the user's own shell, interactive, so its rc
+        // file sets the PATH: from plain sh, "claude" in ~/.local/bin was not found. Not a login shell:
+        // a .bashrc that clears the screen on SSH logins wiped the copied text with it. The command has
+        // no single quote (TmuxStart.Ok), so it can sit inside one.
+        script.Append(startCommand.Length > 0
+            ? $"exec \"${{SHELL:-/bin/sh}}\" -i -c '{startCommand}; exec \"$SHELL\" -i'\n"
+            : "exec \"${SHELL:-/bin/sh}\" -i\n");
+
         try
         {
             return await Task.Run(() =>
@@ -521,19 +621,18 @@ public sealed class SessionController : IAsyncDisposable
                     return $"a tmux session called {name} already runs on the host";
                 }
 
-                // Base64 has no character any shell acts on, so the text needs no quoting on its way up.
-                var b64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(text));
-                Run($"mkdir -p \"$HOME/.cache/baudhoundterm\" && rm -f {file}.b64\"");
-                for (var i = 0; i < b64.Length; i += 48_000)
-                {
-                    token.ThrowIfCancellationRequested();
-                    Run($"printf %s {b64.Substring(i, Math.Min(48_000, b64.Length - i))} >> {file}.b64\"");
-                }
-
-                Run($"base64 -d {file}.b64\" > {file}.txt\" && rm -f {file}.b64\"");
-                var dir = TmuxFolder(folder) is { } d ? $" -c {d}" : "";
-                Run($"tmux new-session -d -s {name} -x {Math.Max(_columns, 20)} -y {Math.Max(_rows, 5)}{dir} " +
-                    $"'cat {file}.txt\"; rm -f {file}.txt\"; exec \"$SHELL\"'");
+                Run($"mkdir -p {dir}\"");
+                Upload(name + ".txt", text);
+                Upload(name + ".sh", script.ToString());
+                // tmux is started from the user's interactive login shell, through one more script: when
+                // this starts the tmux server, the server (and every later session) gets that environment,
+                // not the thin one of a command channel.
+                var cd = TmuxFolder(folder) is { } f ? $" -c {f}" : "";
+                Upload(name + ".start.sh",
+                    $"#!/bin/sh\nrm -f \"$HOME/.cache/baudhoundterm/{name}.start.sh\"\n" +
+                    $"exec tmux new-session -d -s {name} -x {Math.Max(_columns, 20)} -y {Math.Max(_rows, 5)}{cd} " +
+                    $"'sh \"$HOME/.cache/baudhoundterm/{name}.sh\"'\n");
+                Run($"\"$SHELL\" -l -i -c 'sh {dir}/{name}.start.sh\"' </dev/null");
                 return (string?)null;
             }, token).ConfigureAwait(false);
         }

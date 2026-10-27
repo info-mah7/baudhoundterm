@@ -197,13 +197,20 @@ it does not have. **Save** keeps the changes.
 
   **A tmux shortcut from an open plain SSH session.** Right-click an SSH tab that is not in tmux (or
   its row in the list) and choose **Create tmux shortcut from this session...**. The properties
-  window opens for a new shortcut to the same host and login with tmux on, its folder taken from
-  the tab's title when the shell shows one (`user@host: ~/work`). On **Save**, the session's text
-  (up to its last 5,000 lines, without colours) is copied into a new tmux session on the host,
-  through the tab's own connection, so nothing is typed into the session, and the new shortcut
-  opens on it. A program still running in the old tab cannot be moved: tmux holds only what it
-  starts. It keeps running in that tab until you close it. A tmux session of the same name that
-  already runs is left alone, and you are told.
+  window opens for a new shortcut to the same host and login with tmux on. On **Save**, a tmux
+  session of its own starts on the host and the new shortcut opens on it. Nothing is typed into the
+  old session: BaudHoundTerm works through a second channel of the tab's own connection.
+  - **When Claude Code runs in the tab,** the new session continues its conversation: the start
+    command is filled in from it (`claude --continue`, with the same permission flags), and so is
+    its folder. Two Claudes on one conversation would both write it, so the new tab waits until
+    Claude in the old tab has finished: type `/exit` there (the old tab's status line says so), and
+    the new tab picks the conversation up. The shortcut keeps the start command, so it resumes
+    Claude again after the host restarts.
+  - **Otherwise,** the session's text (up to its last 5,000 lines, without colours) is copied into
+    the new tmux session, which starts in the folder the tab's title shows (`user@host: ~/work`).
+  - A program still running in the old tab cannot be moved: tmux holds only what it starts. Claude's
+    conversation can, because Claude keeps it on disk. A tmux session of the same name that already
+    runs is left alone, and you are told.
 
   **A shortcut from a running session.** Right-click a tab whose shell is in tmux (or its row in
   the list) and choose **Create shortcut for this tmux session...**. BaudHoundTerm asks the host
