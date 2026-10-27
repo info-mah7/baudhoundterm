@@ -348,8 +348,10 @@ program, not to a BaudHoundTerm selection; the status line says so. Two ways to 
 
 ### Two sessions side by side
 
-**Ctrl+Shift+\\** (or right-click a tab > **Move to the right side**, or **Terminal > Move tab to
-the other side**) moves the tab to a second strip on the right, so two sessions show side by side.
+**Split** on the toolbar, or **Ctrl+Shift+\\** (also right-click a tab > **Move to the right side**,
+or **Terminal > Move tab to the other side**), moves the tab to a second strip on the right, so two
+sessions show side by side. **Split** stays lit while the window is split; click it again to bring
+the right side's tabs back into one strip.
 Drag the divider between them to change the widths. Each side has its own tabs; the same key moves
 a tab back. The side you last clicked or typed in is the active one, with a blue line along its
 top: the menus and shortcuts act on its tab, and new tabs open there. **F6** switches to the other

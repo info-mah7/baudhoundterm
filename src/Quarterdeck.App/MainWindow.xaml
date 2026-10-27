@@ -115,6 +115,9 @@
                       <Setter TargetName="Box" Property="Background" Value="#3D5A80"/>
                       <Setter TargetName="Box" Property="BorderBrush" Value="#61AFEF"/>
                     </Trigger>
+                    <Trigger Property="IsEnabled" Value="False">
+                      <Setter TargetName="Box" Property="Opacity" Value="0.4"/>
+                    </Trigger>
                   </ControlTemplate.Triggers>
                 </ControlTemplate>
               </Setter.Value>
@@ -140,6 +143,9 @@
         <Button x:Name="FilesButton" Click="OnFilesButton" ToolTip="Move files to and from the active tab's device or server: SFTP over SSH, typed text files for any terminal">Files ▾</Button>
         <Button x:Name="FindButton" Click="OnFind" ToolTip="Find in scrollback (Ctrl+Shift+F)">Find</Button>
         <Button x:Name="ClearButton" Click="OnClear" ToolTip="Clear the screen">Clear</Button>
+        <Rectangle/>
+        <ToggleButton x:Name="SplitToggle" Click="OnSplitToggle" Padding="10,4" Margin="1,1" MinWidth="64"
+                      ToolTip="Two tabs side by side: moves this tab to the right (Ctrl+Shift+\). On: brings the right side's tabs back into one strip.">Split</ToggleButton>
       </WrapPanel>
     </Border>
 

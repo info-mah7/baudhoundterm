@@ -1998,6 +1998,8 @@ public partial class MainWindow : Window
             _ui.AgentEnabled ? Visibility.Visible : Visibility.Collapsed;
         EmptyHint.Visibility = Tabs.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         MoveSideMenu.IsEnabled = tab && AllTabItems.Count() > 1;
+        SplitToggle.IsChecked = IsSplit;
+        SplitToggle.IsEnabled = IsSplit || AllTabItems.Count() > 1;
         MoveSideMenu.Header = ActiveTabs == TabsRight ? "_Move tab to the left side" : "_Move tab to the right side";
         SwitchSideMenu.IsEnabled = IsSplit;
     }

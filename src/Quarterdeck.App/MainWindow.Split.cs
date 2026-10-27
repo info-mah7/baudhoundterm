@@ -98,6 +98,45 @@ public partial class MainWindow
         }
 
         ShowActiveSide();
+        SplitToggle.IsChecked = split;
+        SplitToggle.IsEnabled = split || AllTabItems.Count() > 1;
+    }
+
+    /// <summary>The toolbar's Split: on splits off this tab; off brings the right side's tabs back.</summary>
+    private void OnSplitToggle(object sender, RoutedEventArgs e)
+    {
+        if (IsSplit)
+        {
+            MergeSides();
+        }
+        else
+        {
+            OnMoveToOtherSide(sender, e);
+        }
+
+        // The click flips the button whatever happened; it shows what is, not what was asked.
+        SplitToggle.IsChecked = IsSplit;
+    }
+
+    /// <summary>One strip again: the right side's tabs join the left, the tab in use stays in front.</summary>
+    private void MergeSides()
+    {
+        var keep = ActiveTabs.SelectedItem as TabItem;
+        foreach (var t in TabsRight.Items.OfType<TabItem>().ToList())
+        {
+            TabsRight.Items.Remove(t);
+            Tabs.Items.Add(t);
+        }
+
+        LayoutSides();
+        if (keep is not null)
+        {
+            SelectTab(keep);
+            if (LiveFor(keep) is { PoppedOut: null } live)
+            {
+                live.View.FocusTerminal();
+            }
+        }
     }
 
     /// <summary>Moves a tab to the other side, opening the split if it was closed.</summary>
