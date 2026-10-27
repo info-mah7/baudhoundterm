@@ -41,6 +41,43 @@ public partial class SessionEditorWindow : Window
         TmuxGrid.ItemsSource = _tmuxSessions;
 
         Load();
+        Loaded += (_, _) => FollowNameInSession();
+        NameBox.TextChanged += (_, _) => FollowNameInSession();
+    }
+
+    /// <summary>
+    /// The tmux session names are a choice already made: a shortcut for a session that is running
+    /// (Create shortcut for this tmux session) must open that session, even one called "bht".
+    /// </summary>
+    public bool KeepTmuxNames { get; init; }
+
+    // The session name the editor filled in from the shortcut's name, so typing a new name keeps
+    // replacing it, while a name the user typed into the grid is left alone.
+    private string? _autoSession;
+
+    /// <summary>
+    /// A shortcut never connected, with its one session still on the starting name, shows the session
+    /// it will get: named after the shortcut, following the Name box as it is typed.
+    /// </summary>
+    private void FollowNameInSession()
+    {
+        if (KeepTmuxNames || Definition.LastConnected is not null || _tmuxSessions is not [var only]
+            || (only.Name != "bht" && only.Name != _autoSession))
+        {
+            return;
+        }
+
+        var name = Quarterdeck.Core.Terminal.SessionController.DefaultSessionName(NameBox.Text);
+        if (name == only.Name)
+        {
+            return;
+        }
+
+        // Replaced, not changed in place: the grid has no change notice to redraw a cell from.
+        var renamed = only.Copy();
+        renamed.Name = name;
+        _tmuxSessions[0] = renamed;
+        _autoSession = name;
     }
 
     public SessionDefinition Definition { get; }
@@ -692,7 +729,7 @@ public partial class SessionEditorWindow : Window
 
         // A shortcut never connected that still has only the starting "bht" gets a session of its own,
         // named after it. One already used keeps its name: renaming would leave its running session behind.
-        if (d.LastConnected is null && sessions is [{ Name: "bht" } only])
+        if (!KeepTmuxNames && d.LastConnected is null && sessions is [{ Name: "bht" } only])
         {
             only.Name = Quarterdeck.Core.Terminal.SessionController.DefaultSessionName(d.Name);
         }

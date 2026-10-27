@@ -1069,20 +1069,47 @@ public partial class MainWindow : Window
         copy.TmuxSessions = [entry];
         copy.TmuxSession = name;
 
-        // The stored secrets come along, so the new shortcut logs in the same way.
+        SaveCopy(definition, copy, warnShared: false, keepTmuxNames: true);   // sharing the session is the point here
+    }
+
+    /// <summary>
+    /// A tmux shortcut from an SSH one: the same connection and login, kept in a tmux session of its
+    /// own, named after the new shortcut. The properties window opens first, for the name and, if
+    /// wanted, a folder and a start command.
+    /// </summary>
+    private void CreateTmuxShortcut(SessionDefinition from)
+    {
+        var copy = from.Clone($"{from.Name} tmux");
+        copy.Tmux = true;
+        // The starting name: the properties window turns it into one named after the shortcut.
+        copy.TmuxSessions = [new TmuxSessionEntry { Name = "bht" }];
+        copy.TmuxSession = "bht";
+        SaveCopy(from, copy, warnShared: true);
+    }
+
+    /// <summary>
+    /// Opens the properties of a shortcut copied from another, with the original's stored password or
+    /// key passphrase, so it logs in the same way; saved on Save, its secrets dropped on Cancel.
+    /// </summary>
+    private void SaveCopy(SessionDefinition from, SessionDefinition copy, bool warnShared, bool keepTmuxNames = false)
+    {
         foreach (var key in new[] { "password", "passphrase" })
         {
-            if (_vault.Get(definition.Id, key) is { } secret)
+            if (_vault.Get(from.Id, key) is { } secret)
             {
                 _vault.Set(copy.Id, secret, key);
             }
         }
 
-        var editor = new SessionEditorWindow(copy, _vault) { Owner = this };
+        var editor = new SessionEditorWindow(copy, _vault) { Owner = this, KeepTmuxNames = keepTmuxNames };
         if (editor.ShowDialog() == true)
         {
             _sessions.Add(copy);
             Save();
+            if (warnShared)
+            {
+                WarnSharedTmux(copy);
+            }
         }
         else
         {
@@ -2187,6 +2214,13 @@ public partial class MainWindow : Window
                 if (session is { Protocol: SessionProtocol.Ssh, Tmux: true })
                 {
                     menu.Items.Add(TmuxSessionsMenu(session));
+                }
+
+                if (session.Protocol == SessionProtocol.Ssh)
+                {
+                    var tmux = Item("Create t_mux shortcut...", () => CreateTmuxShortcut(session));
+                    tmux.ToolTip = "A new shortcut to the same host and login, kept in a tmux session of its own named after it";
+                    menu.Items.Add(tmux);
                 }
 
                 menu.Items.Add(new Separator());

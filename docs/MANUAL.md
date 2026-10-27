@@ -189,6 +189,12 @@ it does not have. **Save** keeps the changes.
   starts the session in the home folder. A start command may use anything but a single quote, a
   backslash or a line break (put such a command in a script and start the script).
 
+  **A tmux shortcut from an SSH shortcut.** Right-click an SSH shortcut and choose **Create tmux
+  shortcut...**: a new shortcut to the same host and login, with tmux on and a session of its own
+  named after it, and the stored password or key passphrase copied. Name it in the properties
+  window (the session name follows as you type), add a folder or start command if you like, and
+  **Save**. It sits beside the original under the host.
+
   **A shortcut from a running session.** Right-click a tab whose shell is in tmux (or its row in
   the list) and choose **Create shortcut for this tmux session...**. BaudHoundTerm asks the host
   which folder the session is in and what program runs there, and opens the properties of a new
