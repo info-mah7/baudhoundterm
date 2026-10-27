@@ -204,6 +204,14 @@ it does not have. **Save** keeps the changes.
   opens on it. A program still running in the old tab cannot be moved: tmux holds only what it
   starts. It keeps running in that tab until you close it.
 
+  **Keep an open SSH session in tmux.** Right-click a plain SSH tab (one not in tmux), or its row in
+  the list, and choose **Create tmux shortcut from this session...**. Its text (the last 5,000
+  lines) and its folder (read from the tab's title, such as `jamz@srv01: ~/work`) go into a new tmux
+  session on the host, and a shortcut to it is saved and opened, so that history is kept from then
+  on. The text goes up on a second channel of the tab's own connection: nothing is typed into the
+  session. Programs still running in the old tab cannot move into tmux; they stay there until you
+  close it. A tmux session of the same name that already runs is left alone and you are told.
+
   **A shortcut from a running session.** Right-click a tab whose shell is in tmux (or its row in
   the list) and choose **Create shortcut for this tmux session...**. BaudHoundTerm asks the host
   which folder the session is in and what program runs there, and opens the properties of a new
