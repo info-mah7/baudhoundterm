@@ -7,7 +7,7 @@ namespace Quarterdeck.Core.Agent;
 /// </summary>
 public interface IWebTarget : IAgentTarget
 {
-    /// <summary>The one site this tab is for, "https://10.0.10.99:443": goto stays inside it.</summary>
+    /// <summary>The one site this tab is for, "https://192.0.2.99:443": goto stays inside it.</summary>
     string Origin { get; }
 
     /// <summary>Runs a script in the page; returns the value of its last expression as JSON.</summary>

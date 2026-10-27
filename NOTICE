@@ -17,26 +17,29 @@ This product bundles the following third-party components:
   The full licence text ships beside it in Assets\novnc\LICENSE.txt. The files are used
   unmodified; MPL-2.0 obliges anyone distributing a modified copy to publish those changes.
   It bundles pako (MIT, Copyright (C) 2014-2016 Vitaly Puzrin) under Assets\novnc\vendor\pako,
-  and its DES code (core\crypto\des.js) carries notices of Widget Workshop, Inc. (1996) and
-  AT&T Laboratories Cambridge (1999).
+  and its DES code (core\crypto\des.js, ported from Flashlight VNC) carries notices of Widget
+  Workshop, Inc. (1996), AT&T Laboratories Cambridge (1999) and Jef Poskanzer (1996, BSD-style:
+  Copyright (C) 1996 by Jef Poskanzer <jef@acme.com>. All rights reserved.).
 
 Third-party components resolved at build time rather than vendored (full list, copyright
 lines and licence texts in THIRD-PARTY-NOTICES.txt, which ships beside the executable):
 
-  SSH.NET 2026.0.0 - MIT License - https://github.com/sshnet/SSH.NET
+  SSH.NET 2026.0.0 - MIT License, Copyright (c) Renci, Oleg Kapeljushnik, Gert Driesen and
+    contributors - https://github.com/sshnet/SSH.NET
   BouncyCastle.Cryptography 2.7.0 (used by SSH.NET) - MIT License
-  Microsoft.Web.WebView2 - BSD-style Microsoft license
-  System.IO.Ports, System.Security.Cryptography.ProtectedData, Microsoft.Extensions (used by
-    SSH.NET) - MIT License, Microsoft
+  Microsoft.Web.WebView2 1.0.4191.47 - BSD-style Microsoft license
+  System.IO.Ports and System.Security.Cryptography.ProtectedData, and the Microsoft.Extensions
+    packages SSH.NET uses - MIT License, Microsoft
   The .NET 10 and Windows Desktop runtimes, bundled by the self-contained build - MIT License.
     Their native parts in the dll folder (PresentationNative, wpfgfx, PenImc, D3DCompiler_47 and
     vcruntime140, all *_cor3.dll) are closed-source Microsoft components redistributed under the
     Microsoft .NET Library licence (https://dotnet.microsoft.com/dotnet_library_license.htm).
   Microsoft.Windows.SDK.NET.dll and WinRT.Runtime.dll (Microsoft.Windows.SDK.NET.Ref
-    10.0.19041.57, the Windows API projection used for Windows OCR), bundled into the
+    10.0.22621.57, the Windows API projection used for Windows OCR), bundled into the
     executable - Windows SDK licence (https://aka.ms/WinSDKLicenseURL), which permits
     distributing them with an application; WinRT.Runtime is C#/WinRT, MIT License, Microsoft.
-  LibVLCSharp / LibVLCSharp.WPF 3.10.1 - LGPL-2.1-or-later - https://code.videolan.org/videolan/LibVLCSharp
+  LibVLCSharp / LibVLCSharp.WPF 3.10.1, by VideoLAN and the LibVLCSharp contributors -
+    LGPL-2.1-or-later - https://code.videolan.org/videolan/LibVLCSharp
     LibVLC 3.0.24 (VideoLAN's win64 build, LGPL-2.1-or-later): its source tarball is attached to
     every release next to the zip. Written offer for the complete corresponding source of any
     LGPL component: info@mah7.com, three years from the release date, at no more than the cost

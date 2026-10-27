@@ -86,7 +86,9 @@ MANUAL = [
     ("noVNC 1.7.0 core library (Assets/novnc), unmodified",
      "Copyright (C) 2022 The noVNC authors. https://github.com/novnc/noVNC\n"
      "Its own LICENSE.txt ships beside it in Assets/novnc. core/crypto/des.js carries the notices of\n"
-     "Widget Workshop, Inc. (1996, Dave Zimmerman) and AT&T Laboratories Cambridge (1999) in the file.",
+     "Widget Workshop, Inc. (1996, Dave Zimmerman), AT&T Laboratories Cambridge (1999) and Jef Poskanzer "
+     "(1996, BSD-style: Copyright (C) 1996 by Jef Poskanzer <jef@acme.com>. All rights reserved.) in the "
+     "file, which was ported from the Flashlight VNC ActionScript implementation.",
      "MPL-2.0", None),
     ("pako, bundled inside noVNC (Assets/novnc/vendor/pako)",
      None, None, "src/Quarterdeck.App/Assets/novnc/vendor/pako/LICENSE"),
@@ -130,13 +132,22 @@ MANUAL = [
      "Library licence: https://dotnet.microsoft.com/dotnet_library_license.htm",
      "MIT", None),
     ("Microsoft.Windows.SDK.NET.dll and WinRT.Runtime.dll (Microsoft.Windows.SDK.NET.Ref "
-     "10.0.19041.57, the Windows API projection used for Windows OCR), bundled into BaudHoundTerm.exe",
+     "10.0.22621.57, the Windows API projection used for Windows OCR), bundled into BaudHoundTerm.exe",
      "Copyright (c) Microsoft Corporation. All rights reserved.\n"
      "Microsoft.Windows.SDK.NET.dll: Windows SDK licence, https://aka.ms/WinSDKLicenseURL, which "
      "permits distributing it with an application.\n"
      "WinRT.Runtime.dll is C#/WinRT (https://github.com/microsoft/CsWinRT), MIT License (text below).",
      "MIT", None),
 ]
+
+
+# Packages whose nuspec names no copyright holder, or not all of them: the line from the project's own
+# LICENSE (SSH.NET), or its author where the licence file is the bare LGPL text (LibVLCSharp).
+COPYRIGHT_FIX = {
+    "ssh.net": "Copyright (c) Renci, Oleg Kapeljushnik, Gert Driesen and contributors",
+    "libvlcsharp": "By VideoLAN and the LibVLCSharp contributors. https://code.videolan.org/videolan/LibVLCSharp",
+    "libvlcsharp.wpf": "By VideoLAN and the LibVLCSharp contributors. https://code.videolan.org/videolan/LibVLCSharp",
+}
 
 
 def nuspec(d):
@@ -210,6 +221,7 @@ def main():
         if not os.path.isdir(d):
             sys.exit(f"missing package folder {d}: restore the project first")
         copyright_, url, spdx = nuspec(d)
+        copyright_ = COPYRIGHT_FIX.get(name.lower(), copyright_)
         files = license_files(d)
         # An SPDX id we can print in full beats a copy of the same MIT text in every package.
         if spdx in TEXTS:

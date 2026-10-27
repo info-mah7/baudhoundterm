@@ -251,7 +251,7 @@ the board is. See [section 4](#kvm-tabs) for how to set one up.
   interface, which is where the picture comes from. Blank means the same board. A single `-` means
   a board with no capture: it still types, and says so.
 
-**Web page (a device's admin page)**: **Address** (`https://10.0.10.99`, or a host name, which
+**Web page (a device's admin page)**: **Address** (`https://192.0.2.99`, or a host name, which
 then means https). The tab stays on that site. **The agent may change settings** is off by default:
 the agent then only reads and checks (see [section 8](#the-agent-on-a-web-page)). **Forget
 certificate** drops the remembered certificate, for a device whose certificate was replaced on
@@ -371,7 +371,7 @@ open, the key does nothing but say so.
 ### Several tmux sessions on one host
 
 A shortcut with more than one tmux session (section 3) opens a tab for each one ticked **Open on
-connect**, all on the same host. The tab title adds the session name (`srv01 · logs`). Right-click
+connect**, all on the same host. The tab title adds the session name (`web01 · logs`). Right-click
 the shortcut or a tab for **Open tmux session**: it lists the shortcut's sessions, the ones not
 opened on connect marked *(on demand)*, and **New tmux session...**, which asks for a name, adds it
 to the shortcut and opens it. Opening a session that is already running attaches to it, so two

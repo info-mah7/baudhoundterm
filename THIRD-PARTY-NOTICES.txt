@@ -20,7 +20,7 @@ noVNC 1.7.0 core library (Assets/novnc), unmodified
 ====================================================================================================
 Copyright (C) 2022 The noVNC authors. https://github.com/novnc/noVNC
 Its own LICENSE.txt ships beside it in Assets/novnc. core/crypto/des.js carries the notices of
-Widget Workshop, Inc. (1996, Dave Zimmerman) and AT&T Laboratories Cambridge (1999) in the file.
+Widget Workshop, Inc. (1996, Dave Zimmerman), AT&T Laboratories Cambridge (1999) and Jef Poskanzer (1996, BSD-style: Copyright (C) 1996 by Jef Poskanzer <jef@acme.com>. All rights reserved.) in the file, which was ported from the Flashlight VNC ActionScript implementation.
 Licence: MPL-2.0 (full text under LICENCE TEXTS at the end)
 
 ====================================================================================================
@@ -75,7 +75,7 @@ The runtime's native parts in dll\ (PresentationNative_cor3.dll, wpfgfx_cor3.dll
 Licence: MIT (full text under LICENCE TEXTS at the end)
 
 ====================================================================================================
-Microsoft.Windows.SDK.NET.dll and WinRT.Runtime.dll (Microsoft.Windows.SDK.NET.Ref 10.0.19041.57, the Windows API projection used for Windows OCR), bundled into BaudHoundTerm.exe
+Microsoft.Windows.SDK.NET.dll and WinRT.Runtime.dll (Microsoft.Windows.SDK.NET.Ref 10.0.22621.57, the Windows API projection used for Windows OCR), bundled into BaudHoundTerm.exe
 ====================================================================================================
 Copyright (c) Microsoft Corporation. All rights reserved.
 Microsoft.Windows.SDK.NET.dll: Windows SDK licence, https://aka.ms/WinSDKLicenseURL, which permits distributing it with an application.
@@ -1543,11 +1543,13 @@ Licence: ISC
 ====================================================================================================
 LibVLCSharp 3.10.1
 ====================================================================================================
+By VideoLAN and the LibVLCSharp contributors. https://code.videolan.org/videolan/LibVLCSharp
 Licence: LGPL-2.1-or-later (full text under LICENCE TEXTS at the end)
 
 ====================================================================================================
 LibVLCSharp.WPF 3.10.1
 ====================================================================================================
+By VideoLAN and the LibVLCSharp contributors. https://code.videolan.org/videolan/LibVLCSharp
 Licence: LGPL-2.1-or-later (full text under LICENCE TEXTS at the end)
 
 ====================================================================================================
@@ -1689,7 +1691,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ====================================================================================================
 SSH.NET 2026.0.0
 ====================================================================================================
-Copyright © Renci 2010-2026
+Copyright (c) Renci, Oleg Kapeljushnik, Gert Driesen and contributors
 Licence: MIT (full text under LICENCE TEXTS at the end)
 
 ====================================================================================================

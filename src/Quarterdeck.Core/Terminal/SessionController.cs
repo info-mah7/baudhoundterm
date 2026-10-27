@@ -282,7 +282,7 @@ public sealed class SessionController : IAsyncDisposable
     }
 
     /// <summary>
-    /// The folder a shell's title shows, "jamz@srv01: ~/work/proj" -> "~/work/proj" (bash and zsh set
+    /// The folder a shell's title shows, "user@host: ~/work/proj" -> "~/work/proj" (bash and zsh set
     /// such titles); "" when the title is something else or the folder has characters a shell acts on.
     /// </summary>
     public static string FolderFromTitle(string title)
