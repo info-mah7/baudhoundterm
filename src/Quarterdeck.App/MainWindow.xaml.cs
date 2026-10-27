@@ -66,7 +66,7 @@ public partial class MainWindow : Window
         Closing += async (_, e) =>
         {
             // Tabs are not restored, so closing ends every live session for good. Say so first.
-            var live = Tabs.Items.OfType<TabItem>().Select(ViewOf).OfType<TerminalView>().Count(v => v.IsConnected);
+            var live = AllTabItems.Select(ViewOf).OfType<TerminalView>().Count(v => v.IsConnected);
             if (live > 0 && !_closeConfirmed)
             {
                 var answer = MessageBox.Show(this,
@@ -112,7 +112,7 @@ public partial class MainWindow : Window
                 popped.Close();
             }
 
-            foreach (var view in Tabs.Items.OfType<TabItem>().Select(ViewOf).OfType<TerminalView>())
+            foreach (var view in AllTabItems.Select(ViewOf).OfType<TerminalView>())
             {
                 await view.DisconnectAsync();
             }
@@ -120,6 +120,7 @@ public partial class MainWindow : Window
 
         _fullScreen = new FullScreenToggle(this);
         PreviewKeyDown += OnWindowKey;
+        WireSides();
     }
 
     // ---------- tab navigation, full screen, pop-out ----------
@@ -159,6 +160,16 @@ public partial class MainWindow : Window
             SetHideAddresses(!Privacy.HideAll);
             e.Handled = true;
         }
+        else if (e.Key is Key.Oem5 or Key.OemBackslash && mods == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            OnMoveToOtherSide(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (e.Key == Key.F6 && mods == ModifierKeys.None && IsSplit)
+        {
+            SwitchSide();
+            e.Handled = true;
+        }
         else if (e.Key is Key.R or Key.P && mods == (ModifierKeys.Control | ModifierKeys.Shift) && FocusedLive is not null)
         {
             e.Handled = true;
@@ -172,13 +183,13 @@ public partial class MainWindow : Window
 
     private void CycleTab(int step)
     {
-        var count = Tabs.Items.Count;
+        var count = ActiveTabs.Items.Count;
         if (count < 2)
         {
             return;
         }
 
-        Tabs.SelectedIndex = ((Tabs.SelectedIndex < 0 ? 0 : Tabs.SelectedIndex) + step + count) % count;
+        ActiveTabs.SelectedIndex = ((ActiveTabs.SelectedIndex < 0 ? 0 : ActiveTabs.SelectedIndex) + step + count) % count;
     }
 
     private void OnFullScreen(object sender, RoutedEventArgs e) => ToggleFullScreen();
@@ -214,7 +225,7 @@ public partial class MainWindow : Window
 
     private void OnPopOut(object sender, RoutedEventArgs e)
     {
-        if ((Tabs.SelectedItem as TabItem) is { } tab && LiveFor(tab) is { } live)
+        if ((ActiveTabs.SelectedItem as TabItem) is { } tab && LiveFor(tab) is { } live)
         {
             TogglePopOut(live);
         }
@@ -278,7 +289,7 @@ public partial class MainWindow : Window
         }
 
         live.Tab.Content = live.View;
-        Tabs.SelectedItem = live.Tab;
+        SelectTab(live.Tab);
         Activate();
         live.View.FocusTerminal();
         RefreshTab(live);
@@ -813,7 +824,7 @@ public partial class MainWindow : Window
         DeleteMenu.IsEnabled = any;
     }
 
-    private TerminalView? ActiveView => (Tabs.SelectedItem as TabItem) is { } tab ? ViewOf(tab) : null;
+    private TerminalView? ActiveView => (ActiveTabs.SelectedItem as TabItem) is { } tab ? ViewOf(tab) : null;
 
     /// <summary>A tab's view, also while it is popped out and the tab only holds a placeholder.</summary>
     private TerminalView? ViewOf(TabItem tab) => LiveFor(tab)?.View ?? tab.Content as TerminalView;
@@ -1169,9 +1180,9 @@ public partial class MainWindow : Window
             }
         };
 
-        Tabs.Items.Add(tab);
+        ActiveTabs.Items.Add(tab);
         UpdateConnectionToggle();
-        Tabs.SelectedItem = tab;
+        SelectTab(tab);
         view.FocusTerminal();
         RebuildTree();   // the new connection shows under its shortcut straight away
 
@@ -1301,7 +1312,7 @@ public partial class MainWindow : Window
     /// </summary>
     private LiveTab? FocusedLive =>
         _live.FirstOrDefault(l => l.PoppedOut is { IsActive: true })
-        ?? ((Tabs.SelectedItem as TabItem) is { } tab ? LiveFor(tab) : null);
+        ?? ((ActiveTabs.SelectedItem as TabItem) is { } tab ? LiveFor(tab) : null);
 
     /// <summary>Highlights the focused session's row in the list and clears the others.</summary>
     private void MarkFocusedRow()
@@ -1436,9 +1447,9 @@ public partial class MainWindow : Window
     private void OnTreeSelectionChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
         UpdateSelectionCommands();
-        if ((e.NewValue as TreeViewItem)?.Tag is LiveTab live && Tabs.Items.Contains(live.Tab))
+        if ((e.NewValue as TreeViewItem)?.Tag is LiveTab live && AllTabItems.Contains(live.Tab))
         {
-            Tabs.SelectedItem = live.Tab;
+            SelectTab(live.Tab);
         }
     }
 
@@ -1446,15 +1457,21 @@ public partial class MainWindow : Window
     /// clicked to get here.</summary>
     private void OnTabSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!ReferenceEquals(e.OriginalSource, Tabs))
+        if (e.OriginalSource is not TabControl side || (side != Tabs && side != TabsRight))
         {
-            return;   // a ComboBox inside a tab, not the tab strip
+            return;   // a ComboBox inside a tab, not a tab strip
+        }
+
+        // Picking a tab on a side makes that side the active one.
+        if (side.Items.Count > 0)
+        {
+            SetActiveSide(side);
         }
 
         // A popped-out tab's view is in its own window; focusing it would pull that window forward.
-        if ((Tabs.SelectedItem as TabItem) is { } tab && LiveFor(tab)?.PoppedOut is null)
+        if ((side.SelectedItem as TabItem) is { } tab && LiveFor(tab)?.PoppedOut is null)
         {
-            ActiveView?.FocusTerminal();
+            ViewOf(tab)?.FocusTerminal();
         }
 
         UpdateConnectionToggle();
@@ -1610,9 +1627,17 @@ public partial class MainWindow : Window
                 TogglePopOut(live);
             }
         };
-        menu.Opened += (_, _) => popOut.Header = LiveFor(tab)?.PoppedOut is null ? "_Pop out" : "_Bring back";
+        var side = new MenuItem { InputGestureText = "Ctrl+Shift+\\" };
+        side.Click += (_, _) => MoveToOtherSide(tab);
+        menu.Opened += (_, _) =>
+        {
+            popOut.Header = LiveFor(tab)?.PoppedOut is null ? "_Pop out" : "_Bring back";
+            side.Header = SideOf(tab) == TabsRight ? "Move to the _left side" : "Move to the _right side";
+            side.IsEnabled = AllTabItems.Count() > 1;
+        };
         menu.Items.Add(new Separator());
         menu.Items.Add(popOut);
+        menu.Items.Add(side);
 
         return menu;
     }
@@ -1937,7 +1962,7 @@ public partial class MainWindow : Window
             control.IsEnabled = tab;
         }
 
-        var popped = (Tabs.SelectedItem as TabItem) is { } selected && LiveFor(selected)?.PoppedOut is not null;
+        var popped = (ActiveTabs.SelectedItem as TabItem) is { } selected && LiveFor(selected)?.PoppedOut is not null;
         PopOutMenu.Header = popped ? "_Bring tab back" : "_Pop out tab";
         PopOutMenu.IsEnabled = tab;
 
@@ -1945,11 +1970,14 @@ public partial class MainWindow : Window
         AgentSeparator.Visibility = AgentMenu.Visibility = AgentSettingsMenu.Visibility =
             _ui.AgentEnabled ? Visibility.Visible : Visibility.Collapsed;
         EmptyHint.Visibility = Tabs.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        MoveSideMenu.IsEnabled = tab && AllTabItems.Count() > 1;
+        MoveSideMenu.Header = ActiveTabs == TabsRight ? "_Move tab to the left side" : "_Move tab to the right side";
+        SwitchSideMenu.IsEnabled = IsSplit;
     }
 
     private async void OnCloseTab(object sender, RoutedEventArgs e)
     {
-        if (Tabs.SelectedItem is TabItem tab)
+        if (ActiveTabs.SelectedItem is TabItem tab)
         {
             await CloseTabAsync(tab);
         }
@@ -1984,7 +2012,8 @@ public partial class MainWindow : Window
             window.Close();
         }
 
-        Tabs.Items.Remove(tab);
+        SideOf(tab).Items.Remove(tab);
+        LayoutSides();
         UpdateConnectionToggle();
         ViewOf(tab)?.Release();
 
@@ -2202,21 +2231,21 @@ public partial class MainWindow : Window
             case LiveTab live:
                 menu.Items.Add(Item("_Show tab", () =>
                 {
-                    Tabs.SelectedItem = live.Tab;
+                    SelectTab(live.Tab);
                     live.PoppedOut?.Activate();
                 }));
                 if (live.View.CanAttachAgent)
                 {
                     menu.Items.Add(Item(live.View.IsAgentAttached ? "Detach _agent" : "Attach _agent...", () =>
                     {
-                        Tabs.SelectedItem = live.Tab;
+                        SelectTab(live.Tab);
                         ToggleAgent(live.View);
                     }));
                 }
 
                 menu.Items.Add(Item(live.View.IsConnected ? "_Disconnect" : "_Reconnect", async () =>
                 {
-                    Tabs.SelectedItem = live.Tab;
+                    SelectTab(live.Tab);
                     if (live.View.IsConnected)
                     {
                         await live.View.DisconnectAsync();
@@ -2236,7 +2265,7 @@ public partial class MainWindow : Window
 
                 menu.Items.Add(Item("Close _tab", () =>
                 {
-                    Tabs.SelectedItem = live.Tab;
+                    SelectTab(live.Tab);
                     OnCloseTab(this, none);
                 }));
                 break;
@@ -2992,7 +3021,7 @@ public partial class MainWindow : Window
     {
         if (_live.FirstOrDefault(l => l.Definition.Id == HomePage.Id) is { } open)
         {
-            Tabs.SelectedItem = open.Tab;
+            SelectTab(open.Tab);
             await open.View.NavigateAsync(HomePage.Url(page), CancellationToken.None);
             return;
         }

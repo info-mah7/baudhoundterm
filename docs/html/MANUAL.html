@@ -523,6 +523,17 @@ top, and its row in the shortcut list is highlighted, so with several
 tabs on one host you can tell which is which. When a popped-out window
 has the keyboard, its row is the highlighted one.</li>
 </ul>
+<h3 id="two-sessions-side-by-side">Two sessions side by side</h3>
+<p><strong>Ctrl+Shift+\</strong> (or right-click a tab &gt; <strong>Move
+to the right side</strong>, or <strong>Terminal &gt; Move tab to the
+other side</strong>) moves the tab to a second strip on the right, so
+two sessions show side by side. Drag the divider between them to change
+the widths. Each side has its own tabs; the same key moves a tab back.
+The side you last clicked or typed in is the active one, with a blue
+line along its top: the menus and shortcuts act on its tab, and new tabs
+open there. <strong>F6</strong> switches to the other side. When either
+side has no tabs left, the split closes. A split needs two tabs: with
+only one open, the key does nothing but say so.</p>
 <h3 id="several-tmux-sessions-on-one-host">Several tmux sessions on one
 host</h3>
 <p>A shortcut with more than one tmux session (section 3) opens a tab
@@ -1325,7 +1336,16 @@ settings rather than anything BaudHoundTerm sends.</p>
 </tr>
 <tr>
 <td>Ctrl+Tab / Ctrl+Shift+Tab</td>
-<td>Next / previous tab (also Ctrl+PgDn / Ctrl+PgUp)</td>
+<td>Next / previous tab on the active side (also Ctrl+PgDn /
+Ctrl+PgUp)</td>
+</tr>
+<tr>
+<td>Ctrl+Shift+\</td>
+<td>Move the tab to the other side (side by side)</td>
+</tr>
+<tr>
+<td>F6</td>
+<td>Switch to the other side</td>
 </tr>
 <tr>
 <td>F11</td>

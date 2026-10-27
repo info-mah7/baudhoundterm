@@ -45,6 +45,8 @@
         <MenuItem Header="_Next tab" Click="OnNextTab" InputGestureText="Ctrl+Tab"/>
         <MenuItem Header="P_revious tab" Click="OnPreviousTab" InputGestureText="Ctrl+Shift+Tab"/>
         <MenuItem x:Name="PopOutMenu" Header="_Pop out tab" Click="OnPopOut"/>
+        <MenuItem x:Name="MoveSideMenu" Header="_Move tab to the other side" Click="OnMoveToOtherSide" InputGestureText="Ctrl+Shift+\"/>
+        <MenuItem x:Name="SwitchSideMenu" Header="_Switch side" Click="OnSwitchSide" InputGestureText="F6"/>
         <MenuItem Header="F_ull screen" Click="OnFullScreen" InputGestureText="F11"/>
         <Separator x:Name="AgentSeparator"/>
         <MenuItem x:Name="AgentMenu" Header="_Agent on this tab" Click="OnToggleAgent" InputGestureText="Ctrl+Shift+A"/>
@@ -271,8 +273,25 @@
             Double-click a shortcut, or type an address in Quick connect.<LineBreak/>
             New shortcut: Ctrl+Shift+T
           </TextBlock>
-          <TabControl x:Name="Tabs" Background="Transparent" BorderThickness="0"
-                      SelectionChanged="OnTabSelectionChanged"/>
+          <!-- Two sides, so two sessions can be seen at once (Ctrl+Shift+\). The right side and its
+               splitter take no room until a tab is moved there. -->
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition x:Name="LeftTabsColumn" Width="*" MinWidth="200"/>
+              <ColumnDefinition x:Name="TabSplitterColumn" Width="0"/>
+              <ColumnDefinition x:Name="RightTabsColumn" Width="0"/>
+            </Grid.ColumnDefinitions>
+            <Border x:Name="LeftTabsFrame" Grid.Column="0" BorderThickness="0,2,0,0" BorderBrush="Transparent">
+              <TabControl x:Name="Tabs" Background="Transparent" BorderThickness="0"
+                          SelectionChanged="OnTabSelectionChanged"/>
+            </Border>
+            <GridSplitter x:Name="TabSplitter" Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="#0F131A"
+                          Visibility="Collapsed" AutomationProperties.Name="Resize the two sides"/>
+            <Border x:Name="RightTabsFrame" Grid.Column="2" BorderThickness="0,2,0,0" BorderBrush="Transparent">
+              <TabControl x:Name="TabsRight" Background="Transparent" BorderThickness="0"
+                          SelectionChanged="OnTabSelectionChanged"/>
+            </Border>
+          </Grid>
         </Grid>
       </Border>
     </Grid>

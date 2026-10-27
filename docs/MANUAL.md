@@ -340,6 +340,16 @@ program, not to a BaudHoundTerm selection; the status line says so. Two ways to 
   highlighted, so with several tabs on one host you can tell which is which. When a popped-out
   window has the keyboard, its row is the highlighted one.
 
+### Two sessions side by side
+
+**Ctrl+Shift+\\** (or right-click a tab > **Move to the right side**, or **Terminal > Move tab to
+the other side**) moves the tab to a second strip on the right, so two sessions show side by side.
+Drag the divider between them to change the widths. Each side has its own tabs; the same key moves
+a tab back. The side you last clicked or typed in is the active one, with a blue line along its
+top: the menus and shortcuts act on its tab, and new tabs open there. **F6** switches to the other
+side. When either side has no tabs left, the split closes. A split needs two tabs: with only one
+open, the key does nothing but say so.
+
 ### Several tmux sessions on one host
 
 A shortcut with more than one tmux session (section 3) opens a tab for each one ticked **Open on
@@ -906,7 +916,9 @@ than anything BaudHoundTerm sends.
 | Ctrl+Shift+H | Hide addresses on or off |
 | Ctrl+Shift+R | Record this tab, or stop recording |
 | Ctrl+Shift+P | Pause or resume recording |
-| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab (also Ctrl+PgDn / Ctrl+PgUp) |
+| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab on the active side (also Ctrl+PgDn / Ctrl+PgUp) |
+| Ctrl+Shift+\\ | Move the tab to the other side (side by side) |
+| F6 | Switch to the other side |
 | F11 | Full screen on or off (also in a popped-out window) |
 | Ctrl+Shift+C / Ctrl+Shift+V | Copy / paste in a terminal |
 | Shift+right-click | Copy the selection, or paste when nothing is selected |
