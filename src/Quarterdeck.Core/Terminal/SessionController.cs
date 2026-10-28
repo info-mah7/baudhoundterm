@@ -80,6 +80,37 @@ public sealed class SessionController : IAsyncDisposable
 
     public SerialTerminalSession? Serial => _transport as SerialTerminalSession;
 
+    // A serial tab's speed once changed on the open port: kept for this tab's reconnects; the shortcut keeps its own.
+    private int? _baud;
+
+    /// <summary>The serial speed this tab uses: the shortcut's, or the one it was changed to.</summary>
+    public int SerialBaudRate => Serial?.BaudRate ?? _baud ?? Definition.BaudRate;
+
+    /// <summary>Changes a connected serial tab's speed in place. Null when done, else why not.</summary>
+    public string? SetSerialBaudRate(int baud)
+    {
+        if (Serial is not { IsConnected: true } serial)
+        {
+            return "the port is not open";
+        }
+
+        if (baud is < 50 or > 20_000_000)
+        {
+            return $"{baud} is not a serial speed";
+        }
+
+        try
+        {
+            serial.SetBaudRate(baud);
+            _baud = baud;
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentOutOfRangeException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            return ex.Message;
+        }
+    }
+
     public string? LogPath => _logger?.CurrentPath;
 
     /// <summary>Every log file this connection wrote; still answers after it is disposed.</summary>
@@ -129,7 +160,7 @@ public sealed class SessionController : IAsyncDisposable
             _transport = Definition.Protocol switch
             {
                 SessionProtocol.Ssh => new SshTerminalSession(Definition, _vault, _promptForSecret),
-                SessionProtocol.Serial => new SerialTerminalSession(Definition, Counters),
+                SessionProtocol.Serial => new SerialTerminalSession(Definition, Counters, _baud),
                 SessionProtocol.LocalShell => new ConPtyTerminalSession(Definition),
                 SessionProtocol.Telnet => new TelnetTerminalSession(Definition, Counters),
                 _ => throw new NotSupportedException($"Unknown protocol {Definition.Protocol}")
@@ -745,7 +776,7 @@ public sealed class SessionController : IAsyncDisposable
         SessionProtocol.Ssh => ((_transport as SshTerminalSession)?.Username ?? Definition.Username) is { Length: > 0 } user
             ? $"{user}@{Definition.Host}:{Definition.Port}"
             : $"{Definition.Host}:{Definition.Port}",
-        SessionProtocol.Serial => $"{Definition.SerialPort} @ {Definition.BaudRate}",
+        SessionProtocol.Serial => $"{Definition.SerialPort} @ {SerialBaudRate}",
         SessionProtocol.Telnet => $"{Definition.Host}:{Definition.Port}",
         _ => Definition.ShellCommand
     };

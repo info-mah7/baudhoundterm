@@ -221,7 +221,8 @@ it does not have. **Save** keeps the changes.
   straight into that session.
 
 **Serial**: **Port**, **Baud rate**, **Data bits**, **Parity**, **Stop bits**. Defaults are COM1,
-115200, 8, None, One.
+115200, 8, None, One. The speed of a connected serial tab can be changed without reconnecting: see
+[Serial speed](#serial-speed).
 
 **Telnet**
 
@@ -477,6 +478,14 @@ Serial and telnet tabs show lamps at the bottom right: the connection state, **T
 device) and **RX** (received from it), which flash with traffic, and the byte counts. A silent
 serial line with a green lamp and no RX means the device is not talking; a lamp that is not
 green means there is no link.
+
+### Serial speed
+
+Right-click a connected serial tab and open **Speed**: the speed in use is ticked. Pick another (or
+**Other...** for any value) and the open port switches to it at once, without closing: for a
+bootloader at 115200 that hands over at 921600, say. Bytes in flight at that moment may come out
+garbled. The new speed is this tab's, and a reconnect of the tab keeps it; the shortcut still
+opens at its own speed until you choose **Make ... the shortcut's speed** in the same menu.
 
 ### VNC tabs
 

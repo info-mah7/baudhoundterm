@@ -1652,6 +1652,13 @@ public partial class MainWindow : Window
         };
         menu.Items.Add(properties);
 
+        if (definition.Protocol == SessionProtocol.Serial)
+        {
+            var speed = new MenuItem { Header = "_Speed" };
+            menu.Opened += (_, _) => FillSpeedMenu(speed, tab, definition);
+            menu.Items.Add(speed);
+        }
+
         if (definition.Protocol == SessionProtocol.Vnc)
         {
             var cad = new MenuItem { Header = "Send Ctrl+Alt+_Del", ToolTip = "Ctrl+Alt+Del on the remote desktop, which Windows keeps for itself if you press it here" };
@@ -1886,6 +1893,73 @@ public partial class MainWindow : Window
     /// The bot on the tab: dim when no agent is attached, lit (and outlined) when one is and can
     /// type into the session. Clicking it attaches or detaches the agent for this tab only.
     /// </summary>
+    private static readonly int[] SerialSpeeds = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 1500000, 3000000];
+
+    /// <summary>
+    /// A serial tab's speeds, the one in use ticked: picking one changes the open port in place, for this
+    /// tab (and its reconnects); the shortcut keeps its own until told otherwise.
+    /// </summary>
+    private void FillSpeedMenu(MenuItem speed, TabItem tab, SessionDefinition definition)
+    {
+        speed.Items.Clear();
+        var controller = ViewOf(tab)?.Controller;
+        var open = controller?.Serial is { IsConnected: true };
+        var current = controller?.SerialBaudRate ?? definition.BaudRate;
+        speed.IsEnabled = open;
+        speed.Header = open ? $"_Speed ({current})" : "_Speed (connect first)";
+
+        foreach (var rate in SerialSpeeds.Append(current).Distinct().Order())
+        {
+            var item = new MenuItem { Header = rate.ToString(System.Globalization.CultureInfo.InvariantCulture), IsChecked = rate == current };
+            item.Click += (_, _) => ApplySerialSpeed(tab, definition, rate);
+            speed.Items.Add(item);
+        }
+
+        speed.Items.Add(new Separator());
+        var other = new MenuItem { Header = "_Other..." };
+        other.Click += (_, _) =>
+        {
+            var dialog = new InputPromptWindow("Serial speed (bits per second)", current.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "The port stays open; the new speed applies at once.") { Owner = this };
+            if (dialog.ShowDialog() == true && int.TryParse(dialog.Value, out var rate))
+            {
+                ApplySerialSpeed(tab, definition, rate);
+            }
+        };
+        speed.Items.Add(other);
+
+        if (current != definition.BaudRate)
+        {
+            var keep = new MenuItem
+            {
+                Header = $"_Make {current} the shortcut's speed",
+                ToolTip = $"The shortcut opens at {definition.BaudRate}; this makes it {current} from now on."
+            };
+            keep.Click += (_, _) =>
+            {
+                definition.BaudRate = current;
+                PersistIfSaved(definition);
+                RebuildTree();
+                ViewOf(tab)?.SetStatus($"{definition.Name} now opens at {current}.");
+            };
+            speed.Items.Add(keep);
+        }
+    }
+
+    private void ApplySerialSpeed(TabItem tab, SessionDefinition definition, int rate)
+    {
+        if (ViewOf(tab) is not { Controller: { } controller } view)
+        {
+            return;
+        }
+
+        var error = controller.SetSerialBaudRate(rate);
+        view.SetStatus(error is not null
+            ? $"Speed not changed: {error}."
+            : $"Speed now {rate} on {definition.SerialPort}; the port stayed open." +
+              (rate != definition.BaudRate ? $" The shortcut still opens at {definition.BaudRate} (right-click > Speed to keep {rate})." : ""));
+    }
+
     /// <summary>The × on a tab that closes it, like every browser's. Closing still disconnects
     /// and tidies up through the one path (CloseTabAsync), so the menu and the × behave alike.</summary>
     private Button TabCloseButton(TabItem tab)

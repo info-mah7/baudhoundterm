@@ -33,10 +33,28 @@ public sealed class SerialTerminalSession : ITerminalSession
 
     public void EndRaw() => _raw = null;
 
-    public SerialTerminalSession(SessionDefinition definition, LinkCounters? counters = null)
+    public SerialTerminalSession(SessionDefinition definition, LinkCounters? counters = null, int? baudRate = null)
     {
         _definition = definition;
         _counters = counters;
+        _baud = baudRate ?? definition.BaudRate;
+    }
+
+    // The tab's speed: the shortcut's, until changed on the open port (kept across reconnects by the controller).
+    private int _baud;
+
+    /// <summary>The speed in use.</summary>
+    public int BaudRate => _port?.BaudRate ?? _baud;
+
+    /// <summary>
+    /// Changes the speed of the open port without closing it, as for a bootloader at 115200 that hands
+    /// over at 921600. The driver takes it between bytes; what is in flight at that moment may garble.
+    /// </summary>
+    public void SetBaudRate(int baud)
+    {
+        var port = _port ?? throw new IOException("The serial port is closed.");
+        port.BaudRate = baud;
+        _baud = baud;
     }
 
     public bool IsConnected => _port?.IsOpen == true;
@@ -50,7 +68,7 @@ public sealed class SerialTerminalSession : ITerminalSession
 
         _port = new SerialPort(
             _definition.SerialPort,
-            _definition.BaudRate,
+            _baud,
             Enum.Parse<Parity>(_definition.Parity, ignoreCase: true),
             _definition.DataBits,
             Enum.Parse<StopBits>(_definition.StopBits, ignoreCase: true))

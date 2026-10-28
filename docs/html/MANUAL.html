@@ -356,7 +356,9 @@ into that session.</p></li>
 </ul>
 <p><strong>Serial</strong>: <strong>Port</strong>, <strong>Baud
 rate</strong>, <strong>Data bits</strong>, <strong>Parity</strong>,
-<strong>Stop bits</strong>. Defaults are COM1, 115200, 8, None, One.</p>
+<strong>Stop bits</strong>. Defaults are COM1, 115200, 8, None, One. The
+speed of a connected serial tab can be changed without reconnecting: see
+<a href="#serial-speed">Serial speed</a>.</p>
 <p><strong>Telnet</strong></p>
 <ul>
 <li><strong>Host</strong>, <strong>Port</strong> (23; 992 for TLS).</li>
@@ -694,6 +696,15 @@ state, <strong>TX</strong> (sent to the device) and <strong>RX</strong>
 (received from it), which flash with traffic, and the byte counts. A
 silent serial line with a green lamp and no RX means the device is not
 talking; a lamp that is not green means there is no link.</p>
+<h3 id="serial-speed">Serial speed</h3>
+<p>Right-click a connected serial tab and open <strong>Speed</strong>:
+the speed in use is ticked. Pick another (or <strong>Other...</strong>
+for any value) and the open port switches to it at once, without
+closing: for a bootloader at 115200 that hands over at 921600, say.
+Bytes in flight at that moment may come out garbled. The new speed is
+this tab's, and a reconnect of the tab keeps it; the shortcut still
+opens at its own speed until you choose <strong>Make ... the shortcut's
+speed</strong> in the same menu.</p>
 <h3 id="vnc-tabs">VNC tabs</h3>
 <p>The remote desktop scales to fit the tab. A password-protected server
 needs the password in the shortcut's properties. Right-click the tab
