@@ -22,6 +22,12 @@ public sealed class SyncSettings
     /// <summary>Sync at start, a few seconds after each change, and every few minutes.</summary>
     public bool Automatic { get; set; } = true;
 
+    /// <summary>
+    /// The agent's memory (agent-memory\*.md) goes through the repository too. Per PC: one can keep
+    /// its notes to itself and still sync shortcuts.
+    /// </summary>
+    public bool SyncAgentMemory { get; set; } = true;
+
     /// <summary>git.exe to use; blank finds it.</summary>
     public string GitPath { get; set; } = "";
 

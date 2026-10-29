@@ -33,7 +33,7 @@ public sealed class SyncOutcome
 }
 
 /// <summary>
-/// Keeps shortcuts, folders, agent endpoints (without keys), skills and trusted host keys in a
+/// Keeps shortcuts, folders, agent endpoints (without keys), skills, the agent's memory and trusted host keys in a
 /// git repository so several PCs share them. The clone lives in the data directory; each
 /// shortcut is its own file, so edits on two PCs merge unless they touch the same shortcut.
 ///
@@ -77,6 +77,8 @@ public sealed class ConfigSync
     private string ShortcutsDir => Path.Combine(RepoDir, "shortcuts");
     private string RepoSkills => Path.Combine(RepoDir, "skills");
     private string LocalSkills => Path.Combine(_dataDir, "skills");
+    private string RepoMemory => Path.Combine(RepoDir, "memory");
+    private string LocalMemory => Path.Combine(_dataDir, "agent-memory");
     private string Machine => string.IsNullOrWhiteSpace(_settings.MachineName) ? Environment.MachineName : _settings.MachineName.Trim();
 
     private static readonly TimeSpan NetworkTimeout = TimeSpan.FromMinutes(5);
@@ -160,6 +162,19 @@ public sealed class ConfigSync
             if (File.Exists(mine) && File.ReadAllText(mine) != File.ReadAllText(file))
             {
                 File.Copy(mine, ConflictSkillName(mine), overwrite: true);
+            }
+        }
+
+        // A host's memory on both sides: one file with both PCs' lines, before the first export.
+        if (_settings.SyncAgentMemory && Directory.Exists(RepoMemory))
+        {
+            foreach (var file in Directory.GetFiles(RepoMemory, "*.md"))
+            {
+                var mine = Path.Combine(LocalMemory, Path.GetFileName(file));
+                if (File.Exists(mine) && File.ReadAllText(mine) != File.ReadAllText(file))
+                {
+                    AtomicFile.Write(mine, Agent.AgentMemory.Merge(File.ReadAllText(mine), File.ReadAllText(file)));
+                }
             }
         }
 
@@ -448,6 +463,13 @@ public sealed class ConfigSync
             {
                 return name;
             }
+
+            // Memory is free text: a note edited by hand can hold "password is ..." in words.
+            if (name.StartsWith("memory/", StringComparison.Ordinal) && File.Exists(path) &&
+                Agent.AgentMemory.FindSecret(File.ReadAllText(path)) is not null)
+            {
+                return name;
+            }
         }
 
         return null;
@@ -519,6 +541,17 @@ public sealed class ConfigSync
             if (!names.Contains(Path.GetFileName(file)))
             {
                 File.Delete(file);
+            }
+        }
+
+        // Memory is only ever added to or emptied, never deleted through the repository: a PC
+        // that has not received a host's memory yet must not remove it from every other PC.
+        if (_settings.SyncAgentMemory && Directory.Exists(LocalMemory))
+        {
+            Directory.CreateDirectory(RepoMemory);
+            foreach (var file in Directory.GetFiles(LocalMemory, "*.md"))
+            {
+                WriteIfChanged(Path.Combine(RepoMemory, Path.GetFileName(file)), File.ReadAllText(file));
             }
         }
     }
@@ -594,6 +627,15 @@ public sealed class ConfigSync
                 {
                     File.Delete(file);   // deleted on another PC
                 }
+            }
+        }
+
+        if (_settings.SyncAgentMemory && Directory.Exists(RepoMemory))
+        {
+            Directory.CreateDirectory(LocalMemory);
+            foreach (var file in Directory.GetFiles(RepoMemory, "*.md"))
+            {
+                WriteIfChanged(Path.Combine(LocalMemory, Path.GetFileName(file)), File.ReadAllText(file));
             }
         }
 
@@ -715,6 +757,11 @@ public sealed class ConfigSync
             else if (path == "agent.json")
             {
                 result = ours is null || theirs is null ? theirs ?? ours : MergeAgent(ours, theirs);
+            }
+            else if (path.StartsWith("memory/", StringComparison.Ordinal))
+            {
+                // Notes added on two PCs: keep every line from both.
+                result = ours is null || theirs is null ? theirs ?? ours : Agent.AgentMemory.Merge(ours, theirs);
             }
             else if (path.StartsWith("skills/", StringComparison.Ordinal))
             {

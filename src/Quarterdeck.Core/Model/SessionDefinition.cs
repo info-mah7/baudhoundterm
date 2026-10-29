@@ -127,6 +127,12 @@ public sealed class SessionDefinition
     /// </summary>
     public bool WebAllowChanges { get; set; }
 
+    /// <summary>The agent keeps notes between runs (see <see cref="Agent.AgentMemory"/>). On by default.</summary>
+    public bool AgentMemory { get; set; } = true;
+
+    /// <summary>The notes are this shortcut's own, not shared with every shortcut to the same host.</summary>
+    public bool AgentMemoryOwn { get; set; }
+
     /// <summary>The sessions to offer: the list, or the single session of an older shortcut.</summary>
     public IReadOnlyList<TmuxSessionEntry> TmuxSessionList() =>
         TmuxSessions.Count > 0 ? TmuxSessions : new[] { new TmuxSessionEntry { Name = TmuxSession, OpenOnConnect = true } };

@@ -77,6 +77,8 @@ internal static class HomePage
             {{Link("MANUAL.html#11-keyboard-shortcuts", "Keyboard shortcuts")}}
             {{Link("MANUAL.html#8-the-ai-agent", "The AI agent")}}
             {{Link("MANUAL.html#safeguards-against-planted-instructions", "Agent safeguards")}}
+            {{Link("MANUAL.html#memory", "Agent memory")}}
+            {{Link("MANUAL.html#reports", "Agent reports and exports")}}
             {{Link("MANUAL.html#recording-a-tab", "Recording a tab")}}
             {{Link("MANUAL.html#audit-recording-supervised-access", "Audit recording")}}
             {{Link("MANUAL.html#web-tabs", "Web tabs")}}

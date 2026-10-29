@@ -381,6 +381,7 @@ public sealed partial class AgentRunner
                       "what you found, and anything left for the user. Be brief.");
 
         AppendSkills(sb);
+        AppendMemory(sb);
         return sb.ToString();
     }
 
@@ -421,6 +422,10 @@ public sealed partial class AgentRunner
         _lineUnknown = false;
         _commandsRun.Clear();
         _repeatEvents = 0;
+        _captures.Clear();
+        _openOutput = null;
+        // A fresh conversation reads the memory again: another tab may have added to it.
+        _messages[0] = new JsonObject { ["role"] = "system", ["content"] = ModePrompt() };
     }
 
     /// <summary>
@@ -470,6 +475,13 @@ public sealed partial class AgentRunner
 
     /// <summary>Runs one goal. Follow-up goals continue the same conversation until <see cref="Reset"/>.</summary>
     public async Task<string> RunAsync(string goal, CancellationToken token)
+    {
+        var answer = await RunGoalAsync(goal, token);
+        RecordRun(goal, answer);
+        return answer;
+    }
+
+    private async Task<string> RunGoalAsync(string goal, CancellationToken token)
     {
         _run = Guid.NewGuid().ToString("N")[..8];
         Log("goal", text: goal);
@@ -825,6 +837,11 @@ public sealed partial class AgentRunner
             return await recordable.RecordingAsync(action, scope);
         }
 
+        if (await ExecuteSharedAsync(name, args, token) is { } shared)
+        {
+            return shared;
+        }
+
         if (HelperNamed(name) is { } helper)
         {
             return Untrusted(await CallHelperAsync(helper, args, token), "helper result");
@@ -864,9 +881,10 @@ public sealed partial class AgentRunner
 
                 Emit("action", "$ " + text + (enter ? "" : "   (no Enter)"));
                 var mark = terminal.Transcript.Mark;
+                var output = OpenOutput(text, mark);
                 await terminal.SendAsync(typed);
                 Track(typed);
-                return Untrusted(await CollectAsync(mark, Int(args, "wait_seconds", 10), Str(args, "until"), token), "terminal output");
+                return $"[{output}] " + Untrusted(await CollectAsync(mark, Int(args, "wait_seconds", 10), Str(args, "until"), token), "terminal output");
             }
 
             case "send_key":

@@ -283,6 +283,14 @@
               <TextBlock Text="Command line"/>
               <TextBox x:Name="ShellBox"/>
             </StackPanel>
+
+            <StackPanel Margin="0,14,0,0">
+              <CheckBox x:Name="AgentMemoryBox" Content="The agent keeps notes between runs (Memory in the agent pane)"
+                        ToolTip="Facts the agent chooses to remember, and a line after each run, read back at the start of the next conversation. Never passwords or keys."/>
+              <CheckBox x:Name="AgentMemoryOwnBox" Margin="18,4,0,0" Content="Keep this shortcut's notes apart from other shortcuts to the same host"
+                        ToolTip="Off (the default): every shortcut to this host (SSH, tmux, web) shares one set of notes, since they are one machine."
+                        IsEnabled="{Binding IsChecked, ElementName=AgentMemoryBox}"/>
+            </StackPanel>
           </StackPanel>
         </ScrollViewer>
       </TabItem>

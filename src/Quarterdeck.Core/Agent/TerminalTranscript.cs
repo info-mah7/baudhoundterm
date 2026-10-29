@@ -173,6 +173,21 @@ public sealed class TerminalTranscript
         }
     }
 
+    /// <summary>
+    /// Text between two absolute positions, whole (no size cap): a command's complete output for a
+    /// report. Says so when its start has already been trimmed from the buffer.
+    /// </summary>
+    public string Between(long from, long to)
+    {
+        lock (_gate)
+        {
+            var start = (int)Math.Max(0, from - _dropped);
+            var end = (int)Math.Clamp(to - _dropped, start, _text.Length);
+            var s = start < _text.Length ? _text.ToString(start, end - start).Replace("\r", "") : "";
+            return from < _dropped ? "[... the start of this output is no longer in the terminal's buffer ...]\n" + s : s;
+        }
+    }
+
     /// <summary>The last <paramref name="lines"/> lines.</summary>
     public string Tail(int lines, int maxChars)
     {

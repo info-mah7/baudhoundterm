@@ -859,6 +859,54 @@ gets only those both enabled there and named by a ticked skill: the model cannot
 must be on this PC unless `allowRemote` is set, since arguments, and screenshots if sent, would
 leave the machine. Calls follow the endpoint's Approval setting and are logged like other steps.
 
+### Memory
+
+The agent keeps notes between conversations, so it does not start from nothing on a machine it
+has worked on. Two kinds of line:
+
+- **Notes** it chooses to keep with its `remember` tool: what the device is, where things are, a
+  quirk it had to work around. One fact each; the pane shows `🧠 remembered: ...` every time.
+- **A line after each run:** the goal and the first line of the answer.
+
+At the start of a conversation the agent gets the notes and the last few runs, marked as its own
+past notes, not instructions, and possibly out of date.
+
+- **Per host:** every shortcut to the same host (its SSH, tmux and web shortcuts) shares one memory,
+  since they are one machine. Properties > Connection > **Keep this shortcut's notes apart** gives a
+  shortcut its own. Shortcuts with no host (serial, local shells) always have their own.
+- **Off:** Properties > Connection > **The agent keeps notes between runs** (on by default).
+- **Memory** in the pane opens the notes as text: correct a line, delete one, or **Clear...** the
+  lot. **New** starts a conversation with the notes as they are now; one already open keeps what it
+  started with.
+- **Never secrets:** a note that looks like it holds a password, key or token is refused, and so is
+  one typed into the Memory window. Once something the agent read has tried to instruct it (the
+  tripwire), nothing more is remembered in that conversation and its run line keeps no outcome. A
+  memory that itself reads like instructions (edited by hand, or arrived through Sync) is left out,
+  and the pane says why.
+
+The notes are in `%APPDATA%\BaudHoundTerm\agent-memory\`, one Markdown file per host.
+
+### Reports
+
+Ask for a report or an export ("export this FortiGate's configuration as a report", "check the
+admin accounts and give me a report") and the agent saves a Markdown file with its `save_report`
+tool. The pane shows a bar with **Open**, **Save as...** and **Copy**; **Reports** opens the folder,
+`Documents\BaudHoundTerm\reports\<host>\`.
+
+- **The output is copied, not retyped.** Each command the agent runs gets an id (`o3`), and each page
+  it reads one too (`p2`). In the report the agent writes `{{o3}}` where that output belongs, and
+  BaudHoundTerm puts the command's whole output there, as the device printed it, including pages
+  the agent never read. A model retyping a long configuration drops and invents lines; a copy does
+  not. The agent's own text (the summary and findings) is marked as its account.
+- **A header written by BaudHoundTerm:** the device, the date and PC, the model, which outputs were
+  copied, and whether secrets are masked.
+- **Secrets are masked:** FortiOS `ENC` values, Cisco `secret`/`password`/`key-string` values, SNMP
+  communities, private keys and the like show as `********`, in the copied output and in the agent's
+  text. Common forms only: read a report before you share it. For a full backup with the secrets in
+  it, ask for one: the agent has to ask you, and the header then says the file holds them.
+- On remote desktops there is no text to copy: a report holds what the agent writes.
+- Saving a report changes nothing on the device, so it needs no approval; it never leaves this PC.
+
 ### Logs
 
 Every goal, model reply, action, approval and result is written to
@@ -871,8 +919,8 @@ Sync does not carry it to others.
 
 ## 9. Sync between PCs
 
-Keeps shortcuts, folders, agent endpoints, skills and trusted host keys the same on several PCs
-through a private git repository. Passwords, keys, KeePassXC pairings, serial port names and key
+Keeps shortcuts, folders, agent endpoints, skills, the agent's memory and trusted host keys the
+same on several PCs through a private git repository. Passwords, keys, KeePassXC pairings, serial port names and key
 file paths never leave the PC.
 
 **Help > Features > Sync between PCs** turns it off on this PC: no syncing and no Sync menu. The
@@ -891,6 +939,10 @@ says what happened.
 - Anything that looks like a password or key stops the commit.
 - A shortcut changed on two PCs keeps both versions, the other one named `(conflict, PC)`.
 - **Stop syncing** disconnects this PC; nothing is deleted anywhere.
+- **The agent's memory:** notes added on two PCs at once are merged, every line kept. A memory
+  cleared on one PC is cleared on the others; one a PC simply has not received yet deletes nothing.
+  A note that looks like a secret stops the commit. **Include the agent's memory** in the Sync window
+  turns it off for this PC. Reports are never synced.
 
 ## 10. Where things are stored
 
@@ -904,13 +956,14 @@ Everything is in `%APPDATA%\BaudHoundTerm\`:
 | `web_certs.json`, `web\` | Certificates trusted in Web tabs; each Web shortcut's own browser profile |
 | `agent.json` | Agent endpoints, without keys |
 | `skills\`, `agent-logs\` | Agent skills and logs |
+| `agent-memory\` | The agent's notes, one Markdown file per host |
 | `local-shells.json` | Settings of the Shell menu's tabs (commands, font, highlights) |
 | `logs\` | Session transcripts |
 | `sync.json`, `sync\` | Sync settings and the sync repository's copy |
 | `ui.json` | Window preferences |
 | `crash.log` | Errors the app could not handle |
 
-Camera snapshots go to `Pictures\BaudHoundTerm`, recordings to `Documents\BaudHoundTerm\recordings`. **Help > Open log folder** opens the transcripts.
+Camera snapshots go to `Pictures\BaudHoundTerm`, recordings to `Documents\BaudHoundTerm\recordings`, agent reports to `Documents\BaudHoundTerm\reports`. **Help > Open log folder** opens the transcripts.
 
 **Help > Report a problem** points to the [MAH7 Discord](https://mah7.com/discord) for problems and
 questions; give the build number from **Help > About**.

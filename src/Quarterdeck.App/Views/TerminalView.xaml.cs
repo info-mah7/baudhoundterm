@@ -1332,7 +1332,11 @@ public partial class TerminalView : UserControl, ITerminalTarget
             return;
         }
 
-        _agent = new AgentPanel(this, Definition.Protocol, _vault, text => Privacy.Mask(text, Definition)) { WebAllowChanges = Definition.WebAllowChanges };
+        _agent = new AgentPanel(this, Definition.Protocol, _vault, text => Privacy.Mask(text, Definition))
+        {
+            WebAllowChanges = Definition.WebAllowChanges,
+            Shortcut = () => Definition
+        };
         _agentMaskedHidden = Privacy.Hides(Definition);
         _agent.CloseRequested += (_, _) => DetachAgent();
         _agent.TrippedChanged += (_, _) => AgentAttachedChanged?.Invoke(this, EventArgs.Empty);

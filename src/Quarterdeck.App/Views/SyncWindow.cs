@@ -22,6 +22,12 @@ internal sealed class SyncWindow : Window
     private readonly TextBox _machine = new();
     private readonly TextBox _gitPath = new();
     private readonly CheckBox _auto = new() { Content = "Sync automatically: at start, a few seconds after each change, and every 5 minutes", Margin = new Thickness(0, 8, 0, 0) };
+    private readonly CheckBox _memory = new()
+    {
+        Content = "Include the agent's memory (its notes about each host)",
+        Margin = new Thickness(0, 6, 0, 0),
+        ToolTip = "Per PC. Off, this PC's notes stay here and it receives none from the others; shortcuts still sync."
+    };
     private readonly TextBlock _git = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
     private readonly StackPanel _buttons = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
@@ -67,6 +73,7 @@ internal sealed class SyncWindow : Window
         root.Children.Add(row);
         Field(root, "git.exe (blank finds Git for Windows)", _gitPath);
         root.Children.Add(_auto);
+        root.Children.Add(_memory);
 
         _connect = Btn("Connect", async () => await ConnectAsync(), "Clone the repository and merge this PC's shortcuts into it");
         _syncNow = Btn("Sync now", async () => await SyncAsync());
@@ -87,6 +94,12 @@ internal sealed class SyncWindow : Window
         _machine.Text = settings.MachineName;
         _gitPath.Text = settings.GitPath;
         _auto.IsChecked = settings.Automatic;
+        _memory.IsChecked = settings.SyncAgentMemory;
+        _memory.Click += (_, _) =>
+        {
+            _settings.SyncAgentMemory = _memory.IsChecked == true;
+            _settings.Save();
+        };
         _auto.Click += (_, _) =>
         {
             _settings.Automatic = _auto.IsChecked == true;

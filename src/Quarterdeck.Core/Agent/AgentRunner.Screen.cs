@@ -86,6 +86,7 @@ public sealed partial class AgentRunner
         sb.AppendLine("When the goal is done, or cannot be done, reply in plain text without calling a tool: what you did, " +
                       "what you saw, and anything left for the user. Be brief.");
         AppendSkills(sb);
+        AppendMemory(sb);
         return sb.ToString();
     }
 

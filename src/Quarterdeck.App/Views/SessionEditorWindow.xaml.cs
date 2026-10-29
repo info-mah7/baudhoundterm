@@ -143,6 +143,8 @@ public partial class SessionEditorWindow : Window
         KvmHostBox.Text = d.Host;
         WebUrlBox.Text = d.WebUrl;
         WebAllowChangesBox.IsChecked = d.WebAllowChanges;
+        AgentMemoryBox.IsChecked = d.AgentMemory;
+        AgentMemoryOwnBox.IsChecked = d.AgentMemoryOwn;
         ShowWebCertificate();
         KvmPortBox.Text = (d.KvmPort > 0 ? d.KvmPort : 9200).ToString(CultureInfo.InvariantCulture);
         KvmTlsBox.IsChecked = d.KvmTls;
@@ -805,6 +807,9 @@ public partial class SessionEditorWindow : Window
                 _vault.Set(d.Id, KvmVideoSecretBox.Password);
             }
         }
+
+        d.AgentMemory = AgentMemoryBox.IsChecked == true;
+        d.AgentMemoryOwn = AgentMemoryOwnBox.IsChecked == true;
 
         if (d.Protocol == SessionProtocol.Web)
         {

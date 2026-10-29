@@ -95,6 +95,14 @@ internal sealed class AgentPanel : DockPanel
     /// <summary>A Web tab whose shortcut lets the agent change settings (asking as the endpoint says).</summary>
     public bool WebAllowChanges { get; init; }
 
+    /// <summary>The tab's shortcut as it is now (edits included): its memory, and where its reports go.</summary>
+    public Func<Core.Model.SessionDefinition?>? Shortcut { get; init; }
+
+    // The last report saved, with Open, Save as and Copy; hidden until there is one.
+    private readonly DockPanel _reportBar = new() { Margin = new Thickness(8, 4, 8, 0), Visibility = Visibility.Collapsed };
+    private readonly TextBlock _reportName = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+    private string? _reportPath;
+
     public AgentPanel(IAgentTarget target, Core.Model.SessionProtocol protocol, CredentialVault vault, Func<string, string> mask)
     {
         _mask = mask;
@@ -122,6 +130,16 @@ internal sealed class AgentPanel : DockPanel
         settings.Click += (_, _) => OpenSettings();
         DockPanel.SetDock(settings, Dock.Right);
         header.Children.Add(settings);
+
+        var memory = new Button { Content = "Memory", ToolTip = "What the agent keeps between runs on this host: read, edit or clear it", Margin = new Thickness(0, 0, 4, 0) };
+        memory.Click += (_, _) => OpenMemory();
+        DockPanel.SetDock(memory, Dock.Right);
+        header.Children.Add(memory);
+
+        var reports = new Button { Content = "Reports", ToolTip = "Open the folder with the reports the agent saved", Margin = new Thickness(0, 0, 4, 0) };
+        reports.Click += (_, _) => OpenFolder(AgentReport.DefaultFolder);
+        DockPanel.SetDock(reports, Dock.Right);
+        header.Children.Add(reports);
 
         var title = new StackPanel { Orientation = Orientation.Horizontal };
         title.Children.Add(SessionPresentation.BotIcon(16, new SolidColorBrush(Color.FromRgb(0x56, 0xB6, 0xC2))));
@@ -155,6 +173,25 @@ internal sealed class AgentPanel : DockPanel
         bottom.Children.Add(_goal);
         DockPanel.SetDock(bottom, Dock.Bottom);
         Children.Add(bottom);
+
+        var reportButtons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 0, 0, 0) };
+        foreach (var (label, tip, act) in new (string, string, Action)[]
+                 {
+                     ("Open", "Open the report", () => OpenFile(_reportPath)),
+                     ("Save as...", "Save a copy somewhere else", SaveReportAs),
+                     ("Copy", "Copy the report's text", CopyReport)
+                 })
+        {
+            var b = new Button { Content = label, ToolTip = tip, Padding = new Thickness(6, 0, 6, 0), Margin = new Thickness(0, 0, 4, 0) };
+            b.Click += (_, _) => act();
+            reportButtons.Children.Add(b);
+        }
+
+        DockPanel.SetDock(reportButtons, Dock.Right);
+        _reportBar.Children.Add(reportButtons);
+        _reportBar.Children.Add(_reportName);
+        DockPanel.SetDock(_reportBar, Dock.Bottom);
+        Children.Add(_reportBar);
 
         _transcript.Margin = new Thickness(8, 0, 8, 0);
         Children.Add(_transcript);
@@ -383,6 +420,18 @@ internal sealed class AgentPanel : DockPanel
                 }
             }
 
+            // Memory last: setting it builds the instructions, which check it against the injection patterns.
+            var shortcut = Shortcut?.Invoke();
+            var sync = Core.Sync.SyncSettings.Load();
+            _runner.MachineName = string.IsNullOrWhiteSpace(sync.MachineName) ? Environment.MachineName : sync.MachineName.Trim();
+            _runner.ReportSubject = shortcut is null ? _target.SessionName
+                : shortcut.Host.Trim().Length > 0 ? shortcut.Host.Trim() : shortcut.Name;
+            _runner.Memory = shortcut is null ? null : AgentMemory.For(shortcut);
+            if (_runner.MemoryProblem is { } problem)
+            {
+                Append("⚠ " + problem);
+            }
+
             _runner.Event += e => Dispatcher.BeginInvoke(() => Show(e));
             var runner = _runner;
             _runner.Approve = command => Dispatcher.InvokeAsync(() => MessageBox.Show(
@@ -445,10 +494,83 @@ internal sealed class AgentPanel : DockPanel
                 Append(e.Text);
                 ShowTripped(e.Text);
                 break;
+            case "memory":
+                Append("  🧠 remembered: " + e.Text);
+                break;
+            case "report":
+                Append("  📄 report saved: " + e.Text);
+                ShowReport(e.Text);
+                break;
             default:
                 Append(e.Text);
                 break;
         }
+    }
+
+    private void ShowReport(string path)
+    {
+        _reportPath = path;
+        _reportName.Text = "📄 " + System.IO.Path.GetFileName(path);
+        _reportName.ToolTip = path;
+        _reportBar.Visibility = Visibility.Visible;
+    }
+
+    private void CopyReport()
+    {
+        try
+        {
+            if (_reportPath is not null)
+            {
+                Clipboard.SetText(System.IO.File.ReadAllText(_reportPath));
+            }
+        }
+        catch (Exception ex) when (ex is IOException or System.Runtime.InteropServices.COMException)
+        {
+            Append("✖ Could not copy the report: " + ex.Message);
+        }
+    }
+
+    private void SaveReportAs()
+    {
+        if (_reportPath is null || !System.IO.File.Exists(_reportPath))
+        {
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            FileName = System.IO.Path.GetFileName(_reportPath),
+            Filter = "Markdown (*.md)|*.md|All files (*.*)|*.*"
+        };
+        if (dialog.ShowDialog(Window.GetWindow(this)) == true)
+        {
+            System.IO.File.Copy(_reportPath, dialog.FileName, overwrite: true);
+        }
+    }
+
+    private static void OpenFile(string? path)
+    {
+        if (path is not null && System.IO.File.Exists(path))
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        }
+    }
+
+    /// <summary>The Memory button: this shortcut's notes, to read, edit or clear.</summary>
+    private void OpenMemory()
+    {
+        var shortcut = Shortcut?.Invoke();
+        var memory = shortcut is null ? null : AgentMemory.For(shortcut);
+        if (memory is null)
+        {
+            MessageBox.Show(Window.GetWindow(this)!, shortcut is null
+                    ? "This tab has no shortcut, so the agent keeps nothing between runs here."
+                    : "Memory is off for this shortcut: Properties > Connection > \"The agent keeps notes between runs\".",
+                "Agent memory", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        new MemoryWindow(memory) { Owner = Window.GetWindow(this) }.ShowDialog();
     }
 
     private void Append(string line)

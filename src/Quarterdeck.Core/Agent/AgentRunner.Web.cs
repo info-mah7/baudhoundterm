@@ -78,6 +78,7 @@ public sealed partial class AgentRunner
         sb.AppendLine("When the goal is done, or cannot be done, reply in plain text without calling a tool: what you checked, " +
                       "what you found (with the rows or values quoted), and anything left for the user. Be brief.");
         AppendSkills(sb);
+        AppendMemory(sb);
         return sb.ToString();
     }
 
@@ -237,7 +238,9 @@ public sealed partial class AgentRunner
                 var n = Math.Clamp(Int(args, "part", 1), 1, parts.Count);
                 Emit("action", parts.Count > 1 ? $"read the page (part {n} of {parts.Count})" : "read the page");
                 var note = parts.Count > 1 ? $" Part {n} of {parts.Count}: read_page part={Math.Min(n + 1, parts.Count)} for more, or find=\"text\"." : "";
-                return Untrusted($"Page \"{title}\" ({url}).{note}\n{parts[n - 1]}", "web page");
+                // The id stands for the whole page, every part, as it is now.
+                var id = CapturePage($"{title} ({url})", text);
+                return $"[{id}] " + Untrusted($"Page \"{title}\" ({url}).{note}\n{parts[n - 1]}", "web page");
             }
 
             case "click":
