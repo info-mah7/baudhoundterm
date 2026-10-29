@@ -146,10 +146,12 @@ whose name or host contains "lab".</li>
 <li><strong>Group by host</strong> (the 🖥 button): every host gets a
 row, named after the machine with its address in brackets, e.g.
 <code>web01 (192.0.2.10)</code>, and its shortcuts in that folder sit
-under it, whether there is one or several. Right-click that row &gt;
-<strong>Connect</strong> to choose which one; with only one,
-double-clicking the row connects it. Serial ports and local shells have
-no host and stay as single rows.</li>
+under it, whether there is one or several. The row takes a name its
+shortcuts share; when every shortcut has its own name (an SSH shortcut
+and a few tmux ones, say), it shows the host and each shortcut keeps its
+name. Right-click that row &gt; <strong>Connect</strong> to choose which
+one; with only one, double-clicking the row connects it. Serial ports
+and local shells have no host and stay as single rows.</li>
 <li><strong>Address details:</strong> <strong>Shortcut &gt; Show address
 details in the list</strong> off leaves the list with names only: no
 <code>user@host:port</code> beside a shortcut and no address beside a
@@ -314,9 +316,11 @@ script and start the script).</p>
 SSH shortcut and choose <strong>Create tmux shortcut...</strong>: a new
 shortcut to the same host and login, with tmux on and a session of its
 own named after it, and the stored password or key passphrase copied.
-Name it in the properties window (the session name follows as you type),
-add a folder or start command if you like, and <strong>Save</strong>. It
-sits beside the original under the host.</p>
+The suggested name is free (<code>web01 tmux</code>, then
+<code>web01 tmux 2</code>), so each gets its own session. Name it in the
+properties window (the session name follows as you type), add a folder
+or start command if you like, and <strong>Save</strong>. It sits beside
+the original under the host.</p>
 <p><strong>A tmux shortcut from an open plain SSH session.</strong>
 Right-click an SSH tab that is not in tmux (or its row in the list) and
 choose <strong>Create tmux shortcut from this session...</strong>. The
@@ -1190,6 +1194,74 @@ the model cannot add one. Helpers must be on this PC unless
 <code>allowRemote</code> is set, since arguments, and screenshots if
 sent, would leave the machine. Calls follow the endpoint's Approval
 setting and are logged like other steps.</p>
+<h3 id="memory">Memory</h3>
+<p>The agent keeps notes between conversations, so it does not start
+from nothing on a machine it has worked on. Two kinds of line:</p>
+<ul>
+<li><strong>Notes</strong> it chooses to keep with its
+<code>remember</code> tool: what the device is, where things are, a
+quirk it had to work around. One fact each; the pane shows
+<code>🧠 remembered: ...</code> every time.</li>
+<li><strong>A line after each run:</strong> the goal and the first line
+of the answer.</li>
+</ul>
+<p>At the start of a conversation the agent gets the notes and the last
+few runs, marked as its own past notes, not instructions, and possibly
+out of date.</p>
+<ul>
+<li><strong>Per host:</strong> every shortcut to the same host (its SSH,
+tmux and web shortcuts) shares one memory, since they are one machine.
+Properties &gt; Connection &gt; <strong>Keep this shortcut's notes
+apart</strong> gives a shortcut its own. Shortcuts with no host (serial,
+local shells) always have their own.</li>
+<li><strong>Off:</strong> Properties &gt; Connection &gt; <strong>The
+agent keeps notes between runs</strong> (on by default).</li>
+<li><strong>Memory</strong> in the pane opens the notes as text: correct
+a line, delete one, or <strong>Clear...</strong> the lot.
+<strong>New</strong> starts a conversation with the notes as they are
+now; one already open keeps what it started with.</li>
+<li><strong>Never secrets:</strong> a note that looks like it holds a
+password, key or token is refused, and so is one typed into the Memory
+window. Once something the agent read has tried to instruct it (the
+tripwire), nothing more is remembered in that conversation and its run
+line keeps no outcome. A memory that itself reads like instructions
+(edited by hand, or arrived through Sync) is left out, and the pane says
+why.</li>
+</ul>
+<p>The notes are in <code>%APPDATA%\BaudHoundTerm\agent-memory\</code>,
+one Markdown file per host.</p>
+<h3 id="reports">Reports</h3>
+<p>Ask for a report or an export ("export this FortiGate's configuration
+as a report", "check the admin accounts and give me a report") and the
+agent saves a Markdown file with its <code>save_report</code> tool. The
+pane shows a bar with <strong>Open</strong>, <strong>Save as...</strong>
+and <strong>Copy</strong>; <strong>Reports</strong> opens the folder,
+<code>Documents\BaudHoundTerm\reports\&lt;host&gt;\</code>.</p>
+<ul>
+<li><strong>The output is copied, not retyped.</strong> Each command the
+agent runs gets an id (<code>o3</code>), and each page it reads one too
+(<code>p2</code>). In the report the agent writes <code>{{o3}}</code>
+where that output belongs, and BaudHoundTerm puts the command's whole
+output there, as the device printed it, including pages the agent never
+read. A model retyping a long configuration drops and invents lines; a
+copy does not. The agent's own text (the summary and findings) is marked
+as its account.</li>
+<li><strong>A header written by BaudHoundTerm:</strong> the device, the
+date and PC, the model, which outputs were copied, and whether secrets
+are masked.</li>
+<li><strong>Secrets are masked:</strong> FortiOS <code>ENC</code>
+values, Cisco
+<code>secret</code>/<code>password</code>/<code>key-string</code>
+values, SNMP communities, private keys and the like show as
+<code>********</code>, in the copied output and in the agent's text.
+Common forms only: read a report before you share it. For a full backup
+with the secrets in it, ask for one: the agent has to ask you, and the
+header then says the file holds them.</li>
+<li>On remote desktops there is no text to copy: a report holds what the
+agent writes.</li>
+<li>Saving a report changes nothing on the device, so it needs no
+approval; it never leaves this PC.</li>
+</ul>
 <h3 id="logs">Logs</h3>
 <p>Every goal, model reply, action, approval and result is written to
 <code>%APPDATA%\BaudHoundTerm\agent-logs\</code>, one file per day.
@@ -1200,10 +1272,10 @@ conversation is written to disk; the panel still shows it until the tab
 closes, and files already in the folder stay until you delete them. The
 setting belongs to this PC: Sync does not carry it to others.</p>
 <h2 id="9-sync-between-pcs">9. Sync between PCs</h2>
-<p>Keeps shortcuts, folders, agent endpoints, skills and trusted host
-keys the same on several PCs through a private git repository.
-Passwords, keys, KeePassXC pairings, serial port names and key file
-paths never leave the PC.</p>
+<p>Keeps shortcuts, folders, agent endpoints, skills, the agent's memory
+and trusted host keys the same on several PCs through a private git
+repository. Passwords, keys, KeePassXC pairings, serial port names and
+key file paths never leave the PC.</p>
 <p><strong>Help &gt; Features &gt; Sync between PCs</strong> turns it
 off on this PC: no syncing and no Sync menu. The repository settings are
 kept for when it is ticked again.</p>
@@ -1228,6 +1300,12 @@ before every push.</li>
 named <code>(conflict, PC)</code>.</li>
 <li><strong>Stop syncing</strong> disconnects this PC; nothing is
 deleted anywhere.</li>
+<li><strong>The agent's memory:</strong> notes added on two PCs at once
+are merged, every line kept. A memory cleared on one PC is cleared on
+the others; one a PC simply has not received yet deletes nothing. A note
+that looks like a secret stops the commit. <strong>Include the agent's
+memory</strong> in the Sync window turns it off for this PC. Reports are
+never synced.</li>
 </ul>
 <h2 id="10-where-things-are-stored">10. Where things are stored</h2>
 <p>Everything is in <code>%APPDATA%\BaudHoundTerm\</code>:</p>
@@ -1266,6 +1344,10 @@ profile</td>
 <td>Agent skills and logs</td>
 </tr>
 <tr>
+<td><code>agent-memory\</code></td>
+<td>The agent's notes, one Markdown file per host</td>
+</tr>
+<tr>
 <td><code>local-shells.json</code></td>
 <td>Settings of the Shell menu's tabs (commands, font, highlights)</td>
 </tr>
@@ -1288,8 +1370,9 @@ profile</td>
 </tbody>
 </table>
 <p>Camera snapshots go to <code>Pictures\BaudHoundTerm</code>,
-recordings to <code>Documents\BaudHoundTerm\recordings</code>.
-<strong>Help &gt; Open log folder</strong> opens the transcripts.</p>
+recordings to <code>Documents\BaudHoundTerm\recordings</code>, agent
+reports to <code>Documents\BaudHoundTerm\reports</code>. <strong>Help
+&gt; Open log folder</strong> opens the transcripts.</p>
 <p><strong>Help &gt; Report a problem</strong> points to the <a
 href="https://mah7.com/discord">MAH7 Discord</a> for problems and
 questions; give the build number from <strong>Help &gt;
