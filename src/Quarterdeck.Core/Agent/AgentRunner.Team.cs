@@ -22,6 +22,8 @@ public sealed partial class AgentRunner
 
     private AgentTeamMember? _team;
     private int _mailAtAnswer;
+    private int _teamNudges;
+    private bool _toldPartner;
 
     private static readonly JsonArray TeamTools = JsonNode.Parse("""
         [
@@ -83,6 +85,7 @@ public sealed partial class AgentRunner
 
                 Emit("partner_out", message);
                 Log("tell_partner", text: message);
+                _toldPartner = true;
                 return _team.Send(message)
                     ? "sent. It reads it before its next step; carry on with your own side meanwhile."
                     : "not delivered: the partner's run has already ended. Finish your side and report.";
@@ -164,10 +167,47 @@ public sealed partial class AgentRunner
         return true;
     }
 
+    /// <summary>
+    /// A paired agent that answers without ever having told the partner anything, or says in its
+    /// answer that it is waiting for the partner, has mistaken text for the tools: once or twice,
+    /// it is sent back to them. A model wrote "I have informed the partner" having called nothing.
+    /// </summary>
+    private bool TeamBeforeAnswer(string content)
+    {
+        if (_team is null || _team.PartnerFinished || _teamNudges >= 2)
+        {
+            return false;
+        }
+
+        string? nudge = null;
+        if (!_toldPartner)
+        {
+            nudge = "You have not sent the partner anything: text in your answer does not reach it, only the tell_partner tool " +
+                    "does. Call tell_partner with what it needs from your side (your address, your networks, the values you chose " +
+                    "or agreed), then carry on; wait_for_partner when you need its answer.";
+        }
+        else if (content.Contains("wait", StringComparison.OrdinalIgnoreCase) && content.Contains("partner", StringComparison.OrdinalIgnoreCase))
+        {
+            nudge = "To wait for the partner, call wait_for_partner: an answer ends your run, and nothing more would reach you.";
+        }
+
+        if (nudge is null)
+        {
+            return false;
+        }
+
+        _teamNudges++;
+        Log("team_nudge", text: nudge);
+        _messages.Add(new JsonObject { ["role"] = "user", ["content"] = nudge });
+        return true;
+    }
+
     /// <summary>The run ended: the partner learns, whatever the ending was.</summary>
     private void FinishTeam(string answer)
     {
         _team?.Finish(answer);
         _mailAtAnswer = 0;
+        _teamNudges = 0;
+        _toldPartner = false;
     }
 }

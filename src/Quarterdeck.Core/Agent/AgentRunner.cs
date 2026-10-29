@@ -672,7 +672,7 @@ public sealed partial class AgentRunner
                         continue;
                     }
 
-                    if (MailBeforeAnswer())
+                    if (MailBeforeAnswer() || TeamBeforeAnswer(content))
                     {
                         continue;
                     }

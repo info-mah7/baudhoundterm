@@ -193,7 +193,9 @@ internal sealed class AgentPanel : DockPanel
         _partner.Items.Add(Alone);
         _partner.SelectedIndex = 0;
         _partner.DropDownOpened += (_, _) => RefreshPartners();
-        _partner.Visibility = Peers is null ? Visibility.Collapsed : Visibility.Visible;
+        // Peers is set by the host after construction: decide once the pane is on screen.
+        _partner.Visibility = Visibility.Collapsed;
+        Loaded += (_, _) => _partner.Visibility = Peers is null ? Visibility.Collapsed : Visibility.Visible;
         setup.Children.Add(_partner);
         _skillsBox.Content = _skills;
         setup.Children.Add(_skillsBox);
