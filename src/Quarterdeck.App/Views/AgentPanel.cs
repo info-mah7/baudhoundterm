@@ -98,6 +98,39 @@ internal sealed class AgentPanel : DockPanel
     /// <summary>The tab's shortcut as it is now (edits included): its memory, and where its reports go.</summary>
     public Func<Core.Model.SessionDefinition?>? Shortcut { get; init; }
 
+    /// <summary>The other open tabs an agent here can work with (see <see cref="AgentPeer"/>); null when the host offers none.</summary>
+    internal Func<IReadOnlyList<AgentPeer>>? Peers { get; init; }
+
+    // "Work with": the partner for the next goal, and the team side handed to this pane when
+    // the goal was started from the partner's pane.
+    private readonly ComboBox _partner = new() { Margin = new Thickness(0, 4, 4, 0), ToolTip = "Run the next goal together with the agent on another open tab: the two talk to each other while each works on its own device" };
+    private AgentTeamMember? _pendingTeam;
+    private const string Alone = "Work alone";
+
+    /// <summary>A run is going; a partner cannot start another here.</summary>
+    public bool IsRunning => _cts is not null;
+
+    /// <summary>Starts <paramref name="goal"/> here as the partner's side of a pair.</summary>
+    internal Task StartWithTeamAsync(string goal, AgentTeamMember member)
+    {
+        _pendingTeam = member;
+        _goal.Text = goal;
+        return RunOrStopAsync();
+    }
+
+    private void RefreshPartners()
+    {
+        var was = _partner.SelectedItem;
+        _partner.Items.Clear();
+        _partner.Items.Add(Alone);
+        foreach (var peer in Peers?.Invoke() ?? [])
+        {
+            _partner.Items.Add(peer);
+        }
+
+        _partner.SelectedItem = was is AgentPeer p && _partner.Items.OfType<AgentPeer>().FirstOrDefault(x => x.Title == p.Title) is { } same ? same : Alone;
+    }
+
     // The last report saved, with Open, Save as and Copy; hidden until there is one.
     private readonly DockPanel _reportBar = new() { Margin = new Thickness(8, 4, 8, 0), Visibility = Visibility.Collapsed };
     private readonly TextBlock _reportName = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -157,6 +190,11 @@ internal sealed class AgentPanel : DockPanel
 
         var setup = new StackPanel { Margin = new Thickness(8, 0, 8, 4) };
         setup.Children.Add(_endpoints);
+        _partner.Items.Add(Alone);
+        _partner.SelectedIndex = 0;
+        _partner.DropDownOpened += (_, _) => RefreshPartners();
+        _partner.Visibility = Peers is null ? Visibility.Collapsed : Visibility.Visible;
+        setup.Children.Add(_partner);
         _skillsBox.Content = _skills;
         setup.Children.Add(_skillsBox);
         DockPanel.SetDock(setup, Dock.Top);
@@ -446,9 +484,35 @@ internal sealed class AgentPanel : DockPanel
             _runnerKey = key;
         }
 
+        // A pair: this pane's side was handed over by the partner, or the user picked a partner
+        // here, in which case that pane gets the same goal and the other side.
+        var team = _pendingTeam;
+        _pendingTeam = null;
+        AgentPanel? partnerPanel = null;
+        if (team is null && _partner.SelectedItem is AgentPeer peer)
+        {
+            partnerPanel = peer.Panel();
+            if (partnerPanel is null)
+            {
+                Append($"The agent on {peer.Title} cannot be started.");
+                return;
+            }
+
+            if (partnerPanel.IsRunning)
+            {
+                Append($"The agent on {peer.Title} is busy; wait for it to finish, or stop it.");
+                return;
+            }
+
+            var (mine, theirs) = AgentTeam.Pair(_target.Describe, peer.Describe);
+            team = mine;
+            _ = partnerPanel.StartWithTeamAsync(goal, theirs);
+        }
+
+        _runner.Team = team;
         _goal.Clear();
         Append("");
-        Append("▶ " + goal);
+        Append(team is null ? "▶ " + goal : $"▶ {goal}   (with the agent on {team.Partner.Device})");
         _cts = new CancellationTokenSource();
         ShowRunButton();
         _endpoints.IsEnabled = false;
@@ -470,6 +534,11 @@ internal sealed class AgentPanel : DockPanel
         {
             _cts.Dispose();
             _cts = null;
+            if (_runner is not null)
+            {
+                _runner.Team = null;   // the pair was for this goal; the next one is asked for again
+            }
+
             ShowRunButton();
             _endpoints.IsEnabled = true;
             _goal.Focus();
@@ -501,6 +570,12 @@ internal sealed class AgentPanel : DockPanel
             case "report":
                 Append("  📄 report saved: " + e.Text);
                 ShowReport(e.Text);
+                break;
+            case "partner_out":
+                Append("  → to partner: " + e.Text);
+                break;
+            case "partner_in":
+                Append("  ← from partner: " + e.Text);
                 break;
             default:
                 Append(e.Text);
@@ -710,4 +785,10 @@ internal sealed class AgentPanel : DockPanel
     public void NoteUserInput() => _runner?.NoteOutsideInput();
 
     public void FocusGoal() => _goal.Focus();
+}
+
+/// <summary>Another open tab an agent can pair with: its name, how its device is described, and a way to get (and attach) its pane.</summary>
+internal sealed record AgentPeer(string Title, string Describe, Func<AgentPanel?> Panel)
+{
+    public override string ToString() => "Work with " + Title;
 }

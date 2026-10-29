@@ -79,6 +79,7 @@ public sealed partial class AgentRunner
                       "what you found (with the rows or values quoted), and anything left for the user. Be brief.");
         AppendSkills(sb);
         AppendMemory(sb);
+        AppendTeam(sb);
         return sb.ToString();
     }
 

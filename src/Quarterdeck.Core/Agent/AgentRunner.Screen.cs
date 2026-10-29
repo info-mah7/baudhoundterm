@@ -87,6 +87,7 @@ public sealed partial class AgentRunner
                       "what you saw, and anything left for the user. Be brief.");
         AppendSkills(sb);
         AppendMemory(sb);
+        AppendTeam(sb);
         return sb.ToString();
     }
 

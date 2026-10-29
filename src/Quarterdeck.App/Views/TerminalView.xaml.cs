@@ -1313,6 +1313,19 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
     private AgentPanel? _agent;
 
+    /// <summary>Set by the window: the other open tabs, for "Work with" in the agent pane.</summary>
+    public Func<IEnumerable<TerminalView>>? PeerViews { get; set; }
+
+    private IReadOnlyList<AgentPeer> AgentPeers() =>
+        (PeerViews?.Invoke() ?? [])
+        .Where(v => !ReferenceEquals(v, this) && v.CanAttachAgent)
+        .Select(v => new AgentPeer(v.Definition.Name, v.Describe, () =>
+        {
+            v.AttachAgent();
+            return v._agent;
+        }))
+        .ToList();
+
     public bool IsAgentAttached => _agent is not null;
 
     /// <summary>The attached agent read text aimed at it (its tripwire fired); the tab header shows it.</summary>
@@ -1352,7 +1365,8 @@ public partial class TerminalView : UserControl, ITerminalTarget
         _agent = new AgentPanel(this, Definition.Protocol, _vault, text => Privacy.Mask(text, Definition))
         {
             WebAllowChanges = Definition.WebAllowChanges,
-            Shortcut = () => Definition
+            Shortcut = () => Definition,
+            Peers = PeerViews is null ? null : AgentPeers
         };
         _agentMaskedHidden = Privacy.Hides(Definition);
         _agent.CloseRequested += (_, _) => DetachAgent();

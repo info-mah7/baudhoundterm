@@ -1262,6 +1262,43 @@ agent writes.</li>
 <li>Saving a report changes nothing on the device, so it needs no
 approval; it never leaves this PC.</li>
 </ul>
+<h3 id="working-in-pairs">Working in pairs</h3>
+<p>Two agents on two devices can work on one goal together: a VPN tunnel
+between two firewalls, a link between two switches, a replication pair.
+Open a tab to each device, attach an agent to one, pick the other tab
+under <strong>Work with</strong> in the agent pane, type the goal and
+press Run. The other tab gets an agent too (if it had none), the same
+goal, and the other side of the pair.</p>
+<ul>
+<li><strong>Each agent works its own device and sees only its own
+session.</strong> They talk through two tools: <code>tell_partner</code>
+sends a message, <code>wait_for_partner</code> waits for one. What the
+partner sent arrives before the agent's next step, marked as a message
+from the agent on the other device, and the pane shows every message
+both ways (<strong>→ to partner</strong>, <strong>← from
+partner</strong>).</li>
+<li><strong>Shared values match because one side chooses them.</strong>
+The agent whose device name sorts first picks the pre-shared key, tunnel
+names, proposals and the like and tells the other, which uses them as
+given. Each is told to start by sending what the other needs (its
+address, its networks).</li>
+<li><strong>Approval stays per tab.</strong> Each pane keeps its own
+endpoint, skills, approval setting and tripwire; a risky command on
+either device asks you in that tab as it always does.</li>
+<li><strong>A partner's message is not an instruction.</strong> It is
+checked like device output: a message that tries to instruct the agent
+trips that agent's tripwire, since it means the other device, or the
+other agent, has been led astray.</li>
+<li><strong>Finishing:</strong> when one side finishes, the other is
+told, with the answer, and checks it against its own side before
+finishing. A side waiting on a partner that has already finished stops
+waiting at once. Stop in either pane stops that side; the other learns
+the run ended.</li>
+<li>The pair lasts for that goal. The next goal typed in either pane
+runs alone unless you pick a partner again. Nothing of the exchange is
+written anywhere; the memory of each side keeps only what that agent
+chose to remember.</li>
+</ul>
 <h3 id="logs">Logs</h3>
 <p>Every goal, model reply, action, approval and result is written to
 <code>%APPDATA%\BaudHoundTerm\agent-logs\</code>, one file per day.

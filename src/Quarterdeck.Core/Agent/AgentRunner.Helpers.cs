@@ -11,7 +11,7 @@ public sealed partial class AgentRunner
 
     /// <summary>The names of the tools the agent always has, so a helper cannot take one over.</summary>
     public IEnumerable<string> BuiltInToolNames =>
-        ModeTools.Select(t => t?["function"]?["name"]?.ToString() ?? "").Concat(SharedToolNames);
+        ModeTools.Select(t => t?["function"]?["name"]?.ToString() ?? "").Concat(SharedToolNames).Concat(TeamToolNames);
 
     private JsonArray ModeTools => _web is not null ? WebTools : _screen is not null ? ScreenTools : Tools;
 
@@ -20,7 +20,21 @@ public sealed partial class AgentRunner
         var tools = ModeTools.DeepClone().AsArray();
         foreach (var shared in SharedTools)
         {
+            // No memory for this tab: offering remember only costs the model steps on "not kept".
+            if (_memory is null && shared?["function"]?["name"]?.ToString() == "remember")
+            {
+                continue;
+            }
+
             tools.Add(shared!.DeepClone());
+        }
+
+        if (_team is not null)
+        {
+            foreach (var t in TeamTools)
+            {
+                tools.Add(t!.DeepClone());
+            }
         }
 
         if (_target is IRecordable)

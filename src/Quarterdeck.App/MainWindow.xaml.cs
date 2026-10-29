@@ -1320,6 +1320,7 @@ public partial class MainWindow : Window
             Colour = string.IsNullOrEmpty(colour) ? ColourForNewTab(definition) : colour
         };
         _live.Add(live);
+        view.PeerViews = () => _live.Select(l => l.View);
 
         RefreshTab(live);
         tab.ContextMenu = BuildTabMenu(tab, definition);

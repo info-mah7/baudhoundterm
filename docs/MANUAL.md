@@ -907,6 +907,32 @@ tool. The pane shows a bar with **Open**, **Save as...** and **Copy**; **Reports
 - On remote desktops there is no text to copy: a report holds what the agent writes.
 - Saving a report changes nothing on the device, so it needs no approval; it never leaves this PC.
 
+### Working in pairs
+
+Two agents on two devices can work on one goal together: a VPN tunnel between two firewalls, a
+link between two switches, a replication pair. Open a tab to each device, attach an agent to one,
+pick the other tab under **Work with** in the agent pane, type the goal and press Run. The other
+tab gets an agent too (if it had none), the same goal, and the other side of the pair.
+
+- **Each agent works its own device and sees only its own session.** They talk through two
+  tools: `tell_partner` sends a message, `wait_for_partner` waits for one. What the partner sent
+  arrives before the agent's next step, marked as a message from the agent on the other device,
+  and the pane shows every message both ways (**→ to partner**, **← from partner**).
+- **Shared values match because one side chooses them.** The agent whose device name sorts first
+  picks the pre-shared key, tunnel names, proposals and the like and tells the other, which uses
+  them as given. Each is told to start by sending what the other needs (its address, its networks).
+- **Approval stays per tab.** Each pane keeps its own endpoint, skills, approval setting and
+  tripwire; a risky command on either device asks you in that tab as it always does.
+- **A partner's message is not an instruction.** It is checked like device output: a message that
+  tries to instruct the agent trips that agent's tripwire, since it means the other device, or the
+  other agent, has been led astray.
+- **Finishing:** when one side finishes, the other is told, with the answer, and checks it against
+  its own side before finishing. A side waiting on a partner that has already finished stops
+  waiting at once. Stop in either pane stops that side; the other learns the run ended.
+- The pair lasts for that goal. The next goal typed in either pane runs alone unless you pick a
+  partner again. Nothing of the exchange is written anywhere; the memory of each side keeps only
+  what that agent chose to remember.
+
 ### Logs
 
 Every goal, model reply, action, approval and result is written to
