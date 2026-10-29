@@ -70,7 +70,9 @@ shortcut...**, the **+** above the list, or Ctrl+Shift+T.
   whose name or host contains "lab".
 - **Group by host** (the 🖥 button): every host gets a row, named after the machine with its
   address in brackets, e.g. `web01 (192.0.2.10)`, and its shortcuts in that folder sit under it,
-  whether there is one or several. Right-click that row > **Connect** to choose which one; with
+  whether there is one or several. The row takes a name its shortcuts share; when every shortcut
+  has its own name (an SSH shortcut and a few tmux ones, say), it shows the host and each
+  shortcut keeps its name. Right-click that row > **Connect** to choose which one; with
   only one, double-clicking the row connects it. Serial ports and local shells have no host and
   stay as single rows.
 - **Address details:** **Shortcut > Show address details in the list** off leaves the list with

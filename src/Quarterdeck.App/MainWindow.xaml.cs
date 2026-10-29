@@ -495,14 +495,18 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// A host group is called by the name most of its sessions share; on a tie, by the SSH
-    /// session's name, since that is usually the machine's own; with no names, by the host.
+    /// A host group is called by its one session's name, or by the name most of its sessions
+    /// share (on a tie, the SSH one's, since that is usually the machine's own); when no name is
+    /// shared, by the host. Taking one of several different names made that shortcut's row go
+    /// blank under it, and which one won depended on the list's order: often the newest tmux
+    /// shortcut.
     /// </summary>
-    private static string GroupTitle(List<SessionDefinition> members)
+    internal static string GroupTitle(List<SessionDefinition> members)
     {
         var best = members
             .Where(m => m.Name.Trim().Length > 0)
             .GroupBy(m => m.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Where(g => members.Count == 1 || g.Count() > 1)
             .OrderByDescending(g => g.Count())
             .ThenByDescending(g => g.Any(m => m.Protocol == SessionProtocol.Ssh))
             .FirstOrDefault();
