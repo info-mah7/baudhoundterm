@@ -259,16 +259,25 @@ internal sealed class KvmScreen : IScreenTarget, IDisposable
     public void Dispose()
     {
         _life.Cancel();
-        try
+        // Releasing held keys off the UI thread: a board that has gone away used to hold the
+        // whole window for 2 s per tab.
+        var hands = _hands;
+        _ = Task.Run(async () =>
         {
-            _hands.ReleaseAsync(CancellationToken.None).Wait(TimeSpan.FromSeconds(2));
-        }
-        catch (Exception)
-        {
-            // The board may already be gone; nothing useful to do with it here.
-        }
+            try
+            {
+                await hands.ReleaseAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            catch (Exception)
+            {
+                // The board may already be gone; nothing useful to do with it here.
+            }
+            finally
+            {
+                hands.Dispose();
+            }
+        });
 
-        _hands.Dispose();
         _eyes?.Dispose();
         _life.Dispose();
     }

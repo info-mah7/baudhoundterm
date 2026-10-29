@@ -63,7 +63,23 @@ public sealed class ConPtyTerminalSession : ITerminalSession
         _writer = new FileStream(_ptyIn, FileAccess.Write);
         _reader = new FileStream(_ptyOut, FileAccess.Read);
 
-        StartChild();
+        try
+        {
+            StartChild();
+        }
+        catch
+        {
+            // A shell that cannot start (a bad ShellCommand) must not leave the console and its
+            // pipes held, looking connected, for the tab's life.
+            var pty = _pty;
+            _pty = IntPtr.Zero;
+            _ = Task.Run(() => ConPty.ClosePseudoConsole(pty));
+            _writer.Dispose();
+            _reader.Dispose();
+            _writer = null;
+            _reader = null;
+            throw;
+        }
 
         int generation;
         ConPty.PROCESS_INFORMATION process;

@@ -182,6 +182,7 @@ public sealed class SessionController : IAsyncDisposable
             Definition.LastConnected = DateTimeOffset.UtcNow;
             SetState(SessionState.Connected, $"Connected to {Describe()}.");
 
+            var connected = _transport;
             if (_expect is { } expect)
             {
                 // A script problem stops the script, never the connection: RunAsync reports
@@ -197,6 +198,13 @@ public sealed class SessionController : IAsyncDisposable
                 {
                     _expect = null;
                 }
+            }
+
+            // The link dropped during the script and a reconnect replaced (or detached) the
+            // transport: what follows belongs to that connection, not this one.
+            if (!ReferenceEquals(_transport, connected))
+            {
+                return;
             }
 
             if (Definition is { Protocol: SessionProtocol.Ssh, Tmux: true })

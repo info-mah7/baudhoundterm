@@ -832,6 +832,13 @@ public partial class TerminalView : UserControl, ITerminalTarget
             return;
         }
 
+        // The port is in raw mode for a modem transfer: a keystroke would land inside the
+        // protocol stream and corrupt it. Cancel in the status bar stops the transfer.
+        if (_modemRunning)
+        {
+            return;
+        }
+
         // --debug-input echoes every keystroke the host actually received, locally. If the
         // marker appears, the browser-to-host path is fine and the transport is at fault; if it
         // does not, the keystroke never left the page.
@@ -1236,6 +1243,8 @@ public partial class TerminalView : UserControl, ITerminalTarget
     /// Borrows the serial port in raw mode for one transfer. The screen shows nothing of the
     /// binary traffic; progress is in the status bar and a summary lands in the terminal.
     /// </summary>
+    private bool _modemRunning;
+
     private async Task RunModemAsync(ModemProtocol protocol, string verb, Func<ModemTransfer, CancellationToken, Task> body)
     {
         if (_controller?.Serial is not { } serial || _sendCts is not null)
@@ -1253,6 +1262,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         };
 
         var link = serial.BeginRaw();
+        _modemRunning = true;
         var modem = new ModemTransfer(link);
         modem.Log += line => Dispatcher.BeginInvoke(() => Write($"\r\n[baudhoundterm] {label}: {line}\r\n"));
         modem.Progress += p => Dispatcher.BeginInvoke(() => ShowStatus(p.Total > 0
@@ -1279,6 +1289,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         }
         finally
         {
+            _modemRunning = false;
             serial.EndRaw();
             _sendCts.Dispose();
             _sendCts = null;

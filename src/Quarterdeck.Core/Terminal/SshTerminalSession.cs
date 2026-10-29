@@ -79,6 +79,15 @@ public sealed class SshTerminalSession : ITerminalSession
         await Task.Run(() => KnownHosts.Connect(client, _definition.Host, _definition.Port), cancellationToken)
             .ConfigureAwait(false);
 
+        // Disconnected (or the tab closed) while the connect was still running: the token cannot
+        // stop a connect in progress, so the session it made is dropped here, not left open.
+        if (!ReferenceEquals(_client, client))
+        {
+            try { client.Disconnect(); } catch (Exception ex) when (ex is not OutOfMemoryException) { }
+            client.Dispose();
+            throw new OperationCanceledException("Disconnected while connecting.");
+        }
+
         _stream = _client.CreateShellStream(
             terminalName: "xterm-256color",
             columns: 120,

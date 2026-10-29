@@ -501,36 +501,6 @@ public partial class MainWindow : Window
     /// blank under it, and which one won depended on the list's order: often the newest tmux
     /// shortcut.
     /// </summary>
-    /// <summary>
-    /// Takes a trailing ":port" off an address and returns it. "[2001:db8::10]:22" and
-    /// "host:22" carry one; a bare IPv6 literal ("2001:db8::10", "::1") is left whole, however
-    /// its last group reads as a number.
-    /// </summary>
-    internal static int? SplitPort(ref string address)
-    {
-        var text = address.Trim();
-        var colon = text.LastIndexOf(':');
-        if (colon <= 0 || !int.TryParse(text[(colon + 1)..], out var port))
-        {
-            return null;
-        }
-
-        var host = text[..colon];
-        if (host.StartsWith('[') && host.EndsWith(']'))
-        {
-            address = host[1..^1];
-            return port;
-        }
-
-        if (host.Contains(':'))
-        {
-            return null;   // a bare IPv6 literal
-        }
-
-        address = host;
-        return port;
-    }
-
     internal static string GroupTitle(List<SessionDefinition> members)
     {
         var best = members
@@ -637,8 +607,14 @@ public partial class MainWindow : Window
     private void SetHideAddresses(bool hide)
     {
         Privacy.HideAll = hide;
-        _ui.HideAddresses = hide;
-        SaveUi();
+        // Hidden for a recording is not the user's setting: saved, it would survive a crash
+        // and come back on with no recording running.
+        if (!_hiddenForRecording)
+        {
+            _ui.HideAddresses = hide;
+            SaveUi();
+        }
+
         HideMenu.IsChecked = hide;
         RebuildTree();
         foreach (var live in _live)
@@ -865,8 +841,27 @@ public partial class MainWindow : Window
 
     private void OnFilterChanged(object sender, TextChangedEventArgs e) => RebuildTree();
 
+    private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
+    {
+        for (; d is not null; d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+        {
+            if (d is T hit)
+            {
+                return hit;
+            }
+        }
+
+        return null;
+    }
+
     private void OnTreeActivated(object sender, MouseButtonEventArgs e)
     {
+        // A double-click on the blank space under the rows is not on a shortcut.
+        if (e.OriginalSource is not DependencyObject source || FindAncestor<TreeViewItem>(source) is null)
+        {
+            return;
+        }
+
         if (Selected is not null)
         {
             e.Handled = true;   // or the tree item takes the click, and the keyboard, back
@@ -995,6 +990,7 @@ public partial class MainWindow : Window
 
             RefreshTab(live);
             live.View.ApplyHighlights();
+            live.Tab.ContextMenu = BuildTabMenu(live.Tab, definition);   // its tmux session list may have changed
         }
     }
 
@@ -2256,7 +2252,28 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Closes one tab, whichever it is: the X on its header and the menus all come here.</summary>
+    // Tabs being closed: a second click on the X while the disconnect runs must not run the
+    // close twice (the second pass took a Shell tab for a quick connect and wiped its secrets).
+    private readonly HashSet<TabItem> _closing = new();
+
     private async Task CloseTabAsync(TabItem tab)
+    {
+        if (!_closing.Add(tab))
+        {
+            return;
+        }
+
+        try
+        {
+            await CloseTabOnceAsync(tab);
+        }
+        finally
+        {
+            _closing.Remove(tab);
+        }
+    }
+
+    private async Task CloseTabOnceAsync(TabItem tab)
     {
         if (ViewOf(tab) is { } view)
         {
@@ -2603,7 +2620,7 @@ public partial class MainWindow : Window
             case SessionProtocol.Ssh:
                 var rest = address;
 
-                if (SplitPort(ref rest) is { } port)
+                if (Address.SplitPort(ref rest) is { } port)
                 {
                     definition.Port = port;
                 }
@@ -2636,7 +2653,7 @@ public partial class MainWindow : Window
 
             case SessionProtocol.Telnet:
                 var target = address;
-                if (SplitPort(ref target) is { } telnetPort)
+                if (Address.SplitPort(ref target) is { } telnetPort)
                 {
                     definition.Port = telnetPort;
                 }
@@ -2652,7 +2669,7 @@ public partial class MainWindow : Window
             case SessionProtocol.Rdp:
                 var desk = address;
                 definition.Port = 3389;
-                if (SplitPort(ref desk) is { } rdpPort)
+                if (Address.SplitPort(ref desk) is { } rdpPort)
                 {
                     definition.Port = rdpPort;
                 }
@@ -2671,7 +2688,7 @@ public partial class MainWindow : Window
 
             case SessionProtocol.Vnc:
                 var screen = address;
-                if (SplitPort(ref screen) is { } vncPort)
+                if (Address.SplitPort(ref screen) is { } vncPort)
                 {
                     // ":1" is the display number, not a port, the way every VNC tool writes it.
                     definition.Port = vncPort < 100 ? 5900 + vncPort : vncPort;

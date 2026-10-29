@@ -131,9 +131,13 @@ public sealed class ConfigSync
         }
 
         WriteIfChanged(Path.Combine(RepoDir, ".gitattributes"), "* -text\n");
-        WriteIfChanged(Path.Combine(RepoDir, "README.md"),
+        // The user's own README, if they wrote one, stays.
+        if (!File.Exists(Path.Combine(RepoDir, "README.md")))
+        {
+            WriteIfChanged(Path.Combine(RepoDir, "README.md"),
             "# BaudHoundTerm shared configuration\n\nWritten by BaudHoundTerm's sync. One file per shortcut in `shortcuts/`.\n" +
             "No passwords or keys are stored here. Keep this repository private: it still maps hosts, users and devices.\n");
+        }
 
         // Merge by content before the first export, so nothing in the repository is lost.
         var notes = new List<string>();
@@ -320,6 +324,11 @@ public sealed class ConfigSync
                 // Rejected: another PC pushed in between. Fetch and merge again.
             }
 
+            if (!pushed && outcome.Error is null)
+            {
+                outcome.Error = "could not send: the repository changed three times while sending. Sync again.";
+            }
+
             if (before.Length > 0)
             {
                 var diff = await GitAsync(token, "diff", "--name-only", before, "HEAD");
@@ -485,6 +494,12 @@ public sealed class ConfigSync
         {
             var path = Path.Combine(RepoDir, name);
             if (File.Exists(path) && SecretPattern.IsMatch(File.ReadAllText(path)))
+            {
+                return name;
+            }
+
+            // A login step that answers a password prompt in the clear, or a command carrying one.
+            if (name.StartsWith("shortcuts/", StringComparison.Ordinal) && File.Exists(path) && ShortcutHoldsSecret(File.ReadAllText(path)))
             {
                 return name;
             }
@@ -753,6 +768,42 @@ public sealed class ConfigSync
         }
     }
 
+    private static readonly Regex PasswordPrompt = new(@"ass?w(?:or)?d|passphrase|secret|\bpin\b", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
+
+    /// <summary>
+    /// A shortcut's login steps and commands, as text: a step answering a password prompt with a
+    /// value typed in the clear (IsSecret off), or a command with a password in it.
+    /// </summary>
+    internal static bool ShortcutHoldsSecret(string json)
+    {
+        SessionDefinition? d;
+        try
+        {
+            d = JsonSerializer.Deserialize<SessionDefinition>(json, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        if (d is null)
+        {
+            return false;
+        }
+
+        if (d.AutoLogin.Any(s => !s.IsSecret && s.Send.Trim().Length > 0 && PasswordPrompt.IsMatch(s.Expect)))
+        {
+            return true;
+        }
+
+        // "sshpass -p hunter2": a password flag whose value has letters and a digit or symbol
+        // ("-p 2222" is a port). Then the forms a note is checked for.
+        return d.Commands.Any(c => CommandPassword.IsMatch(c.Text) || Agent.AgentMemory.FindSecret(c.Text) is not null);
+    }
+
+    private static readonly Regex CommandPassword = new(
+        @"(?:^|\s)(?:-p|-pw|--password)(?:=|\s+)(?=\S*[A-Za-z])(?=\S*[\d!@#$%^&*+=~<>|])\S{6,}", RegexOptions.None, TimeSpan.FromSeconds(1));
+
     private static string Either(string? recorded, string? live) =>
         string.IsNullOrEmpty(recorded) ? live ?? "" : recorded;
 
@@ -816,6 +867,10 @@ public sealed class ConfigSync
                 if (ours is not null && theirs is not null && ours != theirs &&
                     JsonSerializer.Deserialize<SessionDefinition>(ours, JsonOptions) is { } mine)
                 {
+                    // From the exported text, so the class defaults (COM1) stand in for this
+                    // PC's own values: put the recorded ones back before the copy takes them.
+                    mine.SerialPort = _settings.SerialPorts.GetValueOrDefault(mine.Id) ?? "";
+                    mine.KeyPath = _settings.KeyPaths.GetValueOrDefault(mine.Id) ?? "";
                     var copy = ConflictCopy(mine);
                     WriteIfChanged(Path.Combine(ShortcutsDir, copy.Id + ".json"), ExportText(copy));
                     await GitAsync(token, "add", "--", $"shortcuts/{copy.Id}.json");
@@ -990,7 +1045,8 @@ public sealed class ConfigSync
             return;
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text, new UTF8Encoding(false));
+        // Atomic: a reader on another thread (KnownHosts.Load on the SSH connect thread) must
+        // never see a half-written file and set the trusted-key store aside as damaged.
+        AtomicFile.Write(path, text);
     }
 }

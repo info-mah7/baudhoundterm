@@ -196,7 +196,7 @@ public sealed class TftpServer : IAsyncDisposable
             }
             else
             {
-                await ReceiveFileAsync(socket, peer, name, path, options, token);
+                await ReceiveFileAsync(socket, peer, name, path, options, mode == "netascii", token);
             }
         }
         catch (OperationCanceledException)
@@ -270,7 +270,7 @@ public sealed class TftpServer : IAsyncDisposable
         }
 
         var onDisk = new FileInfo(path).Length;
-        if (onDisk > MaxFileBytes)
+        if (onDisk >= MaxFileBytes)   // ReadAllBytes takes less than 2 GiB; netascii grows it further
         {
             Write($"{peer.Address}  GET {name}: {Size(onDisk)} is larger than this server sends");
             await SendErrorAsync(socket, peer, 3, "File too large");
@@ -369,8 +369,9 @@ public sealed class TftpServer : IAsyncDisposable
     }
 
     private async Task ReceiveFileAsync(UdpClient socket, IPEndPoint peer, string name, string path,
-                                        Dictionary<string, string> options, CancellationToken token)
+                                        Dictionary<string, string> options, bool netascii, CancellationToken token)
     {
+        var pendingCr = false;
         if (!_allowUploads)
         {
             Write($"{peer.Address}  PUT {name}: refused (uploads are off)");
@@ -431,7 +432,7 @@ public sealed class TftpServer : IAsyncDisposable
                     break;
                 }
 
-                await file.WriteAsync(payload, token);
+                await file.WriteAsync(netascii ? FromNetascii(payload.ToArray(), ref pendingCr) : payload, token);
                 written += payload.Length;
                 answer = Ack(expect);
                 done = payload.Length < blockSize;   // a short block is the last one
@@ -615,6 +616,44 @@ public sealed class TftpServer : IAsyncDisposable
         catch (SocketException)
         {
         }
+    }
+
+    /// <summary>
+    /// netascii received: CR LF becomes LF and CR NUL becomes CR, the way the sender wrote
+    /// them. A CR ending one block waits for the next block's first byte.
+    /// </summary>
+    private static byte[] FromNetascii(byte[] data, ref bool pendingCr)
+    {
+        var o = new List<byte>(data.Length + 1);
+        foreach (var c in data)
+        {
+            if (pendingCr)
+            {
+                pendingCr = false;
+                if (c == (byte)'\n')
+                {
+                    o.Add((byte)'\n');
+                    continue;
+                }
+
+                o.Add((byte)'\r');
+                if (c == 0)
+                {
+                    continue;
+                }
+            }
+
+            if (c == (byte)'\r')
+            {
+                pendingCr = true;
+            }
+            else
+            {
+                o.Add(c);
+            }
+        }
+
+        return o.ToArray();
     }
 
     /// <summary>netascii: every line ends CR LF, and a bare CR is sent as CR NUL.</summary>

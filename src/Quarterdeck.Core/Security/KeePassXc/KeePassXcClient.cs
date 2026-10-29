@@ -219,13 +219,13 @@ public sealed class KeePassXcClient : IDisposable
         ThrowIfError(reply);
 
         // The answer must come back under our nonce plus one: anything else is a replay or a mix-up.
-        var replyNonce = Convert.FromBase64String(reply["nonce"]?.ToString() ?? "");
+        var replyNonce = Base64(reply["nonce"]);
         if (!replyNonce.AsSpan().SequenceEqual(NaClBox.Increment(nonce)))
         {
             throw new KeePassXcException("KeePassXC's reply did not match the request.");
         }
 
-        var plain = NaClBox.Open(Convert.FromBase64String(reply["message"]?.ToString() ?? ""), replyNonce, _serverKey, _secretKey)
+        var plain = NaClBox.Open(Base64(reply["message"]), replyNonce, _serverKey, _secretKey)
                     ?? throw new KeePassXcException("KeePassXC's reply could not be decrypted.");
 
         var message = JsonNode.Parse(plain) as JsonObject ?? throw new KeePassXcException("KeePassXC sent an empty reply.");
@@ -288,35 +288,50 @@ public sealed class KeePassXcClient : IDisposable
         }
     }
 
-    private JsonObject? TakeObject()
+    private static byte[] Base64(JsonNode? node)
     {
-        var data = _pending.ToArray();
-        var start = Array.IndexOf(data, (byte)'{');
-        if (start < 0)
-        {
-            _pending.Clear();
-            return null;
-        }
-
-        var reader = new Utf8JsonReader(data.AsSpan(start), isFinalBlock: false, state: default);
         try
         {
-            if (!JsonDocument.TryParseValue(ref reader, out var document))
+            return Convert.FromBase64String(node?.ToString() ?? "");
+        }
+        catch (FormatException)
+        {
+            throw new KeePassXcException("KeePassXC's reply was not readable.");
+        }
+    }
+
+    private JsonObject? TakeObject()
+    {
+        // A loop, not recursion: a buffer of garbage braces must not grow the stack per brace.
+        while (true)
+        {
+            var data = _pending.ToArray();
+            var start = Array.IndexOf(data, (byte)'{');
+            if (start < 0)
             {
+                _pending.Clear();
                 return null;
             }
 
-            using (document)
+            var reader = new Utf8JsonReader(data.AsSpan(start), isFinalBlock: false, state: default);
+            try
             {
-                _pending.RemoveRange(0, start + (int)reader.BytesConsumed);
-                return JsonNode.Parse(document.RootElement.GetRawText()) as JsonObject;
+                if (!JsonDocument.TryParseValue(ref reader, out var document))
+                {
+                    return null;
+                }
+
+                using (document)
+                {
+                    _pending.RemoveRange(0, start + (int)reader.BytesConsumed);
+                    return JsonNode.Parse(document.RootElement.GetRawText()) as JsonObject;
+                }
             }
-        }
-        catch (JsonException)
-        {
-            // Garbage before a message: drop through the brace and look again.
-            _pending.RemoveRange(0, start + 1);
-            return TakeObject();
+            catch (JsonException)
+            {
+                // Garbage before a message: drop through the brace and look again.
+                _pending.RemoveRange(0, start + 1);
+            }
         }
     }
 

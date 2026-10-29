@@ -208,7 +208,13 @@ public sealed class SerialTerminalSession : ITerminalSession
                 _counters?.AddSent(port.Encoding.GetByteCount(text));
             }, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException or TimeoutException)
+        catch (TimeoutException)
+        {
+            // The port is open; the device is not taking bytes (a halted bootloader, wedged
+            // firmware). Closing and reopening it toggled DTR and reset boards for nothing.
+            DataReceived?.Invoke(this, new TerminalDataEventArgs("\r\n[baudhoundterm] write timed out: the device is not reading.\r\n"));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
         {
             RaiseClosed("Serial port closed: " + ex.Message);
         }

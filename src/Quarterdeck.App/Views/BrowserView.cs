@@ -102,7 +102,10 @@ internal sealed class BrowserView : Grid, IDisposable
         Uri.TryCreate(address, UriKind.Absolute, out var u) && _home is not null
         && u.Scheme == _home.Scheme && string.Equals(u.Host, _home.Host, StringComparison.OrdinalIgnoreCase) && u.Port == _home.Port;
 
-    private void Note(string text) => _state(SessionState.Connected, text);
+    // A refused link is a note, not a connection: a tab whose page never loaded stays Failed.
+    private bool _loaded;
+
+    private void Note(string text) => _state(_loaded ? SessionState.Connected : SessionState.Failed, text);
 
     public async Task StartAsync()
     {
@@ -201,6 +204,7 @@ internal sealed class BrowserView : Grid, IDisposable
             _navigated?.TrySetResult(e.HttpStatusCode);
             if (e.IsSuccess)
             {
+                _loaded = true;
                 _state(SessionState.Connected, null);
             }
             else if (e.WebErrorStatus != CoreWebView2WebErrorStatus.OperationCanceled)

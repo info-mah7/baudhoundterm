@@ -199,7 +199,7 @@ internal sealed partial class RdpView : Grid, IDisposable
         {
             (username, password) = await LoginResolver.ResolveAsync(_definition, _vault, this, _promptForSecret, "rdp", 3389);
         }
-        catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException or KeePassXcException)
+        catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException or KeePassXcException or System.IO.IOException or TimeoutException)
         {
             _report(SessionState.Failed, ex.Message);
             return;
