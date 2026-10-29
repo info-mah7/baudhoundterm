@@ -1083,12 +1083,42 @@ public partial class MainWindow : Window
     /// </summary>
     private void CreateTmuxShortcut(SessionDefinition from)
     {
-        var copy = from.Clone($"{from.Name} tmux");
+        var copy = from.Clone(FreeTmuxShortcutName(from));
         copy.Tmux = true;
         // The starting name: the properties window turns it into one named after the shortcut.
         copy.TmuxSessions = [new TmuxSessionEntry { Name = "bht" }];
         copy.TmuxSession = "bht";
         SaveCopy(from, copy, warnShared: true);
+    }
+
+    /// <summary>
+    /// "web01 tmux", or "web01 tmux 2" and on when that name, or the tmux session it would be given,
+    /// is taken on this host and login. The same name every time made a second tmux shortcut share
+    /// the first one's session, and the warning about it was a second window on every create.
+    /// </summary>
+    private string FreeTmuxShortcutName(SessionDefinition from)
+    {
+        var stem = $"{from.Name.Trim()} tmux";
+        var name = stem;
+        for (var n = 2; Taken(name); n++)
+        {
+            name = $"{stem} {n}";
+        }
+
+        return name;
+
+        bool Taken(string candidate)
+        {
+            if (_sessions.Any(s => string.Equals(s.Name.Trim(), candidate, StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+
+            var probe = from.Clone(candidate);
+            probe.Tmux = true;
+            probe.TmuxSessions = [new TmuxSessionEntry { Name = SessionController.DefaultSessionName(candidate) }];
+            return SessionController.SharingTmux(probe, _sessions).Count > 0;
+        }
     }
 
     /// <summary>
@@ -1151,7 +1181,7 @@ public partial class MainWindow : Window
         // itself cannot move), in its folder and with its flags.
         var claude = await controller.FindClaudeAsync();
         var from = live.Definition;
-        var copy = from.Clone($"{from.Name} tmux");
+        var copy = from.Clone(FreeTmuxShortcutName(from));
         copy.Tmux = true;
         copy.TmuxSessions =
         [

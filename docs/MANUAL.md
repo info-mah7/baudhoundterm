@@ -193,7 +193,8 @@ it does not have. **Save** keeps the changes.
 
   **A tmux shortcut from an SSH shortcut.** Right-click an SSH shortcut and choose **Create tmux
   shortcut...**: a new shortcut to the same host and login, with tmux on and a session of its own
-  named after it, and the stored password or key passphrase copied. Name it in the properties
+  named after it, and the stored password or key passphrase copied. The suggested name is free
+  (`web01 tmux`, then `web01 tmux 2`), so each gets its own session. Name it in the properties
   window (the session name follows as you type), add a folder or start command if you like, and
   **Save**. It sits beside the original under the host.
 
