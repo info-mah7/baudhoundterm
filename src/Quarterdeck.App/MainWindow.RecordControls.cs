@@ -9,9 +9,10 @@ using Quarterdeck.App.Views;
 namespace Quarterdeck.App;
 
 /// <summary>
-/// Recording from the tab itself: a grey dot that shows on hover starts "This tab" (right-click
-/// for the other kinds); while recording, a pulsing dot, the time, pause and stop. An audit shows
-/// the dot and the time only. Ctrl+Shift+R starts or stops, Ctrl+Shift+P pauses or resumes.
+/// Recording as the tab shows it: nothing until a recording runs (a start is deliberate: the Record
+/// menu, the tab's right-click menu or Ctrl+Shift+R; a dot on hover that started one on a single
+/// click used to catch stray clicks), then a pulsing dot, the time, pause and stop. An audit shows
+/// the dot and the time only. Ctrl+Shift+R stops, Ctrl+Shift+P pauses or resumes.
 /// </summary>
 public partial class MainWindow
 {
@@ -25,29 +26,13 @@ public partial class MainWindow
     private static string Clock(TimeSpan t) =>
         t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"mm\:ss");
 
-    /// <summary>The recording part of a tab header: the idle dot, or the running controls.</summary>
+    /// <summary>The recording part of a tab header: nothing while idle, the running controls while it records.</summary>
     private FrameworkElement RecordControls(Panel header, TerminalView view)
     {
         _recClocks.Remove(view);
         if (!view.IsRecording)
         {
-            var start = RecButton("●", RecGrey, "Record this tab (Ctrl+Shift+R). Right-click for the whole window or an audit.");
-            start.Opacity = 0;
-            header.MouseEnter += (_, _) => start.Opacity = 1;
-            header.MouseLeave += (_, _) => start.Opacity = 0;
-            start.Click += async (_, e) =>
-            {
-                e.Handled = true;
-                ShowRecordingResult(await view.RecordingAsync("start", "tab"));
-            };
-            var menu = new ContextMenu();
-            foreach (var item in RecordStartItems(view))
-            {
-                menu.Items.Add(item);
-            }
-
-            start.ContextMenu = menu;
-            return start;
+            return new FrameworkElement { Visibility = Visibility.Collapsed };
         }
 
         var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 0, 0, 0) };

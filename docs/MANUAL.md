@@ -406,10 +406,9 @@ running; end the ones you no longer need.
 
 ### Recording a tab
 
-For demos, a tab can be recorded to an MP4. The quickest way is the tab itself: hover over it and
-click the grey **●** that appears after its name to record **This tab** (right-click the dot for the
-other kinds), or press **Ctrl+Shift+R**. The **Record** menu (it acts on the active tab) and the
-tab's right-click **Record** offer the same:
+For demos, a tab can be recorded to an MP4. Start one from the **Record** menu (it acts on the
+active tab), from the tab's right-click **Record**, or with **Ctrl+Shift+R**. The tab itself shows
+no recording control until one runs, so a stray click on a tab never starts one:
 
 - **This tab**: the terminal and, when it is open, the agent pane beside it. A red frame round the
   tab marks what is being recorded (it is not in the video). While another tab is in front, the
