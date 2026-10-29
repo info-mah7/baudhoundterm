@@ -144,8 +144,15 @@ public sealed class ConfigSync
             if (!remote.TryGetValue(mine.Id, out var theirs))
             {
                 merged.Add(mine);
+                continue;
             }
-            else if (ExportText(theirs) != ExportText(mine))
+
+            // The repository's copy carries no per-PC values; this PC's port, key file and last
+            // connection belong to the Id whichever text wins, or the next export records "".
+            theirs.SerialPort = mine.SerialPort;
+            theirs.KeyPath = mine.KeyPath;
+            theirs.LastConnected = mine.LastConnected;
+            if (ExportText(theirs) != ExportText(mine))
             {
                 merged.Add(ConflictCopy(mine));
                 notes.Add($"\"{mine.Name}\" differed; kept the repository's and this PC's copy.");
@@ -161,7 +168,12 @@ public sealed class ConfigSync
             var mine = Path.Combine(LocalSkills, Path.GetFileName(file));
             if (File.Exists(mine) && File.ReadAllText(mine) != File.ReadAllText(file))
             {
+                // Like a shortcut: the repository's text stays under the name, this PC's beside it.
+                // Copying the repository's over the local one first is what keeps it: the export
+                // that follows writes every local skill into the repository.
                 File.Copy(mine, ConflictSkillName(mine), overwrite: true);
+                File.Copy(file, mine, overwrite: true);
+                notes.Add($"Skill {Path.GetFileName(file)} differed; kept the repository's and this PC's copy.");
             }
         }
 
@@ -256,10 +268,23 @@ public sealed class ConfigSync
                             break;
                         }
 
-                        await ResolveAsync(conflicts, outcome.Notes, token);
+                        // A merge left half done (a locked file, bad JSON on one side) must not
+                        // stay: the next sync's add -A and commit would finish it with this PC's
+                        // files and no conflict copies. Back to this PC's commit; next time again.
+                        try
+                        {
+                            await ResolveAsync(conflicts, outcome.Notes, token);
+                        }
+                        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+                        {
+                            await GitAsync(CancellationToken.None, "merge", "--abort");
+                            throw;
+                        }
+
                         var done = await GitAsync(token, "commit", "--no-edit", "--quiet");
                         if (!done.Ok)
                         {
+                            await GitAsync(CancellationToken.None, "merge", "--abort");
                             outcome.Error = "could not finish the merge: " + done.Message;
                             break;
                         }
@@ -505,11 +530,22 @@ public sealed class ConfigSync
             notes.Add($"This PC had no shortcuts, so the {inRepo} in the repository were kept, not deleted.");
         }
 
+        // A file this build cannot read (a newer PC's field, a hand edit, conflict markers) is
+        // neither overwritten nor deleted: skipping it used to read as "deleted on another PC"
+        // and remove the shortcut from every PC.
+        var unreadable = Directory.GetFiles(ShortcutsDir, "*.json").Where(f => ReadShortcut(f, out _) is not null)
+            .Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        keep.UnionWith(unreadable!);
+
         foreach (var definition in local)
         {
             var name = definition.Id + ".json";
             keep.Add(name);
-            WriteIfChanged(Path.Combine(ShortcutsDir, name), ExportText(definition));
+            if (!unreadable.Contains(name))
+            {
+                WriteIfChanged(Path.Combine(ShortcutsDir, name), ExportText(definition));
+            }
+
             _settings.SerialPorts[definition.Id] = definition.SerialPort;
             _settings.KeyPaths[definition.Id] = definition.KeyPath;
         }
@@ -546,15 +582,22 @@ public sealed class ConfigSync
 
         // Memory is only ever added to or emptied, never deleted through the repository: a PC
         // that has not received a host's memory yet must not remove it from every other PC.
+        _exportedMemory.Clear();
         if (_settings.SyncAgentMemory && Directory.Exists(LocalMemory))
         {
             Directory.CreateDirectory(RepoMemory);
             foreach (var file in Directory.GetFiles(LocalMemory, "*.md"))
             {
-                WriteIfChanged(Path.Combine(RepoMemory, Path.GetFileName(file)), File.ReadAllText(file));
+                var text = File.ReadAllText(file);
+                _exportedMemory[Path.GetFileName(file)] = text;
+                WriteIfChanged(Path.Combine(RepoMemory, Path.GetFileName(file)), text);
             }
         }
     }
+
+    // Each memory file as the export read it, so the import can tell an agent run that wrote
+    // to it during the sync (merge, keep the new lines) from an unchanged one (take the repository's).
+    private readonly Dictionary<string, string> _exportedMemory = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>A local JSON file, normalised so formatting alone never makes a change.</summary>
     private void ExportFile(string name, bool sortKeys)
@@ -589,10 +632,18 @@ public sealed class ConfigSync
         foreach (var definition in ReadShortcuts(notes))
         {
             mine.TryGetValue(definition.Id, out var here);
-            definition.SerialPort = _settings.SerialPorts.GetValueOrDefault(definition.Id) ?? here?.SerialPort ?? "";
-            definition.KeyPath = _settings.KeyPaths.GetValueOrDefault(definition.Id) ?? here?.KeyPath ?? "";
+            // A recorded "" is no value: the live copy's wins over it.
+            definition.SerialPort = Either(_settings.SerialPorts.GetValueOrDefault(definition.Id), here?.SerialPort);
+            definition.KeyPath = Either(_settings.KeyPaths.GetValueOrDefault(definition.Id), here?.KeyPath);
             definition.LastConnected = here?.LastConnected;
             sessions.Add(definition);
+        }
+
+        // A repository file this build could not read keeps this PC's copy, unchanged, so the
+        // live list does not take the omission for a deletion.
+        foreach (var here in local.Where(d => _unreadable.Contains(d.Id.ToString())))
+        {
+            sessions.Add(here);
         }
 
         foreach (var name in new[] { "known_hosts.json", "agent.json" })
@@ -635,7 +686,14 @@ public sealed class ConfigSync
             Directory.CreateDirectory(LocalMemory);
             foreach (var file in Directory.GetFiles(RepoMemory, "*.md"))
             {
-                WriteIfChanged(Path.Combine(LocalMemory, Path.GetFileName(file)), File.ReadAllText(file));
+                var name = Path.GetFileName(file);
+                var target = Path.Combine(LocalMemory, name);
+                var theirs = File.ReadAllText(file);
+                // Written to while the sync ran (an agent run ended): keep those lines with the
+                // repository's. Unchanged: take the repository's as is, so a Clear carries over.
+                var now = File.Exists(target) ? File.ReadAllText(target) : null;
+                var changedMeanwhile = now is not null && _exportedMemory.TryGetValue(name, out var was) && now != was;
+                WriteIfChanged(target, changedMeanwhile ? Agent.AgentMemory.Merge(now!, theirs) : theirs);
             }
         }
 
@@ -645,6 +703,7 @@ public sealed class ConfigSync
     private List<SessionDefinition> ReadShortcuts(List<string> notes)
     {
         var list = new List<SessionDefinition>();
+        _unreadable.Clear();
         if (!Directory.Exists(ShortcutsDir))
         {
             return list;
@@ -652,32 +711,50 @@ public sealed class ConfigSync
 
         foreach (var file in Directory.GetFiles(ShortcutsDir, "*.json").Order(StringComparer.Ordinal))
         {
-            try
+            if (ReadShortcut(file, out var d) is { } problem)
             {
-                if (JsonSerializer.Deserialize<SessionDefinition>(File.ReadAllText(file), JsonOptions) is { } d)
-                {
-                    // Two files with one Id (a copy made by hand) used to stop every later sync.
-                    if (list.Any(x => x.Id == d.Id))
-                    {
-                        notes.Add($"Skipped {Path.GetFileName(file)}: it has the same Id as another shortcut.");
-                        continue;
-                    }
+                notes.Add($"Skipped {Path.GetFileName(file)}: {problem}");
+                _unreadable.Add(Path.GetFileNameWithoutExtension(file));
+                continue;
+            }
 
-                    // The repository holds no per-PC values; the class defaults (COM1) must not
-                    // pass for this PC's own when the next export records them.
-                    d.SerialPort = "";
-                    d.KeyPath = "";
-                    list.Add(d);
-                }
-            }
-            catch (JsonException ex)
+            // Two files with one Id (a copy made by hand) used to stop every later sync.
+            if (list.Any(x => x.Id == d!.Id))
             {
-                notes.Add($"Skipped {Path.GetFileName(file)}: {ex.Message}");
+                notes.Add($"Skipped {Path.GetFileName(file)}: it has the same Id as another shortcut.");
+                continue;
             }
+
+            // The repository holds no per-PC values; the class defaults (COM1) must not
+            // pass for this PC's own when the next export records them.
+            d!.SerialPort = "";
+            d.KeyPath = "";
+            list.Add(d);
         }
 
         return list;
     }
+
+    // File stems (the Id) of shortcut files the last read could not parse, kept as this PC has them.
+    private readonly HashSet<string> _unreadable = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Reads one shortcut file; null when it parsed, else why not.</summary>
+    private static string? ReadShortcut(string file, out SessionDefinition? definition)
+    {
+        definition = null;
+        try
+        {
+            definition = JsonSerializer.Deserialize<SessionDefinition>(File.ReadAllText(file), JsonOptions);
+            return definition is null ? "the file is empty." : null;
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            return ex.Message;
+        }
+    }
+
+    private static string Either(string? recorded, string? live) =>
+        string.IsNullOrEmpty(recorded) ? live ?? "" : recorded;
 
     private List<string> ReadFolders()
     {
