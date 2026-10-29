@@ -90,7 +90,7 @@ public sealed partial class AgentRunner
         {
             text = _memory.ForPrompt();
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             MemoryProblem = $"The memory file could not be read ({ex.Message}).";
             return;

@@ -840,7 +840,7 @@ public sealed partial class AgentRunner
             throw new HttpRequestException($"{url} answered {(int)response.StatusCode}: {Truncate(text, 400)}");
         }
 
-        return (JsonNode.Parse(text)?["choices"]?[0]?["message"] as JsonObject)
+        return (FirstMessage(JsonNode.Parse(text)) as JsonObject)
                ?? throw new InvalidDataException("The server's reply had no choices[0].message.");
     }
 }

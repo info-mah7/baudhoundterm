@@ -166,14 +166,25 @@ public sealed partial class AgentRunner
     {
         try
         {
-            var title = JsonSerializer.Deserialize<string>(await _web!.EvalAsync("document.title", token)) ?? "";
-            var url = JsonSerializer.Deserialize<string>(await _web.EvalAsync("location.href", token)) ?? "";
+            var title = Labelled(JsonSerializer.Deserialize<string>(await _web!.EvalAsync("document.title", token)) ?? "", "page title");
+            var url = Labelled(JsonSerializer.Deserialize<string>(await _web.EvalAsync("location.href", token)) ?? "", "page address");
             return $"Now: \"{title}\" ({url}).";
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return "The page is loading.";
         }
+    }
+
+    /// <summary>
+    /// Text the page chose (a title, a control's label) as a tool result quotes it outside the
+    /// fence: checked for text aimed at the agent like page text is, and kept short.
+    /// </summary>
+    private string Labelled(string text, string where)
+    {
+        text = text.Replace(_fence, "").Replace('\n', ' ').Trim();
+        Trip(text, where);
+        return Truncate(text, 160);
     }
 
     private async Task<string?> WebDeniedAsync(string tool, string shown, bool change, CancellationToken token)
@@ -246,7 +257,7 @@ public sealed partial class AgentRunner
             case "click":
             {
                 var control = await ControlAsync(Int(args, "ref", 0), token);
-                var desc = control.GetProperty("desc").GetString()!;
+                var desc = Labelled(control.GetProperty("desc").GetString()!, "control label");
                 var kind = control.GetProperty("kind").GetString()!;
                 if (HumanCheck(desc) is { } human)
                 {
@@ -282,7 +293,7 @@ public sealed partial class AgentRunner
             {
                 var reference = Int(args, "ref", 0);
                 var control = await ControlAsync(reference, token);
-                var desc = control.GetProperty("desc").GetString()!;
+                var desc = Labelled(control.GetProperty("desc").GetString()!, "control label");
                 if (control.GetProperty("kind").GetString() != "textbox")
                 {
                     return $"error: {desc} is not a text field.";
@@ -322,7 +333,14 @@ public sealed partial class AgentRunner
             {
                 var reference = Int(args, "ref", 0);
                 var option = Str(args, "option") ?? "";
-                var desc = (await ControlAsync(reference, token)).GetProperty("desc").GetString()!;
+                var desc = Labelled((await ControlAsync(reference, token)).GetProperty("desc").GetString()!, "control label");
+                // A dropdown often posts on change (admin pages apply a mode switch at once): a
+                // change, asked for like a click on a button.
+                if (await WebDeniedAsync(name, $"select \"{option}\" in {desc}", change: true, token) is { } denied)
+                {
+                    return denied;
+                }
+
                 Emit("action", $"select \"{option}\" in {desc}");
                 var r = await PageAsync($"window.__bht.act({reference},'select',{JsonSerializer.Serialize(option)})", token);
                 if (!r.GetProperty("ok").GetBoolean())
@@ -331,7 +349,7 @@ public sealed partial class AgentRunner
                 }
 
                 await WebSettleAsync(token);
-                return $"set {r.GetProperty("desc").GetString()}.";
+                return $"set {Labelled(r.GetProperty("desc").GetString() ?? desc, "control label")}.";
             }
 
             case "press_key":
@@ -364,6 +382,13 @@ public sealed partial class AgentRunner
                 if (_missedGotos >= 2)
                 {
                     return "refused: two addresses you guessed did not exist. Use the site's own menu: read_page, then click the entries it shows.";
+                }
+
+                // Opening an address is a read, but a GET can act on embedded devices (reboot,
+                // logout): under Always, or once the page has tried to instruct the agent, ask.
+                if (await WebDeniedAsync(name, "open " + target, change: false, token) is { } denied)
+                {
+                    return denied;
                 }
 
                 Emit("action", "go to " + target);

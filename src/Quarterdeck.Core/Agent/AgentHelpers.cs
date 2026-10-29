@@ -74,9 +74,19 @@ public sealed class AgentHelper
             return $"url \"{Url}\" is not on this PC; set allowRemote to use it";
         }
 
-        if (Parameters.Length > 0 && JsonNode.Parse(Parameters) is not JsonObject)
+        if (Parameters.Length > 0)
         {
-            return "parameters must be a JSON Schema object";
+            try
+            {
+                if (JsonNode.Parse(Parameters) is not JsonObject)
+                {
+                    return "parameters must be a JSON Schema object";
+                }
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                return "parameters is not valid JSON: " + ex.Message;
+            }
         }
 
         return null;

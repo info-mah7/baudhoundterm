@@ -243,7 +243,7 @@ public static class EndpointTest
             using var response = await http.SendAsync(Request(HttpMethod.Post, "/chat/completions", picture), token);
             var text = await response.Content.ReadAsStringAsync(token);
             var reply = response.IsSuccessStatusCode
-                ? (JsonNode.Parse(text)?["choices"]?[0]?["message"]?["content"]?.ToString() ?? "").ToLowerInvariant()
+                ? (AgentRunner.FirstMessage(JsonNode.Parse(text))?["content"]?.ToString() ?? "").ToLowerInvariant()
                 : "";
 
             results.Add(!response.IsSuccessStatusCode
@@ -483,7 +483,7 @@ public static class EndpointTest
                 return (false, false, clock.Elapsed.TotalMilliseconds, $"{(int)response.StatusCode}: {Short(text)}");
             }
 
-            var message = JsonNode.Parse(text)?["choices"]?[0]?["message"];
+            var message = AgentRunner.FirstMessage(JsonNode.Parse(text));
             var answered = message?["tool_calls"] is JsonArray { Count: > 0 } || !string.IsNullOrWhiteSpace(message?["content"]?.ToString());
             return (answered, AgentRunner.Thinks(message), clock.Elapsed.TotalMilliseconds, answered ? "" : "it answered with nothing");
         }
@@ -533,7 +533,7 @@ public static class EndpointTest
                     continue;
                 }
 
-                var reply = JsonNode.Parse(await response.Content.ReadAsStringAsync(token))?["choices"]?[0]?["message"];
+                var reply = AgentRunner.FirstMessage(JsonNode.Parse(await response.Content.ReadAsStringAsync(token)));
                 var answered = reply?["tool_calls"] is JsonArray { Count: > 0 } || !string.IsNullOrWhiteSpace(reply?["content"]?.ToString());
                 if (answered && !AgentRunner.Thinks(reply))
                 {

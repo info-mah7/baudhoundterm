@@ -801,8 +801,22 @@ public sealed partial class AgentRunner
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
         }
 
-        using var response = await Http.SendAsync(request, token);
-        var text = await response.Content.ReadAsStringAsync(token);
+        HttpResponseMessage response;
+        string text;
+        try
+        {
+            response = await Http.SendAsync(request, token);
+            text = await response.Content.ReadAsStringAsync(token);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            // HttpClient's own timeout, not the user's stop: say so, or the run ends as "Stopped."
+            Log("http_error", text: $"no answer from {url} within {Http.Timeout.TotalMinutes:0} minutes");
+            throw new HttpRequestException($"{url} did not answer within {Http.Timeout.TotalMinutes:0} minutes. " +
+                                           "The server may be overloaded, or the conversation too long for it.");
+        }
+
+        using var _ = response;
 
         if (!response.IsSuccessStatusCode)
         {
@@ -823,7 +837,7 @@ public sealed partial class AgentRunner
             throw new InvalidDataException($"The server's reply was not JSON: {Truncate(text, 400)}");
         }
 
-        return (json?["choices"] is JsonArray { Count: > 0 } choices ? choices[0]?["message"] : null) as JsonObject
+        return FirstMessage(json) as JsonObject
                ?? throw new InvalidDataException("The server's reply had no choices[0].message.");
     }
 
@@ -983,7 +997,10 @@ public sealed partial class AgentRunner
             }
             else
             {
+                // A Tab is not editing, but the shell completes it: what Enter submits is unknown
+                // from here, like a line recalled from history.
                 editing |= char.IsControl(c) && c != '\t';
+                unknown |= c == '\t';
                 current += c;
             }
         }
@@ -1048,6 +1065,10 @@ public sealed partial class AgentRunner
                     break;
                 case '\u0015':   // Ctrl-U
                     _line.Clear();
+                    break;
+                case '\t':   // completion: the line is no longer what was typed
+                    _line.Append(c);
+                    _lineUnknown = true;
                     break;
                 default:
                     _line.Append(c);
@@ -1282,9 +1303,16 @@ public sealed partial class AgentRunner
     /// the whole token budget thinking and stopped before answering. Measured on the 27B: the
     /// click check, 512 tokens, came back empty every time with thinking on and in 5 tokens off.
     /// </summary>
-    /// <summary>A line of some length that appears three times or more: the model is looping.</summary>
-    internal static bool Repeats(string text) =>
-        Lines(text).Where(l => l.Length >= 20).GroupBy(l => l).Any(g => g.Count() >= 3);
+    /// <summary>
+    /// A reply that is mostly one line said over and over: the model is looping. Three identical
+    /// rows quoted from a configuration in an answer of twenty lines are not.
+    /// </summary>
+    internal static bool Repeats(string text)
+    {
+        var lines = Lines(text).ToList();
+        var repeated = lines.Where(l => l.Length >= 20).GroupBy(l => l).Where(g => g.Count() >= 4).Sum(g => g.Count());
+        return repeated > 0 && repeated * 2 > lines.Count;
+    }
 
     /// <summary>The text with each repeated line kept once, in first-seen order.</summary>
     internal static string Dedupe(string text)
@@ -1299,8 +1327,13 @@ public sealed partial class AgentRunner
     internal static bool Thinks(JsonNode? message) =>
         !string.IsNullOrWhiteSpace((message?["reasoning_content"] ?? message?["reasoning"])?.ToString());
 
+    /// <summary>choices[0].message, or null: an empty choices array (a filter, an overloaded proxy) must not throw.</summary>
+    internal static JsonNode? FirstMessage(JsonNode? reply) =>
+        reply?["choices"] is JsonArray { Count: > 0 } choices ? choices[0]?["message"] : null;
+
     internal static bool OnlyThought(JsonNode? message) =>
         string.IsNullOrWhiteSpace(TextOf(message?["content"]))
+        && message?["tool_calls"] is not JsonArray { Count: > 0 }   // thinking, then acting: a full reply
         && !string.IsNullOrWhiteSpace((message?["reasoning_content"] ?? message?["reasoning"])?.ToString());
 
     internal const string ThinkingHint =
@@ -1322,7 +1355,9 @@ public sealed partial class AgentRunner
         }
 
         var cmd = argText.Trim();
-        if (cmd.Length == 0)
+        // Not sent (denied, not connected, cancelled): it did not run, so it is not a re-run.
+        if (cmd.Length == 0 || result.StartsWith("denied", StringComparison.Ordinal) || result.StartsWith("error", StringComparison.Ordinal)
+            || result.StartsWith("cancelled", StringComparison.Ordinal) || result.StartsWith("refused", StringComparison.Ordinal))
         {
             return result;
         }
