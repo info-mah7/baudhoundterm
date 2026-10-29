@@ -501,6 +501,36 @@ public partial class MainWindow : Window
     /// blank under it, and which one won depended on the list's order: often the newest tmux
     /// shortcut.
     /// </summary>
+    /// <summary>
+    /// Takes a trailing ":port" off an address and returns it. "[2001:db8::10]:22" and
+    /// "host:22" carry one; a bare IPv6 literal ("2001:db8::10", "::1") is left whole, however
+    /// its last group reads as a number.
+    /// </summary>
+    internal static int? SplitPort(ref string address)
+    {
+        var text = address.Trim();
+        var colon = text.LastIndexOf(':');
+        if (colon <= 0 || !int.TryParse(text[(colon + 1)..], out var port))
+        {
+            return null;
+        }
+
+        var host = text[..colon];
+        if (host.StartsWith('[') && host.EndsWith(']'))
+        {
+            address = host[1..^1];
+            return port;
+        }
+
+        if (host.Contains(':'))
+        {
+            return null;   // a bare IPv6 literal
+        }
+
+        address = host;
+        return port;
+    }
+
     internal static string GroupTitle(List<SessionDefinition> members)
     {
         var best = members
@@ -852,6 +882,33 @@ public partial class MainWindow : Window
 
     private void Save()
     {
+        if (Elevation.IsCurrentProcessElevated)
+        {
+            // The elevated window loaded its list when it started; writing that back would drop
+            // what the main window has added since. Fold this window's shortcuts into the file
+            // as it is now: its edits and additions land, and nothing it never saw is lost.
+            var onDisk = _store.Load();
+            if (_store.LoadProblem is null)
+            {
+                foreach (var mine in _sessions)
+                {
+                    var at = onDisk.FindIndex(d => d.Id == mine.Id);
+                    if (at < 0)
+                    {
+                        onDisk.Add(mine);
+                    }
+                    else
+                    {
+                        onDisk[at] = mine;
+                    }
+                }
+
+                _store.Save(onDisk);
+                RebuildTree();
+                return;
+            }
+        }
+
         _store.Save(_sessions);
         RebuildTree();
         ScheduleSync();
@@ -2391,16 +2448,20 @@ public partial class MainWindow : Window
 
         var none = new RoutedEventArgs();
 
+        // An SSH tab's extra entries come first; the general LiveTab arm below adds the rest
+        // (a separate arm with break left SSH rows with one item and no Disconnect or Close).
         switch (tag)
         {
             case LiveTab { View.Tmux: TmuxState.Live } live:
                 menu.Items.Add(CreateShortcutItem(live.View, live.Definition));
                 break;
-
             case LiveTab { Definition.Protocol: SessionProtocol.Ssh } plain:
                 menu.Items.Add(CreateTmuxFromSessionItem(plain));
                 break;
+        }
 
+        switch (tag)
+        {
             case SessionDefinition session:
                 menu.Items.Add(Item("_Connect", () => Connect(session)));
                 if (session is { Protocol: SessionProtocol.Ssh, Tmux: true })
@@ -2542,12 +2603,9 @@ public partial class MainWindow : Window
             case SessionProtocol.Ssh:
                 var rest = address;
 
-                // A bare IPv6 literal has colons of its own; only split a trailing :port.
-                var colon = rest.LastIndexOf(':');
-                if (colon > 0 && int.TryParse(rest[(colon + 1)..], out var port))
+                if (SplitPort(ref rest) is { } port)
                 {
                     definition.Port = port;
-                    rest = rest[..colon];
                 }
 
                 // user@host: the user name fills the prompt. The last @ splits, so a user name may contain one.
@@ -2578,12 +2636,9 @@ public partial class MainWindow : Window
 
             case SessionProtocol.Telnet:
                 var target = address;
-                var mark = target.LastIndexOf(':');
-
-                if (mark > 0 && int.TryParse(target[(mark + 1)..], out var telnetPort))
+                if (SplitPort(ref target) is { } telnetPort)
                 {
                     definition.Port = telnetPort;
-                    target = target[..mark];
                 }
                 else
                 {
@@ -2596,12 +2651,10 @@ public partial class MainWindow : Window
 
             case SessionProtocol.Rdp:
                 var desk = address;
-                var mark3 = desk.LastIndexOf(':');
                 definition.Port = 3389;
-                if (mark3 > 0 && int.TryParse(desk[(mark3 + 1)..], out var rdpPort))
+                if (SplitPort(ref desk) is { } rdpPort)
                 {
                     definition.Port = rdpPort;
-                    desk = desk[..mark3];
                 }
 
                 // user@host: the user name is used; without one, the tab asks.
@@ -2618,13 +2671,10 @@ public partial class MainWindow : Window
 
             case SessionProtocol.Vnc:
                 var screen = address;
-                var colon2 = screen.LastIndexOf(':');
-
-                if (colon2 > 0 && int.TryParse(screen[(colon2 + 1)..], out var vncPort))
+                if (SplitPort(ref screen) is { } vncPort)
                 {
                     // ":1" is the display number, not a port, the way every VNC tool writes it.
                     definition.Port = vncPort < 100 ? 5900 + vncPort : vncPort;
-                    screen = screen[..colon2];
                 }
                 else
                 {

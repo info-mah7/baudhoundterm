@@ -198,10 +198,25 @@ public sealed class FileTransferService : IRemoteFiles
         Task.Run(() =>
         {
             var size = Sftp.GetAttributes(remotePath).Size;
-            using var local = File.Create(localPath);
-            Sftp.DownloadFile(remotePath, local,
-                downloaded => progress?.Report(
-                    new TransferProgress(remotePath, (long)downloaded, size)));
+            // Into a .part beside the target: a transfer that fails must not leave an empty
+            // file under the name of the one that was there.
+            var temp = localPath + ".part";
+            try
+            {
+                using (var local = File.Create(temp))
+                {
+                    Sftp.DownloadFile(remotePath, local,
+                        downloaded => progress?.Report(
+                            new TransferProgress(remotePath, (long)downloaded, size)));
+                }
+
+                File.Move(temp, localPath, overwrite: true);
+            }
+            catch
+            {
+                try { File.Delete(temp); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+                throw;
+            }
         });
 
     public Task UploadAsync(string localPath, string remotePath, IProgress<TransferProgress>? progress = null) =>

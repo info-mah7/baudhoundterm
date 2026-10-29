@@ -275,7 +275,8 @@ internal sealed class KvmView : Grid, IDisposable
         // A move with nothing pressed is still worth sending (hovers, menus), but not every pixel:
         // the board takes one report per request, so a dragged mouse would queue hundreds.
         _buttons = buttons;
-        Send(_screen!.PointerAsync(at.X, at.Y, buttons, CancellationToken.None));
+        var pointer = _screen!;
+        Queue(() => pointer.PointerAsync(at.X, at.Y, buttons, CancellationToken.None));
         if (e is MouseButtonEventArgs)
         {
             Keyboard.Focus(this);
@@ -291,11 +292,11 @@ internal sealed class KvmView : Grid, IDisposable
 
         var notch = e.Delta > 0 ? 8 : 16;
         var held = _buttons;
-        Send(Task.Run(async () =>
+        Queue(async () =>
         {
             await screen.PointerAsync(at.X, at.Y, held | notch, CancellationToken.None);
             await screen.PointerAsync(at.X, at.Y, held, CancellationToken.None);
-        }));
+        });
         e.Handled = true;
     }
 
@@ -313,7 +314,7 @@ internal sealed class KvmView : Grid, IDisposable
 
         var text = e.Text;
         e.Handled = true;
-        Send(Task.Run(async () =>
+        Queue(async () =>
         {
             foreach (var c in text)
             {
@@ -326,7 +327,7 @@ internal sealed class KvmView : Grid, IDisposable
                 await screen.KeyAsync(keysym, true, CancellationToken.None);
                 await screen.KeyAsync(keysym, false, CancellationToken.None);
             }
-        }));
+        });
     }
 
     private void OnKey(KeyEventArgs e, bool down)
@@ -358,13 +359,26 @@ internal sealed class KvmView : Grid, IDisposable
                       || Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)
                       || Keyboard.Modifiers.HasFlag(ModifierKeys.Windows);
 
-        if (Keysym(key, control) is not { } keysym)
+        // A letter's release always maps: Ctrl+A with Ctrl let go first used to leave the A-up
+        // unsent, so 'a' stayed in every later report and the target autorepeated it.
+        if (Keysym(key, control || !down) is not { } keysym)
         {
             return;
         }
 
         e.Handled = true;
-        Send(screen.KeyAsync(keysym, down, CancellationToken.None));
+        Queue(() => screen.KeyAsync(keysym, down, CancellationToken.None));
+    }
+
+    // Input reports go out one after another: each carries the whole held set, so two in flight
+    // at once could land out of order or change the set while the other is being sent.
+    private Task _inputs = Task.CompletedTask;
+
+    private void Queue(Func<Task> work)
+    {
+        var next = _inputs.ContinueWith(_ => work(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
+        _inputs = next;
+        Send(next);
     }
 
     /// <summary>
@@ -391,7 +405,7 @@ internal sealed class KvmView : Grid, IDisposable
         }
 
         var lines = text.Split('\n').Length;
-        if ((lines > 1 || text.Length > 200) && MessageBox.Show(Window.GetWindow(this)!,
+        if ((lines > 1 || text.Length > 200) && MessageBox.Show(TerminalView.Owner(this),
                 $"Type {text.Length} characters ({lines} line{(lines == 1 ? "" : "s")}) into {_definition.Name} over the KVM?\n\n" +
                 "A line break presses Enter on the target.",
                 "BaudHoundTerm: paste", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
@@ -399,11 +413,11 @@ internal sealed class KvmView : Grid, IDisposable
             return;
         }
 
-        Send(Task.Run(async () =>
+        Queue(async () =>
         {
             await screen.ClearHeldAsync(CancellationToken.None);
             await Core.Agent.ScreenInput.TypeAsync(screen, text, CancellationToken.None);
-        }));
+        });
     }
 
     /// <summary>

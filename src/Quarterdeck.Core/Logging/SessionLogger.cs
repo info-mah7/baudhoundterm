@@ -192,8 +192,20 @@ public sealed partial class SessionLogger : IDisposable
                 payload = StampLines(payload);
             }
 
-            _writer.Write(payload);
-            _written += Encoding.UTF8.GetByteCount(payload);
+            // A log that cannot be written (disk full, folder gone) ends the logging, not the
+            // session: thrown here it reached every transport's read loop as a link failure.
+            try
+            {
+                _writer.Write(payload);
+                _written += Encoding.UTF8.GetByteCount(payload);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Error = ex.Message;
+                try { _writer.Dispose(); } catch (IOException) { }
+                _writer = null;
+                return;
+            }
 
             if (_settings.MaxBytes > 0 && _written >= _settings.MaxBytes)
             {
@@ -249,12 +261,23 @@ public sealed partial class SessionLogger : IDisposable
         return sb.ToString();
     }
 
+    /// <summary>Why logging stopped, when a write failed; null while it runs.</summary>
+    public string? Error { get; private set; }
+
     private void Roll()
     {
-        _writer?.Write($"--- rolled {DateTimeOffset.UtcNow:yyyy-MM-ddTHH:mm:ssZ} ---{Environment.NewLine}");
-        _writer?.Dispose();
-        _writer = null;
-        Open();
+        try
+        {
+            _writer?.Write($"--- rolled {DateTimeOffset.UtcNow:yyyy-MM-ddTHH:mm:ssZ} ---{Environment.NewLine}");
+            _writer?.Dispose();
+            _writer = null;
+            Open();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Error = ex.Message;
+            _writer = null;
+        }
     }
 
     public void Dispose()

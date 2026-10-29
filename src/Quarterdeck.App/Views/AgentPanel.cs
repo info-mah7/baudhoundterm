@@ -199,6 +199,7 @@ internal sealed class AgentPanel : DockPanel
         _run.Click += async (_, _) => await RunOrStopAsync();
         _reset.Click += (_, _) =>
         {
+            _cts?.Cancel();   // a run still going would keep writing under "Conversation cleared."
             _runner = null;
             ShowTripped(null);
             _transcript.Clear();
@@ -435,7 +436,7 @@ internal sealed class AgentPanel : DockPanel
             _runner.Event += e => Dispatcher.BeginInvoke(() => Show(e));
             var runner = _runner;
             _runner.Approve = command => Dispatcher.InvokeAsync(() => MessageBox.Show(
-                Window.GetWindow(this)!,
+                TerminalView.Owner(this),
                 $"The agent wants to {(Desktop ? "do this" : "run")}:\n\n{command}\n\nin {_target.Describe}" +
                 (Elevated ? ", which runs as ADMINISTRATOR" : "") + "." +
                 (runner.Tripped ? "\n\nCAREFUL: something the agent read earlier tried to give it instructions. " +
@@ -544,15 +545,31 @@ internal sealed class AgentPanel : DockPanel
         };
         if (dialog.ShowDialog(Window.GetWindow(this)) == true)
         {
-            System.IO.File.Copy(_reportPath, dialog.FileName, overwrite: true);
+            try
+            {
+                System.IO.File.Copy(_reportPath, dialog.FileName, overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Append("✖ Could not save the report: " + ex.Message);
+            }
         }
     }
 
-    private static void OpenFile(string? path)
+    private void OpenFile(string? path)
     {
-        if (path is not null && System.IO.File.Exists(path))
+        if (path is null || !System.IO.File.Exists(path))
+        {
+            return;
+        }
+
+        try
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            Append($"✖ Nothing on this PC opens {System.IO.Path.GetExtension(path)} files: {ex.Message}");
         }
     }
 
@@ -563,7 +580,7 @@ internal sealed class AgentPanel : DockPanel
         var memory = shortcut is null ? null : AgentMemory.For(shortcut);
         if (memory is null)
         {
-            MessageBox.Show(Window.GetWindow(this)!, shortcut is null
+            MessageBox.Show(TerminalView.Owner(this), shortcut is null
                     ? "This tab has no shortcut, so the agent keeps nothing between runs here."
                     : "Memory is off for this shortcut: Properties > Connection > \"The agent keeps notes between runs\".",
                 "Agent memory", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -603,6 +620,7 @@ internal sealed class AgentPanel : DockPanel
     private void OpenSettings()
     {
         new AgentSettingsWindow(_vault) { Owner = Window.GetWindow(this) }.ShowDialog();
+        _cts?.Cancel();
         _runner = null;   // approval rules may have changed; the next goal starts with them
         ShowTripped(null);
         Reload();

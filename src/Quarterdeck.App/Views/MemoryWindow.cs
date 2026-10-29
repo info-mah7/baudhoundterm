@@ -93,7 +93,11 @@ internal sealed class MemoryWindow : Window
             return;
         }
 
-        _memory.Write(_text.Text);
+        if (!TryWrite(_text.Text))
+        {
+            return;
+        }
+
         DialogResult = true;
     }
 
@@ -105,7 +109,25 @@ internal sealed class MemoryWindow : Window
             return;
         }
 
-        _memory.Write("");
+        if (!TryWrite(""))
+        {
+            return;
+        }
+
         DialogResult = true;
+    }
+
+    private bool TryWrite(string text)
+    {
+        try
+        {
+            _memory.Write(text);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, "The memory file could not be written: " + ex.Message, "Agent memory", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
     }
 }

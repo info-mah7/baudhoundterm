@@ -18,6 +18,12 @@ namespace Quarterdeck.App.Views;
 /// </summary>
 public partial class TerminalView : UserControl, ITerminalTarget
 {
+    /// <summary>
+    /// The window a dialog belongs to. A control on a tab that is not selected is out of the
+    /// visual tree, so GetWindow gives null and MessageBox throws: the main window stands in.
+    /// </summary>
+    internal static Window Owner(DependencyObject d) => Window.GetWindow(d) ?? Application.Current.MainWindow;
+
     private readonly CredentialVault _vault;
     private SessionController? _controller;
     private bool _webReady;
@@ -274,7 +280,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
             shown += $"\n... and {lines - 8} more";
         }
 
-        if (MessageBox.Show(Window.GetWindow(this)!,
+        if (MessageBox.Show(TerminalView.Owner(this),
                 $"Paste {lines} lines into {Definition.Name}? Each line break runs it as a command.\n\n{shown}",
                 "BaudHoundTerm: paste", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes)
         {
@@ -290,7 +296,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
             return;
         }
 
-        if (osc8 && MessageBox.Show(Window.GetWindow(this)!, $"Open this address in your browser?\n\n{link.AbsoluteUri}",
+        if (osc8 && MessageBox.Show(TerminalView.Owner(this), $"Open this address in your browser?\n\n{link.AbsoluteUri}",
                 "BaudHoundTerm: open link", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
         {
             return;

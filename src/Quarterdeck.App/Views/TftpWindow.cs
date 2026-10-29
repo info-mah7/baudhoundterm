@@ -206,7 +206,14 @@ internal sealed class TftpWindow : Window
         if (_files.SelectedItem is ListBoxItem { Tag: string name })
         {
             ShowHowTo(name);
-            Clipboard.SetText($"tftp://{ServerAddress}/{name}");
+            try
+            {
+                Clipboard.SetText($"tftp://{ServerAddress}/{name}");
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                // Another program holds the clipboard (a remote desktop's sync, a manager): not worth a crash dialog.
+            }
             AppendLog($"Copied tftp://{ServerAddress}/{name}");
         }
     }

@@ -248,9 +248,9 @@ internal sealed class KvmScreen : IScreenTarget, IDisposable
             await _hands.KeysAsync((byte)(_modifiers | key.Modifier), _down, token);
             return;
         }
-        else
+        else if (!_down.Remove(key.Usage))
         {
-            _down.Remove(key.Usage);
+            return;   // a release for a key not held (typed through the text path): nothing to report
         }
 
         await _hands.KeysAsync(_modifiers, _down, token);

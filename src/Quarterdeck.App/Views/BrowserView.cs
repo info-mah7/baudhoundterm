@@ -113,6 +113,14 @@ internal sealed class BrowserView : Grid, IDisposable
         }
 
         _state(SessionState.Connecting, $"Opening {Privacy.Mask(_home.AbsoluteUri, _definition)}...");
+        if (_web.CoreWebView2 is { } started)
+        {
+            // Reconnect: the browser is up and its handlers are on; a second environment would be
+            // refused ("already initialized") and the handlers would fire twice. Open the home page again.
+            started.Navigate(_home.AbsoluteUri);
+            return;
+        }
+
         try
         {
             // A profile of its own per shortcut, apart from the terminal surface's: cookies and logins
@@ -228,7 +236,7 @@ internal sealed class BrowserView : Grid, IDisposable
                 case WebCertificates.Verdict.Changed:
                     e.Action = CoreWebView2ServerCertificateErrorAction.Cancel;
                     _state(SessionState.Failed, "Refused: the certificate changed since you accepted it.");
-                    MessageBox.Show(Window.GetWindow(this)!,
+                    MessageBox.Show(TerminalView.Owner(this),
                         $"{Privacy.Mask(hostPort, _definition)} now shows a different certificate from the one you accepted.\n\n" +
                         $"New: {fingerprint}\n\nThat is what an intercepted connection looks like. If the device's certificate was " +
                         "replaced on purpose, forget the old one in the shortcut's properties and open the tab again.",
@@ -238,7 +246,7 @@ internal sealed class BrowserView : Grid, IDisposable
 
             var cert = e.ServerCertificate;
             await Task.Yield();
-            var yes = MessageBox.Show(Window.GetWindow(this)!,
+            var yes = MessageBox.Show(TerminalView.Owner(this),
                 $"{Privacy.Mask(hostPort, _definition)} has a certificate this PC does not trust ({e.ErrorStatus}). Devices often use " +
                 "one of their own. Trust it for this address?\n\n" +
                 $"Subject: {cert.Subject}\nIssuer: {cert.Issuer}\nValid: {cert.ValidFrom:yyyy-MM-dd} to {cert.ValidTo:yyyy-MM-dd}\n" +

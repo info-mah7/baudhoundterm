@@ -27,9 +27,11 @@ public partial class SessionEditorWindow : Window
 
         Definition = definition;
         _vault = vault;
-        _steps = new ObservableCollection<AutoLoginStep>(definition.AutoLogin);
-        _highlights = new ObservableCollection<HighlightRule>(definition.Highlights);
-        _commands = new ObservableCollection<CommandShortcut>(definition.Commands);
+        // Copies, like the tmux rows: a grid edit lands in the row object at once, and Cancel
+        // must leave the shortcut's own as they were.
+        _steps = new ObservableCollection<AutoLoginStep>(definition.AutoLogin.Select(s => s.Copy()));
+        _highlights = new ObservableCollection<HighlightRule>(definition.Highlights.Select(h => h.Copy()));
+        _commands = new ObservableCollection<CommandShortcut>(definition.Commands.Select(c => c.Copy()));
 
         LoginGrid.ItemsSource = _steps;
         HighlightGrid.ItemsSource = _highlights;

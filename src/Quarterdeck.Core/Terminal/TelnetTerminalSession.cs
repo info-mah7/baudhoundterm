@@ -26,6 +26,8 @@ public sealed class TelnetTerminalSession : ITerminalSession
     private const byte WILL = 251;
     private const byte SB = 250;    // subnegotiation begin
     private const byte SE = 240;    // subnegotiation end
+    private const byte OptEcho = 1;
+    private const byte OptSuppressGoAhead = 3;
 
     private readonly SessionDefinition _definition;
     private readonly LinkCounters? _counters;
@@ -212,9 +214,19 @@ public sealed class TelnetTerminalSession : ITerminalSession
                     break;
 
                 case Telnet.Option:
-                    // Refuse everything: WONT in answer to DO, DONT in answer to WILL. A DONT or
+                    // The server may echo and skip go-aheads (a Unix telnetd offers both; refusing
+                    // ECHO made it stop echoing, and this client has no local echo). Everything
+                    // else is refused: WONT in answer to DO, DONT in answer to WILL. A DONT or
                     // WONT is already the state we are in, and answering it would loop (RFC 854).
-                    if (_verb is DO or WILL)
+                    if (_verb == WILL && b is OptEcho or OptSuppressGoAhead)
+                    {
+                        await SendRawAsync(new[] { IAC, DO, b }, token).ConfigureAwait(false);
+                    }
+                    else if (_verb == DO && b == OptSuppressGoAhead)
+                    {
+                        await SendRawAsync(new[] { IAC, WILL, b }, token).ConfigureAwait(false);
+                    }
+                    else if (_verb is DO or WILL)
                     {
                         await SendRawAsync(new[] { IAC, _verb == DO ? WONT : DONT, b }, token).ConfigureAwait(false);
                     }
