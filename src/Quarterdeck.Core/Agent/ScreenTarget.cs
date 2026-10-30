@@ -3,7 +3,7 @@ namespace Quarterdeck.Core.Agent;
 /// <summary>What every agent target has, whether it shows text or pictures.</summary>
 public interface IAgentTarget
 {
-    /// <summary>"web01 (SSH admin@192.0.2.20:22)", for the prompt and the log.</summary>
+    /// <summary>"web01 (SSH admin@192.168.0.20:22)", for the prompt and the log.</summary>
     string Describe { get; }
 
     string SessionName { get; }

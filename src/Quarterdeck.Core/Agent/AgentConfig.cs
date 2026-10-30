@@ -13,7 +13,7 @@ public sealed class AgentEndpoint
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "New endpoint";
 
-    /// <summary>Base URL up to and including /v1, e.g. http://192.0.2.10:8000/v1.</summary>
+    /// <summary>Base URL up to and including /v1, e.g. http://192.168.0.10:8000/v1.</summary>
     public string BaseUrl { get; set; } = "http://localhost:8000/v1";
 
     public string Model { get; set; } = "";

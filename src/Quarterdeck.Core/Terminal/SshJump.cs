@@ -35,7 +35,7 @@ public sealed class SshJump : IDisposable
     /// <summary>The forwarded port on 127.0.0.1.</summary>
     public int LocalPort => (int)_forward.BoundPort;
 
-    /// <summary>"Jump host fw-a" or "Jump host admin@192.0.2.1:22", for messages.</summary>
+    /// <summary>"Jump host fw-a" or "Jump host admin@192.168.0.1:22", for messages.</summary>
     public string Route { get; }
 
     /// <summary>The last reason the jump host refused to open the forward, if any.</summary>

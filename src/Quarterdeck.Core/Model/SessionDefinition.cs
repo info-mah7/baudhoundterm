@@ -125,7 +125,7 @@ public sealed class SessionDefinition
     /// </summary>
     public List<TmuxSessionEntry> TmuxSessions { get; set; } = new();
 
-    /// <summary>Web: the page to open, "https://192.0.2.99". The tab stays on this scheme, host and port.</summary>
+    /// <summary>Web: the page to open, "https://192.168.0.99". The tab stays on this scheme, host and port.</summary>
     public string WebUrl { get; set; } = "";
 
     /// <summary>

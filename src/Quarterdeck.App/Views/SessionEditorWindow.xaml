@@ -267,7 +267,7 @@
             </StackPanel>
 
             <StackPanel x:Name="WebPanel" Visibility="Collapsed">
-              <TextBlock Text="Address (https://192.0.2.99, or a host name; the tab stays on this site)"/>
+              <TextBlock Text="Address (https://192.168.0.99, or a host name; the tab stays on this site)"/>
               <TextBox x:Name="WebUrlBox" LostFocus="OnWebUrlChanged"/>
               <CheckBox x:Name="WebAllowChangesBox" Margin="0,8,0,0" Content="The agent may change settings (asking as the endpoint's Approval setting says)"
                         ToolTip="Off: the agent only reads and checks. Anything that would change the device (Apply, Save, OK, Delete, a switch or check box, a form) waits for your yes, whatever the endpoint says."/>

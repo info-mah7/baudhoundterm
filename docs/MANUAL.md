@@ -69,7 +69,7 @@ shortcut...**, the **+** above the list, or Ctrl+Shift+T.
   `ssh`, `vnc`, `telnet`, `serial`, `local`, `cam`. For example `vnc lab` shows VNC shortcuts
   whose name or host contains "lab".
 - **Group by host** (the 🖥 button): every host gets a row, named after the machine with its
-  address in brackets, e.g. `web01 (192.0.2.10)`, and its shortcuts in that folder sit under it,
+  address in brackets, e.g. `web01 (192.168.0.10)`, and its shortcuts in that folder sit under it,
   whether there is one or several. The row takes a name its shortcuts share; when every shortcut
   has its own name (an SSH shortcut and a few tmux ones, say), it shows the host and each
   shortcut keeps its name. Right-click that row > **Connect** to choose which one; with
@@ -289,7 +289,7 @@ the board is. See [section 4](#kvm-tabs) for how to set one up.
   interface, which is where the picture comes from. Blank means the same board. A single `-` means
   a board with no capture: it still types, and says so.
 
-**Web page (a device's admin page)**: **Address** (`https://192.0.2.99`, or a host name, which
+**Web page (a device's admin page)**: **Address** (`https://192.168.0.99`, or a host name, which
 then means https). The tab stays on that site. **The agent may change settings** is off by default:
 the agent then only reads and checks (see [section 8](#the-agent-on-a-web-page)). **Forget
 certificate** drops the remembered certificate, for a device whose certificate was replaced on

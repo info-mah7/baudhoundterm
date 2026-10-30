@@ -40,7 +40,7 @@ internal sealed class BrowserView : Grid, IDisposable
     private readonly string? _localFolder;
     private readonly Action<string>? _external;
 
-    /// <summary>"https://192.0.2.99:443": the one site this tab may show.</summary>
+    /// <summary>"https://192.168.0.99:443": the one site this tab may show.</summary>
     public string Origin { get; }
 
     public BrowserView(SessionDefinition definition, Action<SessionState, string?> state,
