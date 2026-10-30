@@ -1,6 +1,8 @@
 using Quarterdeck.Core.Model;
 using Quarterdeck.Core.Security;
+using System.Net.Sockets;
 using Renci.SshNet;
+using Renci.SshNet.Common;
 
 namespace Quarterdeck.Core.Terminal;
 
@@ -76,6 +78,17 @@ public sealed class SshJump : IDisposable
             try
             {
                 await Task.Run(() => KnownHosts.Connect(connecting, hop.Host, hop.Port), token).ConfigureAwait(false);
+            }
+            catch (SshAuthenticationException ex)
+            {
+                // Wrong login at the jump host: kept as an auth failure, so it is never retried.
+                throw new SshAuthenticationException($"{route}: {ex.Message}", ex);
+            }
+            catch (Exception ex) when (ex is SshException or SocketException or IOException or TimeoutException)
+            {
+                // The jump host down, unreachable or slow to answer can fix itself, so these stay
+                // retryable. As InvalidOperationException a brief outage there stopped reconnects for good.
+                throw new SshConnectionException($"{route}: {ex.Message}", Renci.SshNet.Messages.Transport.DisconnectReason.ConnectionLost, ex);
             }
             catch (Exception ex) when (ex is not (HostKeyRejectedException or OperationCanceledException))
             {
