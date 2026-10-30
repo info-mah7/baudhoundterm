@@ -111,6 +111,9 @@ public sealed class AgentTeamMember
         var list = new List<string>();
         while (_inbox.TryDequeue(out var m))
         {
+            // Each message released one permit when it arrived: take it back with the message,
+            // or a later wait_for_partner finds a stale permit and returns at once with nothing.
+            _arrived.Wait(0);
             list.Add(m);
         }
 
@@ -120,9 +123,16 @@ public sealed class AgentTeamMember
     /// <summary>Waits up to <paramref name="timeout"/> for a message, then returns what is waiting.</summary>
     public async Task<List<string>> WaitAsync(TimeSpan timeout, CancellationToken token)
     {
-        if (_inbox.IsEmpty && !Partner.Finished)
+        // A permit can still outrun its message (Receive enqueues, then releases, while Take
+        // drains between the two), so wake only for a message that is really there.
+        var deadline = DateTime.UtcNow + timeout;
+        while (_inbox.IsEmpty && !Partner.Finished)
         {
-            await _arrived.WaitAsync(timeout, token).ConfigureAwait(false);
+            var left = deadline - DateTime.UtcNow;
+            if (left <= TimeSpan.Zero || !await _arrived.WaitAsync(left, token).ConfigureAwait(false))
+            {
+                break;
+            }
         }
 
         return Take();
