@@ -22,10 +22,17 @@ public sealed class LocalSocketBridge : IAsyncDisposable
     private readonly int _port;
     private readonly CancellationTokenSource _life = new();
 
-    public LocalSocketBridge(string targetHost, int targetPort)
+    private readonly bool _tls;
+    private readonly bool _hasUsername;
+
+    /// <param name="tls">Bring up TLS (VeNCrypt X509) before handing the connection to the page; see <see cref="VncTls"/>.</param>
+    /// <param name="hasUsername">Whether the page can answer a login (the X509Plain subtype), not only a password.</param>
+    public LocalSocketBridge(string targetHost, int targetPort, bool tls = false, bool hasUsername = false)
     {
         _host = targetHost;
         _port = targetPort;
+        _tls = tls;
+        _hasUsername = hasUsername;
         Token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
 
         // Port 0 lets the OS choose a free one, but HttpListener needs the number in its
@@ -135,7 +142,28 @@ public sealed class LocalSocketBridge : IAsyncDisposable
 
         Note?.Invoke(this, $"Reached {_host}:{_port}.");
 
-        var stream = tcp.GetStream();
+        Stream stream = tcp.GetStream();
+        if (_tls)
+        {
+            // The outer handshake and TLS happen here; the page then gets the inner one.
+            VncTls.Session session;
+            try
+            {
+                session = await VncTls.NegotiateAsync(stream, _host, _port, _hasUsername, token).ConfigureAwait(false);
+                Note?.Invoke(this, $"TLS up ({session.SubtypeName}), certificate SHA-256 {session.Fingerprint}.");
+                await VncTls.PresentAsync(socket, session.Subtype, token).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is VncTlsException or IOException or WebSocketException)
+            {
+                await CloseOutputQuietlyAsync(socket).ConfigureAwait(false);
+                socket.Abort();
+                socket.Dispose();
+                Closed?.Invoke(this, ex.Message);
+                return;
+            }
+
+            stream = session.Stream;
+        }
 
         var toTcp = Task.Run(async () =>
         {
@@ -202,6 +230,10 @@ public sealed class LocalSocketBridge : IAsyncDisposable
 
             socket.Abort();
             socket.Dispose();
+            if (_tls)
+            {
+                await stream.DisposeAsync().ConfigureAwait(false);   // the TLS stream owns the socket's
+            }
         }
     }
 

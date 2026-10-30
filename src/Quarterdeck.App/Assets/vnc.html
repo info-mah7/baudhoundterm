@@ -94,7 +94,7 @@ function probe(cfg) {
 
 function connect(cfg) {
   rfb = new RFB(document.getElementById('screen'), cfg.url, {
-    credentials: { password: cfg.password || '' },
+    credentials: cfg.username ? { username: cfg.username, password: cfg.password || '' } : { password: cfg.password || '' },
     // The far end owns its own clipboard and resolution; these are the settings that make
     // a desktop usable in a tab rather than a postage stamp.
     shared: true,

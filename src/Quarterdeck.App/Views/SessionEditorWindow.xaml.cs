@@ -130,6 +130,9 @@ public partial class SessionEditorWindow : Window
         VncHostBox.Text = d.Host;
         VncPortBox.Text = (d.Protocol == SessionProtocol.Vnc ? d.Port : 5900).ToString(CultureInfo.InvariantCulture);
         VncViewOnlyBox.IsChecked = d.ViewOnly;
+        VncTlsBox.IsChecked = d.VncTls;
+        ShowVncCert();
+        VncUserBox.Text = d.Protocol == SessionProtocol.Vnc ? d.Username : "";
         RtspHostBox.Text = d.Host;
         RtspPortBox.Text = (d.Protocol == SessionProtocol.Rtsp ? d.Port : 554).ToString(CultureInfo.InvariantCulture);
         RdpHostBox.Text = d.Host;
@@ -578,6 +581,21 @@ public partial class SessionEditorWindow : Window
     /// that session for the daemon key, and saves it. One login instead of copying the key by
     /// hand; the picture's password is saved at the same time, since it is the same login.
     /// </summary>
+    private void ShowVncCert()
+    {
+        int.TryParse(VncPortBox.Text.Trim(), out var port);
+        var known = Core.Terminal.VncTls.Known(VncHostBox.Text.Trim(), port == 0 ? 5900 : port);
+        VncCertStatus.Text = known is null ? "No certificate kept for this server yet." : "Kept: SHA-256 " + known[..Math.Min(23, known.Length)] + "...";
+        VncForgetCertButton.IsEnabled = known is not null;
+    }
+
+    private void OnVncForgetCert(object sender, RoutedEventArgs e)
+    {
+        int.TryParse(VncPortBox.Text.Trim(), out var port);
+        Core.Terminal.VncTls.Forget(VncHostBox.Text.Trim(), port == 0 ? 5900 : port);
+        ShowVncCert();
+    }
+
     private async void OnKvmPair(object sender, RoutedEventArgs e)
     {
         var host = KvmHostBox.Text.Trim();
@@ -763,6 +781,8 @@ public partial class SessionEditorWindow : Window
             d.Host = VncHostBox.Text.Trim();
             d.Port = ParseInt(VncPortBox.Text, 5900);
             d.ViewOnly = VncViewOnlyBox.IsChecked == true;
+            d.VncTls = VncTlsBox.IsChecked == true;
+            d.Username = VncUserBox.Text.Trim();
 
             if (!string.IsNullOrEmpty(VncSecretBox.Password))
             {

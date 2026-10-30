@@ -39,6 +39,7 @@ public partial class MainWindow : Window
 
         // Unknown or changed SSH host keys are put to the user; nothing is trusted silently.
         KnownHosts.Ask = q => Dispatcher.Invoke(() => AskHostKey(q));
+        VncTls.Ask = q => Dispatcher.Invoke(() => AskVncCertificate(q));
         GroupToggle.IsChecked = _ui.GroupByHost;   // Click, not Checked: setting it here saves nothing
         Privacy.HideAll = _ui.HideAddresses;
         HideMenu.IsChecked = _ui.HideAddresses;
@@ -349,6 +350,16 @@ public partial class MainWindow : Window
         return MessageBox.Show(this, text, tls ? "BaudHoundTerm: TLS certificate" : "BaudHoundTerm: SSH host key", MessageBoxButton.YesNo,
                    q.Changed ? MessageBoxImage.Warning : MessageBoxImage.Question,
                    MessageBoxResult.No) == MessageBoxResult.Yes;   // Enter never trusts a key by accident
+    }
+
+    private bool AskVncCertificate(VncCertificateQuestion q)
+    {
+        var text = $"First TLS connection to the VNC server {q.HostPort}.\n\n" +
+                   $"Subject: {q.Subject}\nIssuer: {q.Issuer}\nValid: {q.ValidFrom:yyyy-MM-dd} to {q.ValidTo:yyyy-MM-dd}\n" +
+                   $"SHA-256: {q.Sha256}\n\nVNC servers nearly always use a certificate of their own. If you can, compare the " +
+                   "fingerprint with the server's (TigerVNC: the file named by X509Cert). It is remembered; a different one later is refused.\n\nTrust it?";
+        return MessageBox.Show(this, text, "BaudHoundTerm: VNC certificate", MessageBoxButton.YesNo, MessageBoxImage.Question,
+                   MessageBoxResult.No) == MessageBoxResult.Yes;
     }
 
     // ---------- session tree ----------

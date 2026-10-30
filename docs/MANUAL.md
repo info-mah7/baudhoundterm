@@ -239,8 +239,16 @@ it does not have. **Save** keeps the changes.
 
 **Local shell**: the **Command line** to run (`powershell.exe`).
 
-**VNC**: **Host**, **Port** (5900), **Password**, and **View only,
-send no input**. Classic VNC passwords are weak; use VNC only on a network you trust.
+**VNC**: **Host**, **Port** (5900), **Password**, **View only, send no input**, and **Encrypt
+with TLS**. Without TLS, classic VNC passwords are weak: use plain VNC only on a network you trust.
+With TLS ticked, the connection is encrypted through VeNCrypt with the server's certificate, as
+TigerVNC, libvncserver and x11vnc offer it (TigerVNC: `SecurityTypes=X509Vnc`, with `X509Cert`
+and `X509Key`). The first time, the certificate's fingerprint is shown and kept on a yes, like an
+SSH host key; the same one later passes, a different one is refused. **Forget the server's
+certificate** in the shortcut's properties makes the next connection ask again. A server that
+offers TLS only without a certificate (the anonymous TLSVnc form) cannot be used from Windows:
+give it a certificate. **Username** is only for a server that asks for a login as well as a
+password (the X509Plain form).
 
 **RDP**: **Host**, **Port** (3389), **Username** (blank asks at connect), **Domain**, the password
 from the vault or KeePassXC, an optional **Remote Desktop Gateway**, **Share the clipboard**,

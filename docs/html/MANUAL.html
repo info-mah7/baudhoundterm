@@ -378,9 +378,21 @@ anything with its own line editing.</li>
 <p><strong>Local shell</strong>: the <strong>Command line</strong> to
 run (<code>powershell.exe</code>).</p>
 <p><strong>VNC</strong>: <strong>Host</strong>, <strong>Port</strong>
-(5900), <strong>Password</strong>, and <strong>View only, send no
-input</strong>. Classic VNC passwords are weak; use VNC only on a
-network you trust.</p>
+(5900), <strong>Password</strong>, <strong>View only, send no
+input</strong>, and <strong>Encrypt with TLS</strong>. Without TLS,
+classic VNC passwords are weak: use plain VNC only on a network you
+trust. With TLS ticked, the connection is encrypted through VeNCrypt
+with the server's certificate, as TigerVNC, libvncserver and x11vnc
+offer it (TigerVNC: <code>SecurityTypes=X509Vnc</code>, with
+<code>X509Cert</code> and <code>X509Key</code>). The first time, the
+certificate's fingerprint is shown and kept on a yes, like an SSH host
+key; the same one later passes, a different one is refused.
+<strong>Forget the server's certificate</strong> in the shortcut's
+properties makes the next connection ask again. A server that offers TLS
+only without a certificate (the anonymous TLSVnc form) cannot be used
+from Windows: give it a certificate. <strong>Username</strong> is only
+for a server that asks for a login as well as a password (the X509Plain
+form).</p>
 <p><strong>RDP</strong>: <strong>Host</strong>, <strong>Port</strong>
 (3389), <strong>Username</strong> (blank asks at connect),
 <strong>Domain</strong>, the password from the vault or KeePassXC, an

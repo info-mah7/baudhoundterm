@@ -192,7 +192,14 @@
               <TextBlock Text="Password (encrypted on this PC; blank keeps the existing one)"/>
               <PasswordBox x:Name="VncSecretBox" Padding="3"/>
               <CheckBox x:Name="VncViewOnlyBox" Content="View only, send no input"/>
-              <TextBlock Text="Classic VNC auth is weak by design. Fine on a trusted network, not across one."
+              <CheckBox x:Name="VncTlsBox" Content="Encrypt with TLS (VeNCrypt with the server's certificate)" Margin="0,4,0,0"/>
+              <TextBlock Text="Username (only for a TLS server that asks for a login as well as a password)"/>
+              <TextBox x:Name="VncUserBox"/>
+              <DockPanel Margin="0,4,0,0">
+                <Button x:Name="VncForgetCertButton" DockPanel.Dock="Left" Content="Forget the server's certificate" Padding="10,3" Click="OnVncForgetCert"/>
+                <TextBlock x:Name="VncCertStatus" VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="Wrap" Foreground="#8B94A7"/>
+              </DockPanel>
+              <TextBlock x:Name="VncTlsNote" Text="Without TLS, classic VNC auth is weak by design: fine on a trusted network, not across one. With it, the server's certificate is shown the first time and kept, like an SSH host key."
                          Foreground="#5C6370" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel>
 

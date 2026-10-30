@@ -160,6 +160,9 @@ public sealed class SessionDefinition
     /// <summary>VNC only: watch without sending input.</summary>
     public bool ViewOnly { get; set; }
 
+    /// <summary>VNC only: TLS through VeNCrypt with the server's certificate (TigerVNC, libvncserver, x11vnc).</summary>
+    public bool VncTls { get; set; }
+
     // RDP: Host, Port (3389), Username and the password source are shared fields.
     /// <summary>Windows domain for the login. Blank for a local account or user@domain in Username.</summary>
     public string RdpDomain { get; set; } = "";

@@ -612,7 +612,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
     {
         try
         {
-            _bridge = new LocalSocketBridge(Definition.Host, Definition.Port);
+            _bridge = new LocalSocketBridge(Definition.Host, Definition.Port, Definition.VncTls, Definition.Username.Trim().Length > 0);
             // Both halves of the handshake report into the page's log as well as the status
             // bar: the status bar shows only the last line, and the order of these against the
             // page's own events is the whole diagnosis when a session stalls.
@@ -628,6 +628,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
                 t = "vncinit",
                 url = _bridge.Url,
                 password = _vault.Get(Definition.Id) ?? "",
+                username = Definition.Username.Trim(),
                 viewOnly = Definition.ViewOnly
             });
 
