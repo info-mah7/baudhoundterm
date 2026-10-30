@@ -1086,6 +1086,11 @@ public partial class MainWindow : Window
     /// </summary>
     private static string TabTitle(SessionDefinition definition, TerminalView view)
     {
+        if (view.AttachTmux && !string.IsNullOrWhiteSpace(view.TmuxSessionName))
+        {
+            return $"{definition.Name} · {SessionController.TmuxName(view.TmuxSessionName)}";
+        }
+
         if (definition is not { Protocol: SessionProtocol.Ssh, Tmux: true } || string.IsNullOrWhiteSpace(view.TmuxSessionName))
         {
             return definition.Name;
@@ -1125,14 +1130,15 @@ public partial class MainWindow : Window
     /// "Running tmux sessions": what <c>tmux ls</c> shows for this shortcut's login on its host, asked
     /// when the submenu opens. Picking one opens a tab attached to it, whatever started it.
     /// </summary>
-    private MenuItem RunningTmuxMenu(SessionDefinition definition, string header = "Running t_mux sessions")
+    private MenuItem RunningTmuxMenu(SessionDefinition definition, string header = "_Running tmux sessions")
     {
         var menu = new MenuItem
         {
             Header = header,
             ToolTip = $"The tmux sessions running for {definition.Username}@{definition.Host}, from tmux ls on the host"
         };
-        menu.Items.Add(new MenuItem { Header = "Asking the host...", IsEnabled = false });
+        var waiting = new MenuItem { Header = "Asking the host...", IsEnabled = false };
+        menu.Items.Add(waiting);
         var asked = false;
         menu.SubmenuOpened += async (_, e) =>
         {
@@ -1142,12 +1148,14 @@ public partial class MainWindow : Window
             }
 
             asked = true;
+            menu.Items.Clear();
+            menu.Items.Add(waiting);
             var (sessions, problem) = await ListRunningTmuxAsync(definition);
             menu.Items.Clear();
             if (problem is not null || sessions.Count == 0)
             {
-                menu.Items.Add(new MenuItem { Header = problem ?? "None running for this login", IsEnabled = false });
-                asked = problem is null;   // a failure is asked again next time; an empty list is an answer
+                menu.Items.Add(new MenuItem { Header = (problem ?? "None running for this login").Replace("_", "__"), IsEnabled = false });
+                asked = problem is null;   // a failure is asked again next time (within the cache below); an empty list is an answer
                 return;
             }
 
@@ -1170,10 +1178,14 @@ public partial class MainWindow : Window
         return menu;
     }
 
+    // Failed own-login listings, by shortcut: a refused key or stale password is not tried again on
+    // every menu opening (that walks into fail2ban or a domain lockout), until a tab connects or the time passes.
+    private readonly Dictionary<Guid, (DateTime Until, string Problem)> _tmuxListFailures = [];
+
     /// <summary>
     /// The host's tmux sessions for this login: on an open tab's connection to the same login when there
-    /// is one, otherwise on a login of its own, made only when it needs nothing typed (a hover never pops
-    /// a password prompt). The problem, in a few words, when it cannot say.
+    /// is one, otherwise on a login of its own, made only when it needs nothing typed (a menu never pops
+    /// a prompt). The problem, in a few words, when it cannot say.
     /// </summary>
     private async Task<(IReadOnlyList<SessionController.TmuxListing> Sessions, string? Problem)> ListRunningTmuxAsync(SessionDefinition definition)
     {
@@ -1184,7 +1196,8 @@ public partial class MainWindow : Window
                                                  && string.Equals(l.Definition.Username, definition.Username, StringComparison.Ordinal));
             if (open?.View.Controller is { } controller)
             {
-                return (await controller.ListTmuxAsync(), null);
+                _tmuxListFailures.Remove(definition.Id);
+                return await controller.ListTmuxAsync();
             }
 
             if (QuietLoginProblem(definition) is { } problem)
@@ -1192,26 +1205,30 @@ public partial class MainWindow : Window
                 return ([], problem);
             }
 
-            var (exit, output, error) = await SshTerminalSession.RunCommandAsync(definition, _vault, SessionController.TmuxListCommand);
-            return exit switch
+            if (_tmuxListFailures.TryGetValue(definition.Id, out var failed) && failed.Until > DateTime.UtcNow)
             {
-                0 => (SessionController.ParseTmuxList(output), null),
-                127 => ([], "tmux is not installed on the host"),
-                _ => ([], $"The host said: {error.Trim()}")
-            };
+                return ([], failed.Problem);
+            }
+
+            var (exit, output, error) = await SshTerminalSession.RunCommandAsync(definition, _vault, SessionController.TmuxListCommand);
+            _tmuxListFailures.Remove(definition.Id);
+            return SessionController.ReadTmuxList(exit, output, error);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            return ([], "Could not ask the host: " + ex.Message.TrimEnd('.'));
+            var refused = ex is Renci.SshNet.Common.SshAuthenticationException;
+            var problem = refused ? "The host refused the login: connect the shortcut to fix it" : "Could not ask the host: " + ex.Message.TrimEnd('.');
+            _tmuxListFailures[definition.Id] = (DateTime.UtcNow + (refused ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(1)), problem);
+            return ([], problem);
         }
     }
 
-    /// <summary>Why listing would need a prompt (or a host key check), so it is not tried from a menu; null when it would not.</summary>
+    /// <summary>Why listing on a login of its own would need a prompt, so it is not tried from a menu; null when it would not.</summary>
     private string? QuietLoginProblem(SessionDefinition d)
     {
-        if (d.LastConnected is null)
+        if (d.JumpHost.Trim().Length > 0)
         {
-            return "Connect once first, to check the host key";
+            return "Goes through a jump host: connect first, then look again";
         }
 
         return d.AuthMethod switch
@@ -1224,24 +1241,10 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// A tab attached to a running tmux session. A plain SSH shortcut stays as it is: only this tab
-    /// runs in tmux, under the shortcut (same id, so its saved login and its place in the list).
+    /// runs in tmux (TerminalView.AttachTmux), on the shortcut itself, so edits from the tab are kept.
     /// </summary>
-    private async Task OpenRunningTmuxAsync(SessionDefinition definition, string name)
-    {
-        if (definition.Tmux)
-        {
-            await OpenTabAsync(definition, tmuxSession: name);
-            return;
-        }
-
-        var copy = definition.Clone(definition.Name);
-        copy.Id = definition.Id;
-        copy.LastConnected = definition.LastConnected;
-        copy.Tmux = true;
-        // No list of its own: the tab title then adds the session's name ("web01 · build").
-        copy.TmuxSessions = [];
-        await OpenTabAsync(copy, tmuxSession: name);
-    }
+    private async Task OpenRunningTmuxAsync(SessionDefinition definition, string name) =>
+        await OpenTabAsync(definition, tmuxSession: name, attachTmux: !definition.Tmux);
 
     /// <summary>"Send a secret to the program": the window, then <see cref="SessionController.SendSecretAsync"/>.</summary>
     private MenuItem SendSecretItem(TerminalView view, SessionDefinition definition)
@@ -1506,7 +1509,8 @@ public partial class MainWindow : Window
         await OpenTabAsync(definition, tmuxSession: name);
     }
 
-    private async Task OpenTabAsync(SessionDefinition definition, string? colour = null, string? tmuxSession = null, string? localWebFolder = null)
+    private async Task OpenTabAsync(SessionDefinition definition, string? colour = null, string? tmuxSession = null, string? localWebFolder = null,
+        bool attachTmux = false)
     {
         if (definition.Protocol == SessionProtocol.Sql)
         {
@@ -1516,7 +1520,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var view = new TerminalView(definition, _vault) { TmuxSessionName = tmuxSession ?? "", LocalWebFolder = localWebFolder };
+        var view = new TerminalView(definition, _vault) { TmuxSessionName = tmuxSession ?? "", LocalWebFolder = localWebFolder, AttachTmux = attachTmux };
         var tab = new TabItem { Content = view };
         var live = new LiveTab(tab, view, definition)
         {
@@ -2733,15 +2737,19 @@ public partial class MainWindow : Window
                 }
 
                 // One list per SSH login on the host: tmux keeps its sessions per login.
+                // Per login, the shortcut that can ask without a prompt, when one can.
                 var logins = host.Sessions.Where(s => s.Protocol == SessionProtocol.Ssh)
-                                 .GroupBy(s => (s.Username, SessionPresentation.EffectivePort(s))).Select(g => g.First()).ToList();
+                                 .GroupBy(s => (s.Username, SessionPresentation.EffectivePort(s)))
+                                 .Select(g => g.OrderBy(s => QuietLoginProblem(s) is null ? 0 : 1).First()).ToList();
+                var ports = logins.Select(SessionPresentation.EffectivePort).Distinct().Count();
                 if (logins.Count > 0)
                 {
                     connect.Items.Add(new Separator());
                     foreach (var login in logins)
                     {
                         var who = login.Username.Length > 0 ? login.Username.Replace("_", "__") : login.Name.Replace("_", "__");
-                        connect.Items.Add(RunningTmuxMenu(login, logins.Count == 1 ? "Running t_mux sessions" : $"Running tmux sessions as {who}"));
+                        var port = ports > 1 ? $" (port {SessionPresentation.EffectivePort(login)})" : "";
+                        connect.Items.Add(RunningTmuxMenu(login, logins.Count == 1 ? "_Running tmux sessions" : $"Running tmux sessions as {who}{port}"));
                     }
                 }
 

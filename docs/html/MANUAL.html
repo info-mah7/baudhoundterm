@@ -636,10 +636,13 @@ Pick one for a tab attached to it. A plain SSH shortcut stays plain:
 only that tab runs in tmux. The list uses an open tab's connection to
 the same login when there is one. Otherwise it logs in on its own, but
 only when that needs nothing typed (a key, the SSH agent or a saved
-password) and the host key was checked at an earlier connect; if not, it
-says so, and connecting first fixes it. Sessions named with characters
-other than letters, digits, <code>-</code> and <code>_</code> are listed
-but cannot be opened from here.</p>
+password, no jump host) and the host key is already trusted; it never
+asks anything from a menu. If it cannot, it says so, and connecting
+first fixes it. A login the host refuses is not tried again from the
+menu for 30 minutes, so browsing the list cannot lock an account.
+Sessions named with characters other than letters, digits,
+<code>-</code> and <code>_</code> are listed but cannot be opened from
+here.</p>
 <h3 id="ending-a-tmux-session">Ending a tmux session</h3>
 <p>Closing a tab whose shell is in tmux leaves the session running on
 the host, which is the point of it. To end it instead, right-click the
@@ -708,14 +711,17 @@ secret to the program...</strong>:</p>
 <li>Give it a <strong>name</strong>, then type the value or choose
 <strong>Use a file instead</strong> for a key file (up to 1 MB).</li>
 <li>BaudHoundTerm writes it to
-<code>~/.cache/baudhoundterm/secrets/&lt;name&gt;</code> on the host
-over a channel of its own, through the command's input: it is not typed
-into the tab, not on any command line, and not in the log. The folder is
-700 and the file 600.</li>
+<code>~/.cache/baudhoundterm/secrets/&lt;name&gt;.&lt;6 random characters&gt;</code>
+on the host (a new file each time, so two sends of one name never touch
+each other) over a channel of its own, through the command's input: it
+is not typed into the tab, not on any command line, and not in the log.
+The folder is 700 and the file 600.</li>
 <li><strong>Delete it from the host after</strong> 15 minutes, 1 hour
 (the default) or 8 hours: a background job on the host removes it,
-whether the tab is still open or not. <strong>Keep it</strong> leaves it
-for you to delete.</li>
+whether the tab is still open or not. A host that kills background jobs
+at logout, or restarts, stops that job; the next send then deletes every
+file past its time. <strong>Keep it</strong> leaves it for you to
+delete.</li>
 <li>With <strong>Type a line at the prompt</strong> ticked, the tab gets
 one line saying where the file is and to use it from there
 (<code>"$(cat &lt;path&gt;)"</code> inside a command) without printing

@@ -421,8 +421,9 @@ has several). It runs `tmux ls` on the host when the submenu opens and shows eac
 window count, and "attached" when a client is on it. Pick one for a tab attached to it. A plain SSH
 shortcut stays plain: only that tab runs in tmux. The list uses an open tab's connection to the same
 login when there is one. Otherwise it logs in on its own, but only when that needs nothing typed (a
-key, the SSH agent or a saved password) and the host key was checked at an earlier connect; if not,
-it says so, and connecting first fixes it. Sessions named with characters other than letters,
+key, the SSH agent or a saved password, no jump host) and the host key is already trusted; it never
+asks anything from a menu. If it cannot, it says so, and connecting first fixes it. A login the host
+refuses is not tried again from the menu for 30 minutes, so browsing the list cannot lock an account. Sessions named with characters other than letters,
 digits, `-` and `_` are listed but cannot be opened from here.
 
 ### Ending a tmux session
@@ -479,11 +480,13 @@ session log. Instead, right-click the tab (or its row in the list) and choose **
 program...**:
 
 - Give it a **name**, then type the value or choose **Use a file instead** for a key file (up to 1 MB).
-- BaudHoundTerm writes it to `~/.cache/baudhoundterm/secrets/<name>` on the host over a channel of
-  its own, through the command's input: it is not typed into the tab, not on any command line, and
+- BaudHoundTerm writes it to `~/.cache/baudhoundterm/secrets/<name>.<6 random characters>` on the
+  host (a new file each time, so two sends of one name never touch each other) over a channel of its own, through the command's input: it is not typed into the tab, not on any command line, and
   not in the log. The folder is 700 and the file 600.
 - **Delete it from the host after** 15 minutes, 1 hour (the default) or 8 hours: a background job
-  on the host removes it, whether the tab is still open or not. **Keep it** leaves it for you to delete.
+  on the host removes it, whether the tab is still open or not. A host that kills background jobs
+  at logout, or restarts, stops that job; the next send then deletes every file past its time.
+  **Keep it** leaves it for you to delete.
 - With **Type a line at the prompt** ticked, the tab gets one line saying where the file is and to use
   it from there (`"$(cat <path>)"` inside a command) without printing it. Nothing is sent until you
   press Enter, so you can read or change it first. The value is never in that line.

@@ -33,6 +33,7 @@ public sealed class SendSecretWindow : Window
     };
     private readonly TextBlock _problem = new() { Foreground = Brushes.Salmon, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
     private byte[]? _fromFile;
+    private readonly Button _typeInstead;
 
     public SendSecretWindow(string tabName)
     {
@@ -63,9 +64,13 @@ public sealed class SendSecretWindow : Window
         panel.Children.Add(Label("Password or token"));
         panel.Children.Add(_value);
         var browse = Btn("Use a file instead (a key)...", Browse);
-        browse.HorizontalAlignment = HorizontalAlignment.Left;
-        browse.Margin = new Thickness(0, 2, 0, 2);
-        panel.Children.Add(browse);
+        _typeInstead = Btn("Type a value instead", ForgetFile);
+        _typeInstead.Visibility = Visibility.Collapsed;
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 2) };
+        browse.Margin = new Thickness(0);
+        row.Children.Add(browse);
+        row.Children.Add(_typeInstead);
+        panel.Children.Add(row);
         panel.Children.Add(_file);
         panel.Children.Add(Label("Delete it from the host after"));
         panel.Children.Add(_removal);
@@ -83,7 +88,15 @@ public sealed class SendSecretWindow : Window
         Content = panel;
 
         Loaded += (_, _) => _value.Focus();
-        Closed += (_, _) => _value.Clear();
+        // Not sent (Cancel, or the window closed): nothing of the value is kept in memory.
+        Closed += (_, _) =>
+        {
+            _value.Clear();
+            if (DialogResult != true)
+            {
+                ForgetFile();
+            }
+        };
     }
 
     public string SecretName => _name.Text.Trim();
@@ -112,10 +125,12 @@ public sealed class SendSecretWindow : Window
                 return;
             }
 
+            ForgetFile();
             _fromFile = File.ReadAllBytes(dialog.FileName);
             _value.Clear();
             _value.IsEnabled = false;
             _file.Text = $"Sending {info.Name} ({_fromFile.Length:N0} bytes), not a typed value.";
+            _typeInstead.Visibility = Visibility.Visible;
             if (_name.Text.Trim() is "" or "secret")
             {
                 _name.Text = info.Name;
@@ -129,6 +144,37 @@ public sealed class SendSecretWindow : Window
         }
     }
 
+    private void ForgetFile()
+    {
+        if (_fromFile is not null)
+        {
+            Array.Clear(_fromFile);
+            _fromFile = null;
+        }
+
+        _value.IsEnabled = true;
+        _file.Text = "";
+        _typeInstead.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>The typed value as UTF-8, read from the box's SecureString so no string copy of it is left behind.</summary>
+    private byte[] TypedBytes()
+    {
+        var length = _value.SecurePassword.Length;
+        var unmanaged = System.Runtime.InteropServices.Marshal.SecureStringToGlobalAllocUnicode(_value.SecurePassword);
+        var chars = new char[length];
+        try
+        {
+            System.Runtime.InteropServices.Marshal.Copy(unmanaged, chars, 0, length);
+            return System.Text.Encoding.UTF8.GetBytes(chars);
+        }
+        finally
+        {
+            System.Runtime.InteropServices.Marshal.ZeroFreeGlobalAllocUnicode(unmanaged);
+            Array.Clear(chars);
+        }
+    }
+
     private void Send()
     {
         if (SecretName.Length == 0)
@@ -137,7 +183,7 @@ public sealed class SendSecretWindow : Window
             return;
         }
 
-        Value = _fromFile ?? System.Text.Encoding.UTF8.GetBytes(_value.Password);
+        Value = _fromFile ?? TypedBytes();
         if (Value.Length == 0)
         {
             _problem.Text = "Type the value, or choose a file.";

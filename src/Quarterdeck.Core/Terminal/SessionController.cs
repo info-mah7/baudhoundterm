@@ -72,6 +72,14 @@ public sealed class SessionController : IAsyncDisposable
     /// </summary>
     public string TmuxSessionName { get; init; } = "";
 
+    /// <summary>
+    /// This tab attaches to a running tmux session although its shortcut is a plain SSH one
+    /// (Running tmux sessions): the shortcut stays as it is, only this connection runs in tmux.
+    /// </summary>
+    public bool AttachTmux { get; init; }
+
+    private bool InTmux => Definition.Protocol == SessionProtocol.Ssh && (Definition.Tmux || AttachTmux);
+
     private string TmuxTarget => string.IsNullOrWhiteSpace(TmuxSessionName) ? Definition.TmuxSession : TmuxSessionName;
     public SessionState State { get; private set; } = SessionState.Disconnected;
 
@@ -207,7 +215,7 @@ public sealed class SessionController : IAsyncDisposable
                 return;
             }
 
-            if (Definition is { Protocol: SessionProtocol.Ssh, Tmux: true })
+            if (InTmux)
             {
                 var entry = Definition.TmuxSessionList().FirstOrDefault(t => TmuxName(t.Name) == TmuxName(TmuxTarget));
                 await _transport.WriteAsync(TmuxCommand(TmuxTarget, entry), token).ConfigureAwait(false);
@@ -478,7 +486,7 @@ public sealed class SessionController : IAsyncDisposable
     public async Task RefreshTmuxAsync(CancellationToken token = default)
     {
         var was = Tmux;
-        if (Definition is not { Protocol: SessionProtocol.Ssh, Tmux: true })
+        if (!InTmux)
         {
             Tmux = TmuxState.Off;
         }
@@ -697,33 +705,40 @@ public sealed class SessionController : IAsyncDisposable
 
     /// <summary>
     /// What <c>tmux ls</c> is asked: one value per field, split on "|" (tmux prints a tab in a format as "_").
-    /// No server running is not an error: it means no sessions.
+    /// A command channel gets a thin PATH, so the usual extra homes of tmux are added. No server running
+    /// is not an error: it means no sessions.
     /// </summary>
     public const string TmuxListCommand =
-        "sh -c 'tmux ls -F \"#{session_windows}|#{session_attached}|#{session_name}\" 2>/dev/null; " +
-        "command -v tmux >/dev/null 2>&1 || exit 127; exit 0'";
+        "sh -c 'PATH=\"$PATH:/usr/local/bin:/opt/homebrew/bin:$HOME/.local/bin\"; command -v tmux >/dev/null 2>&1 || exit 127; " +
+        "tmux ls -F \"#{session_windows}|#{session_attached}|#{session_name}\" 2>/dev/null; exit 0'";
 
     /// <summary>The sessions in <see cref="TmuxListCommand"/>'s output, by name. The name comes last, so a "|" in it survives.</summary>
     public static IReadOnlyList<TmuxListing> ParseTmuxList(string output) =>
         output.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries)
               .Select(line => line.Split('|', 3))
-              .Where(f => f.Length == 3 && f[2].Length > 0)
-              .Select(f => new TmuxListing(f[2], int.TryParse(f[0], out var w) ? w : 0, f[1] is not ("" or "0")))
+              .Where(f => f.Length == 3 && f[2].Length > 0 && int.TryParse(f[0], out _))
+              .Select(f => new TmuxListing(f[2], int.Parse(f[0]), f[1] is not ("" or "0")))
               .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
               .ToList();
 
+    /// <summary><see cref="TmuxListCommand"/>'s result, read the same way whichever connection ran it.</summary>
+    public static (IReadOnlyList<TmuxListing> Sessions, string? Problem) ReadTmuxList(int exit, string output, string error) => exit switch
+    {
+        0 => (ParseTmuxList(output), null),
+        127 => ([], "tmux is not installed on the host"),
+        _ => ([], "The host said: " + (error.Trim().Length > 0 ? error.Trim() : $"exit {exit}"))
+    };
+
     /// <summary>The tmux sessions running for this login on the host, asked on a second channel of this tab's connection.</summary>
-    public async Task<IReadOnlyList<TmuxListing>> ListTmuxAsync(CancellationToken token = default)
+    public async Task<(IReadOnlyList<TmuxListing> Sessions, string? Problem)> ListTmuxAsync(CancellationToken token = default)
     {
         if (Ssh?.Client is not { IsConnected: true } client)
         {
-            throw new InvalidOperationException("the tab is not connected");
+            return ([], "the tab is not connected");
         }
 
-        using var command = client.CreateCommand(TmuxListCommand);
-        command.CommandTimeout = TimeSpan.FromSeconds(10);
-        var output = await Task.Run(() => command.Execute(), token).ConfigureAwait(false);
-        return command.ExitStatus == 127 ? throw new InvalidOperationException("tmux is not installed on the host") : ParseTmuxList(output);
+        var (exit, output, error) = await SshTerminalSession.ExecAsync(client, TmuxListCommand, token).ConfigureAwait(false);
+        return ReadTmuxList(exit, output, error);
     }
 
     /// <summary>A file name for a secret: letters, digits, '-', '_' and '.', not starting with a dot.</summary>
@@ -733,13 +748,19 @@ public sealed class SessionController : IAsyncDisposable
         return safe.Length == 0 ? "secret" : safe[..Math.Min(safe.Length, 64)];
     }
 
+    // Marks the path in the output: a login rc file that prints a greeting on command channels would
+    // otherwise end up in it, and in the line typed at the prompt.
+    private const string SecretPathMark = "BHT-SECRET-PATH:";
+
     /// <summary>
     /// Puts a secret in a file on the host that only this login can read, for a program in this tab (a
     /// coding agent) to use without the value ever passing through the terminal. It goes up on a second
     /// channel, through the command's input, so it is not in the scrollback, the session log, the
     /// program's conversation, or any process's command line. The folder is
-    /// ~/.cache/baudhoundterm/secrets (700), the file 600. With <paramref name="removeAfter"/>, a
-    /// background job on the host deletes it then, whether or not the tab is still open.
+    /// ~/.cache/baudhoundterm/secrets (700), the file 600, its name made unique per send so an earlier
+    /// send's removal never takes a later one. With <paramref name="removeAfter"/>, a background job on
+    /// the host deletes it then; a host that kills background jobs at logout, or restarts, stops that
+    /// job, so every send also deletes the files whose time has passed (kept in a .expires file beside each).
     /// </summary>
     /// <returns>The file's full path, or why it was not written.</returns>
     public async Task<(string? Path, string? Error)> SendSecretAsync(string name, byte[] value, TimeSpan? removeAfter,
@@ -751,12 +772,15 @@ public sealed class SessionController : IAsyncDisposable
         }
 
         var file = SecretFileName(name);
-        var remove = removeAfter is { } after
-            ? $" && (nohup sh -c \"sleep {Math.Max(1, (int)after.TotalSeconds)}; rm -f \\\"$f\\\"\" >/dev/null 2>&1 </dev/null &)"
+        var seconds = removeAfter is { } after ? Math.Max(1, (int)after.TotalSeconds) : 0;
+        var expiry = seconds > 0
+            ? $"echo $((now + {seconds})) > \"$f.expires\"; (nohup sh -c \"sleep {seconds}; rm -f \\\"$f\\\" \\\"$f.expires\\\"\" >/dev/null 2>&1 </dev/null &); "
             : "";
         // In sh whatever the login shell; no single quote inside, so it can sit in one.
-        var script = "umask 077; d=\"$HOME/.cache/baudhoundterm/secrets\"; mkdir -p \"$d\" && chmod 700 \"$d\" && " +
-                     $"f=\"$d/{file}\" && cat > \"$f\" && chmod 600 \"$f\"{remove} && printf \"%s\\n\" \"$f\"";
+        var script = "umask 077; d=\"$HOME/.cache/baudhoundterm/secrets\"; mkdir -p \"$d\" && chmod 700 \"$d\" || exit 1; now=$(date +%s); " +
+                     "for e in \"$d\"/*.expires; do [ -f \"$e\" ] && [ \"$(cat \"$e\")\" -le \"$now\" ] 2>/dev/null && rm -f \"${e%.expires}\" \"$e\"; done; " +
+                     $"f=$(mktemp \"$d/{file}.XXXXXX\") || exit 1; cat > \"$f\" && chmod 600 \"$f\" || {{ rm -f \"$f\"; exit 1; }}; " +
+                     expiry + $"printf \"{SecretPathMark}%s\\n\" \"$f\"";
         try
         {
             using var command = client.CreateCommand($"sh -c '{script}'");
@@ -768,8 +792,8 @@ public sealed class SessionController : IAsyncDisposable
             }
 
             await run.ConfigureAwait(false);
-            var path = command.Result.Trim();
-            return command.ExitStatus == 0 && path.Length > 0
+            var path = command.Result.Replace("\r", "").Split('\n').LastOrDefault(l => l.StartsWith(SecretPathMark, StringComparison.Ordinal))?[SecretPathMark.Length..];
+            return command.ExitStatus == 0 && path is { Length: > 0 }
                 ? (path, null)
                 : (null, (command.Error.Length > 0 ? command.Error : $"exit {command.ExitStatus}").Trim());
         }
@@ -786,7 +810,7 @@ public sealed class SessionController : IAsyncDisposable
     public static string SecretNote(string name, string path, TimeSpan? removeAfter) =>
         $"The secret \"{name.Trim()}\" is in the file {path}, readable only by this login. Use it from the file, " +
         $"for example \"$(cat {path})\" inside a command, and never print, quote or repeat its value." +
-        (removeAfter is { } after ? $" The file is deleted after {DescribeSpan(after)}." : "");
+        (removeAfter is { } after ? $" The file is set to be deleted after {DescribeSpan(after)}." : "");
 
     private static string DescribeSpan(TimeSpan span) =>
         span.TotalHours >= 1 && span.TotalHours % 1 == 0 ? (span.TotalHours == 1 ? "1 hour" : $"{span.TotalHours:0} hours")

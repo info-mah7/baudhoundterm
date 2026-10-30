@@ -28,6 +28,12 @@ public static class KnownHosts
     /// <summary>Set by the app to ask the user. Unset (tests, no UI) means unknown keys are refused.</summary>
     public static Func<HostKeyQuestion, bool>? Ask { get; set; }
 
+    /// <summary>
+    /// Set for a login nobody is watching (a menu asking the host something): a key not already
+    /// trusted is refused without asking. Per async flow, so other connections still ask.
+    /// </summary>
+    public static AsyncLocal<bool> NoQuestions { get; } = new();
+
     public static string DefaultPath => Path.Combine(Model.AppPaths.DataDirectory, "known_hosts.json");
 
     /// <summary>Overridable for tests.</summary>
@@ -70,7 +76,7 @@ public static class KnownHosts
         // Ask outside the lock: the prompt may run on the UI thread, which could itself be
         // waiting to check another host.
         var question = new HostKeyQuestion(host, port, algorithm, fingerprint, known?.Sha256);
-        if (Ask?.Invoke(question) != true)
+        if (NoQuestions.Value || Ask?.Invoke(question) != true)
         {
             return false;
         }

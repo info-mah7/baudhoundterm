@@ -257,7 +257,8 @@ leaving them detached. The manual's "tmux and security" has the details.
 
 **Send a secret to the program keeps the value off the screen, not out of reach.** It is written
 to `~/.cache/baudhoundterm/secrets` on the host (folder 700, file 600) over a channel of its own,
-and deleted after the time you pick. Anything running as that login, and root, can read it while it
+and set to be deleted after the time you pick (a host that kills background jobs at logout leaves
+it until the next send). Anything running as that login, and root, can read it while it
 is there. A program told to use it from the file never shows it; one that reads the file into its
 conversation sends the value to its model provider.
 

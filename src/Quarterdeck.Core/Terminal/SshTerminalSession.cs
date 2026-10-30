@@ -72,25 +72,39 @@ public sealed class SshTerminalSession : ITerminalSession
 
     /// <summary>
     /// Logs in with no shell, runs <paramref name="command"/> and logs out: for asking a host something
-    /// while no tab is open on it. It never asks for anything: a login that needs a typed password fails
-    /// instead, so the caller decides beforehand whether one is saved.
+    /// while no tab is open on it. Nobody is watching, so it asks nothing: a host key not already trusted
+    /// is refused, a jump host is not used, and a login that needs a typed password fails. The caller
+    /// still checks beforehand that the login has what it needs (a key, the agent, a saved password).
     /// </summary>
     public static async Task<(int Exit, string Output, string Error)> RunCommandAsync(
         SessionDefinition definition, CredentialVault vault, string command, CancellationToken token = default)
     {
+        if (definition.JumpHost.Trim().Length > 0)
+        {
+            throw new InvalidOperationException("it goes through a jump host, which may ask for a login");
+        }
+
+        // Flows into the connect below and no further: other connections keep asking.
+        KnownHosts.NoQuestions.Value = true;
         var session = new SshTerminalSession(definition, vault) { _commandOnly = true };
         try
         {
             await session.ConnectAsync(token).ConfigureAwait(false);
-            using var c = session._client!.CreateCommand(command);
-            c.CommandTimeout = TimeSpan.FromSeconds(15);
-            var output = await Task.Run(() => c.Execute(), token).ConfigureAwait(false);
-            return (c.ExitStatus ?? -1, output, c.Error);
+            return await ExecAsync(session._client!, command, token).ConfigureAwait(false);
         }
         finally
         {
             await session.DisconnectAsync().ConfigureAwait(false);
         }
+    }
+
+    /// <summary>One command on its own channel of a connected client: its exit status (-1 when none came), output and errors.</summary>
+    internal static async Task<(int Exit, string Output, string Error)> ExecAsync(SshClient client, string command, CancellationToken token)
+    {
+        using var c = client.CreateCommand(command);
+        c.CommandTimeout = TimeSpan.FromSeconds(15);
+        var output = await Task.Run(() => c.Execute(), token).ConfigureAwait(false);
+        return (c.ExitStatus ?? -1, output, c.Error);
     }
 
     /// <summary>The user name the login used: the shortcut's, or the KeePassXC entry's when the shortcut has none.</summary>
