@@ -392,6 +392,10 @@ do not echo, such as BaudHound. Typing is shown and edited locally
 (Backspace, Ctrl+U erases the line, Ctrl+C abandons it) and each line is
 sent when you press Enter. Leave it off for routers, switches and
 anything with its own line editing.</li>
+<li><strong>Raw TCP</strong>: no telnet commands at all, every byte
+passed through as it comes. For serial-to-network bridges and devices
+that send binary: telnet reads byte 255 as a command, which swallowed
+output and could send replies into the device.</li>
 </ul>
 <p><strong>Local shell</strong>: the <strong>Command line</strong> to
 run (<code>powershell.exe</code>).</p>

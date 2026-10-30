@@ -1509,17 +1509,9 @@ public partial class MainWindow : Window
     /// </summary>
     private bool SaveCopy(SessionDefinition from, SessionDefinition copy, bool warnShared, bool keepTmuxNames = false)
     {
-        // The vault cannot list a shortcut's names, so these are the ones the app writes: the
-        // login, the KVM daemon key (and the name its prompt saves under), the auto-login steps'
-        // secrets, and each of them again as a jump host's ("jump:"). Answers to a server's own
-        // keyboard-interactive prompts ("kbd:<prompt>") are named by the server and cannot be
-        // found this way; the copy asks for those once.
-        var names = new[] { "password", "passphrase", "kvmkey", "kvm key" }
-            .Concat(from.AutoLogin.Select(step => step.SecretKey))
-            .Where(n => !string.IsNullOrWhiteSpace(n))
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-        foreach (var key in names.Concat(names.Select(n => "jump:" + n)))
+        // Every secret saved for the original: the login, keys, jump host and auto-login secrets,
+        // and answers to a server's own prompts ("kbd:<prompt>").
+        foreach (var key in _vault.Names(from.Id))
         {
             if (_vault.Get(from.Id, key) is { } secret)
             {

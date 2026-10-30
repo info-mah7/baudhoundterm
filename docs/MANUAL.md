@@ -248,6 +248,9 @@ it does not have. **Save** keeps the changes.
   shown and edited locally (Backspace, Ctrl+U erases the line, Ctrl+C abandons it) and each line
   is sent when you press Enter. Leave it off for routers, switches and anything with its own line
   editing.
+- **Raw TCP**: no telnet commands at all, every byte passed through as it comes. For serial-to-network
+  bridges and devices that send binary: telnet reads byte 255 as a command, which swallowed output
+  and could send replies into the device.
 
 **Local shell**: the **Command line** to run (`powershell.exe`).
 

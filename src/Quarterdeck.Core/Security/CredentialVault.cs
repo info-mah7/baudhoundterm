@@ -44,6 +44,21 @@ public sealed class CredentialVault
 
     private static string Key(Guid sessionId, string name) => $"{sessionId:N}:{name}";
 
+    /// <summary>The names of every secret saved for a shortcut, so a copy of it can take them all.</summary>
+    public IReadOnlyList<string> Names(Guid sessionId)
+    {
+        lock (_gate)
+        {
+            if (Stamp() != _stamp)
+            {
+                Reload();
+            }
+
+            var prefix = Key(sessionId, "");
+            return _entries.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).Select(k => k[prefix.Length..]).ToList();
+        }
+    }
+
     public string? Get(Guid sessionId, string name = "password")
     {
         lock (_gate)
