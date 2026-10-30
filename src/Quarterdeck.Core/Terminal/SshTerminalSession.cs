@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using System.Text;
 using Quarterdeck.Core.Model;
 using Quarterdeck.Core.Security;
@@ -20,6 +21,7 @@ public sealed class SshTerminalSession : ITerminalSession
 
     private SshClient? _client;
     private ShellStream? _stream;
+    private SshJump? _jump;
     private volatile bool _closing;
 
     // Set once the shell is up. Before that, a failure surfaces as ConnectAsync's exception;
@@ -49,6 +51,22 @@ public sealed class SshTerminalSession : ITerminalSession
         _promptForSecret = promptForSecret;
     }
 
+    // Set when this session logs in to a jump host for another shortcut: secrets it has to ask
+    // for are kept under that shortcut's id as "jump:<name>", and the prompt says which host.
+    private Guid? _jumpFor;
+    private string _promptLabel = "";
+
+    // The owner's key passphrase, when the jump logs in with the owner's own key file.
+    private bool _sharesKey;
+
+    internal static SshTerminalSession ForJump(SessionDefinition hop, SessionDefinition owner, CredentialVault vault, Func<string, string, string?>? promptForSecret) =>
+        new(hop, vault, promptForSecret)
+        {
+            _jumpFor = owner.Id,
+            _promptLabel = $"Jump host {hop.Username}@{hop.Host}: ",
+            _sharesKey = hop.KeyPath.Length > 0 && string.Equals(hop.KeyPath, owner.KeyPath, StringComparison.OrdinalIgnoreCase)
+        };
+
     /// <summary>The user name the login used: the shortcut's, or the KeePassXC entry's when the shortcut has none.</summary>
     public string Username { get; private set; } = "";
 
@@ -68,7 +86,18 @@ public sealed class SshTerminalSession : ITerminalSession
 
         // Off the UI thread: a KeePassXC lookup can wait minutes for the user to unlock or allow
         // access, and agent calls are IPC. Prompts marshal to the UI themselves.
-        var info = await Task.Run(() => BuildConnectionInfoAsync(cancellationToken), cancellationToken)
+        _jump?.Dispose();
+        _jump = null;
+        var host = _definition.Host;
+        var port = _definition.Port;
+        if (_definition.JumpHost.Trim().Length > 0)
+        {
+            // The host key is still checked against the real name below, not 127.0.0.1.
+            _jump = await SshJump.OpenAsync(_definition, host, port, _vault, _promptForSecret, cancellationToken).ConfigureAwait(false);
+            (host, port) = ("127.0.0.1", _jump.LocalPort);
+        }
+
+        var info = await Task.Run(() => BuildConnectionInfoAsync(host, port, cancellationToken), cancellationToken)
             .ConfigureAwait(false);
 
         _client = new SshClient(info);
@@ -76,8 +105,23 @@ public sealed class SshTerminalSession : ITerminalSession
         _client.ErrorOccurred += OnClientError;
 
         var client = _client;
-        await Task.Run(() => KnownHosts.Connect(client, _definition.Host, _definition.Port), cancellationToken)
-            .ConfigureAwait(false);
+        var jump = _jump;
+        try
+        {
+            await Task.Run(() => KnownHosts.Connect(client, _definition.Host, _definition.Port), cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (jump is not null && ex is SshException or SocketException or IOException)
+        {
+            // Through a jump the connection to 127.0.0.1 only sees the channel close; the jump
+            // host's refusal ("connect failed", say) is the real reason, and arrives a moment later.
+            for (var i = 0; i < 20 && jump.Failure is null; i++)
+            {
+                await Task.Delay(50, CancellationToken.None).ConfigureAwait(false);
+            }
+
+            throw new SshConnectionException($"{jump.Route} could not reach {_definition.Host}:{_definition.Port}: {jump.Failure ?? "the jump host closed the connection (nothing listening there, or it is not allowed to connect)"}.");
+        }
 
         // Disconnected (or the tab closed) while the connect was still running: the token cannot
         // stop a connect in progress, so the session it made is dropped here, not left open.
@@ -85,6 +129,7 @@ public sealed class SshTerminalSession : ITerminalSession
         {
             try { client.Disconnect(); } catch (Exception ex) when (ex is not OutOfMemoryException) { }
             client.Dispose();
+            jump?.Dispose();
             throw new OperationCanceledException("Disconnected while connecting.");
         }
 
@@ -155,7 +200,7 @@ public sealed class SshTerminalSession : ITerminalSession
 
     private void OnStreamError(object? sender, ExceptionEventArgs e) => RaiseClosed(e.Exception.Message);
 
-    private async Task<ConnectionInfo> BuildConnectionInfoAsync(CancellationToken token)
+    internal async Task<ConnectionInfo> BuildConnectionInfoAsync(string host, int port, CancellationToken token)
     {
         var methods = new List<AuthenticationMethod>();
         var username = _definition.Username;
@@ -212,7 +257,7 @@ public sealed class SshTerminalSession : ITerminalSession
                 break;
         }
 
-        return new ConnectionInfo(_definition.Host, _definition.Port, username, methods.ToArray());
+        return new ConnectionInfo(host, port, username, methods.ToArray());
     }
 
     /// <summary>
@@ -245,7 +290,7 @@ public sealed class SshTerminalSession : ITerminalSession
             throw new FileNotFoundException($"Private key not found: {_definition.KeyPath}");
         }
 
-        var passphrase = _vault.Get(_definition.Id, "passphrase");
+        var passphrase = _vault.Get(_definition.Id, "passphrase") ?? (_sharesKey && _jumpFor is { } owner ? _vault.Get(owner, "passphrase") : null);
         return string.IsNullOrEmpty(passphrase)
             ? new PrivateKeyFile(_definition.KeyPath)
             : new PrivateKeyFile(_definition.KeyPath, passphrase);
@@ -257,6 +302,11 @@ public sealed class SshTerminalSession : ITerminalSession
         // "passphrase" was answered with the key passphrase saved for this shortcut. Answers to
         // other prompts are kept under their own names.
         var key = IsPasswordPrompt(name) ? "password" : "kbd:" + name.Trim();
+        if (_jumpFor is { } owner)
+        {
+            return _vault.Get(_definition.Id, key) ?? _vault.Get(owner, "jump:" + key) ?? _promptForSecret?.Invoke(_promptLabel + name, "jump:" + key);
+        }
+
         return _vault.Get(_definition.Id, key) ?? _promptForSecret?.Invoke(name, key);
     }
 
@@ -337,6 +387,9 @@ public sealed class SshTerminalSession : ITerminalSession
             _client.Dispose();
             _client = null;
         }
+
+        _jump?.Dispose();
+        _jump = null;
     }
 
     public async ValueTask DisposeAsync() => await DisconnectAsync().ConfigureAwait(false);

@@ -263,6 +263,11 @@ public partial class TerminalView : UserControl, ITerminalTarget
 
     private LocalSocketBridge? _bridge;
 
+    // A VNC tab through SSH: one jump for the tab, opened when the page first connects and
+    // again if it drops, so the page's own reconnects go through it as well.
+    private SshJump? _vncJump;
+    private readonly SemaphoreSlim _vncJumpGate = new(1, 1);
+
     /// <summary>
     /// A link clicked in the terminal, in the default browser: http and https only, never a
     /// file, UNC path or other protocol. An OSC 8 link's text is chosen by the server and can
@@ -612,7 +617,12 @@ public partial class TerminalView : UserControl, ITerminalTarget
     {
         try
         {
-            _bridge = new LocalSocketBridge(Definition.Host, Definition.Port, Definition.VncTls, Definition.Username.Trim().Length > 0);
+            var jumped = Definition.JumpHost.Trim().Length > 0;
+            _bridge = new LocalSocketBridge(Definition.Host, Definition.Port, Definition.VncTls, Definition.Username.Trim().Length > 0)
+            {
+                Route = jumped ? VncRouteAsync : null,
+                TrustHost = jumped ? VncTls.TrustHost(Definition.Host, Definition.JumpHost) : null
+            };
             // Both halves of the handshake report into the page's log as well as the status
             // bar: the status bar shows only the last line, and the order of these against the
             // page's own events is the whole diagnosis when a session stalls.
@@ -620,7 +630,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
             // the status bar shows only the last line, and the order of these against the page's
             // own events is the whole diagnosis when a session stalls. These fire on the thread
             // pool, and WebView2 may only be touched from the UI thread, hence the dispatch.
-            _bridge.Closed += (_, reason) => Note("closed: " + reason);
+            _bridge.Closed += (_, reason) => Note("closed: " + reason + (_vncJump?.Failure is { } why ? $" ({_vncJump.Route}: {why})" : ""));
             _bridge.Note += (_, note) => Note(note);
 
             Post(new
@@ -640,6 +650,33 @@ public partial class TerminalView : UserControl, ITerminalTarget
             SetStatus($"VNC bridge failed: {ex.Message}");
             RaiseState(SessionState.Failed, ex.Message);
         }
+    }
+
+    private async Task<(string Host, int Port, string Via)> VncRouteAsync(CancellationToken token)
+    {
+        await _vncJumpGate.WaitAsync(token);
+        try
+        {
+            if (_vncJump is null || !_vncJump.IsConnected)
+            {
+                _vncJump?.Dispose();
+                _vncJump = null;
+                Note($"Opening the jump host for {Definition.Host}:{Definition.Port}...");
+                _vncJump = await SshJump.OpenAsync(Definition, Definition.Host, Definition.Port, _vault, PromptForSecret, token);
+            }
+
+            return ("127.0.0.1", _vncJump.LocalPort, _vncJump.Route);
+        }
+        finally
+        {
+            _vncJumpGate.Release();
+        }
+    }
+
+    private void DropVncJump()
+    {
+        _vncJump?.Dispose();
+        _vncJump = null;
     }
 
     /// <summary>Raised when the user picks "Edit commands..." so the shell can open properties.</summary>
@@ -1100,6 +1137,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
             Post(new { t = "disconnect" });
             await _bridge.DisposeAsync();
             _bridge = null;
+            DropVncJump();
         }
 
         if (_controller is not null)
@@ -1461,6 +1499,7 @@ public partial class TerminalView : UserControl, ITerminalTarget
         {
             await _bridge.DisposeAsync();
             _bridge = null;
+            DropVncJump();
         }
 
         RaiseState(SessionState.Connecting, null);

@@ -25,6 +25,10 @@ public sealed class AgentTeamMember
 {
     private readonly ConcurrentQueue<string> _inbox = new();
     private readonly SemaphoreSlim _arrived = new(0);
+    private int _wakes;
+
+    /// <summary>How many times a finished side is started again by a late message.</summary>
+    public const int MaxWakes = 2;
 
     internal AgentTeamMember(string device)
     {
@@ -50,16 +54,47 @@ public sealed class AgentTeamMember
     /// <summary>Raised on the receiver's side, for the pane to show.</summary>
     public event Action<string>? Received;
 
-    /// <summary>Gives the partner a message. Returns false once the partner's run has ended.</summary>
+    /// <summary>
+    /// Set by the pane once this side has finished: called when the partner writes anyway, it
+    /// starts the run again to read the message and returns true, or returns false (the user
+    /// stopped the run, or the pane is busy with something else).
+    /// </summary>
+    public Func<bool>? WakeUp { get; set; }
+
+    /// <summary>
+    /// Gives the partner a message. A partner that has finished is started again to read it, up
+    /// to <see cref="MaxWakes"/> times; returns false when it cannot be.
+    /// </summary>
     public bool Send(string text)
     {
         Sent?.Invoke(text);
-        if (Partner.Finished)
+        if (Partner.Finished && !Partner.Wake())
         {
             return false;
         }
 
         Partner.Receive(text);
+        return true;
+    }
+
+    // Only a partner's message wakes a side, never the partner's own finished notice: two sides
+    // finishing one after the other would otherwise wake each other for ever.
+    private bool Wake()
+    {
+        if (_wakes >= MaxWakes || WakeUp is not { } wake)
+        {
+            return false;
+        }
+
+        Finished = false;   // before the message lands, so the restarted run reads it
+        if (!wake())
+        {
+            Finished = true;
+            return false;
+        }
+
+        _wakes++;
+        WakeUp = null;
         return true;
     }
 
@@ -103,5 +138,18 @@ public sealed class AgentTeamMember
 
         Finished = true;
         Partner.Receive($"[The agent on {Device} has finished. Its final answer:]\n{answer}");
+    }
+
+    /// <summary>This side never started (no endpoint, say): the partner is told at once, not left waiting.</summary>
+    public void Abandon(string reason)
+    {
+        if (Finished)
+        {
+            return;
+        }
+
+        Finished = true;
+        Partner.Receive($"[The agent on {Device} could not start ({reason}), so it is not taking part. Do not wait for it: " +
+                        "do your own side, and say in your answer what the other side still needs.]");
     }
 }

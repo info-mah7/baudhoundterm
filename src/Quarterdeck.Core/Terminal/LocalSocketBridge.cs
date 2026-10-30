@@ -50,6 +50,15 @@ public sealed class LocalSocketBridge : IAsyncDisposable
 
     public int LocalPort { get; }
 
+    /// <summary>
+    /// Where each connection really goes, asked for when the page opens the socket: a jump host's
+    /// forward on 127.0.0.1 (see <see cref="SshJump"/>) and a name for it. Null connects directly.
+    /// </summary>
+    public Func<CancellationToken, Task<(string Host, int Port, string Via)>>? Route { get; init; }
+
+    /// <summary>The name the server's TLS certificate is kept under, when it is not the target host itself.</summary>
+    public string? TrustHost { get; init; }
+
     /// <summary>Shared secret in the URL path; a request without it is refused.</summary>
     public string Token { get; }
 
@@ -128,9 +137,16 @@ public sealed class LocalSocketBridge : IAsyncDisposable
         using var pump = CancellationTokenSource.CreateLinkedTokenSource(_life.Token);
         var token = pump.Token;
 
+        var via = "";
         try
         {
-            await tcp.ConnectAsync(_host, _port, token).ConfigureAwait(false);
+            var (host, port) = (_host, _port);
+            if (Route is not null)
+            {
+                (host, port, via) = await Route(token).ConfigureAwait(false);
+            }
+
+            await tcp.ConnectAsync(host, port, token).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -140,7 +156,7 @@ public sealed class LocalSocketBridge : IAsyncDisposable
             return;
         }
 
-        Note?.Invoke(this, $"Reached {_host}:{_port}.");
+        Note?.Invoke(this, via.Length == 0 ? $"Reached {_host}:{_port}." : $"Opened {_host}:{_port} through {via}.");
 
         Stream stream = tcp.GetStream();
         if (_tls)
@@ -149,7 +165,7 @@ public sealed class LocalSocketBridge : IAsyncDisposable
             VncTls.Session session;
             try
             {
-                session = await VncTls.NegotiateAsync(stream, _host, _port, _hasUsername, token).ConfigureAwait(false);
+                session = await VncTls.NegotiateAsync(stream, TrustHost ?? _host, _port, _hasUsername, token).ConfigureAwait(false);
                 Note?.Invoke(this, $"TLS up ({session.SubtypeName}), certificate SHA-256 {session.Fingerprint}.");
                 await VncTls.PresentAsync(socket, session.Subtype, token).ConfigureAwait(false);
             }

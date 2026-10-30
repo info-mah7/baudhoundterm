@@ -86,9 +86,12 @@ public sealed partial class AgentRunner
                 Emit("partner_out", message);
                 Log("tell_partner", text: message);
                 _toldPartner = true;
-                return _team.Send(message)
-                    ? "sent. It reads it before its next step; carry on with your own side meanwhile."
-                    : "not delivered: the partner's run has already ended. Finish your side and report.";
+                var wasDone = _team.PartnerFinished;
+                return !_team.Send(message)
+                    ? "not delivered: the partner's run has already ended. Finish your side and report."
+                    : wasDone
+                    ? "sent. The partner had finished, so it has been started again to read this; wait_for_partner for its answer."
+                    : "sent. It reads it before its next step; carry on with your own side meanwhile.";
             }
 
             case "wait_for_partner":

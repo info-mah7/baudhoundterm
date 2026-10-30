@@ -148,6 +148,13 @@ it does not have. **Save** keeps the changes.
 
   The most secure choice is **SSH agent** with your keys kept in KeePassXC: no password or key
   file is stored in BaudHoundTerm at all (see [section 7](#ssh-agent)).
+- **Jump host** (optional): the connection goes through another SSH server first, as `ssh -J`
+  does. Pick one of your SSH shortcuts from the list, or type `user@host:port`. A shortcut
+  brings its own login, saved password and host key, and its own jump host if it has one, so
+  chains work. `user@host:port` logs in the way this shortcut does (same key, or the agent); a
+  password it needs is asked for and can be remembered for this shortcut. **Host** is then the
+  address as the jump host sees it. Host keys of both are checked as usual, and the file pane
+  goes through the same jump.
 - **Keep the shell running in tmux when the connection drops**, with a **tmux session name**
   (`bht`). After login the tab runs `tmux new-session -A -s <name>`, so a dropped link leaves the
   shell running on the host and the reconnect attaches to it again, mid-command. Leaving tmux
@@ -249,6 +256,13 @@ certificate** in the shortcut's properties makes the next connection ask again. 
 offers TLS only without a certificate (the anonymous TLSVnc form) cannot be used from Windows:
 give it a certificate. **Username** is only for a server that asks for a login as well as a
 password (the X509Plain form).
+
+**Through SSH** carries the VNC connection inside SSH: pick an SSH shortcut or type
+`user@host:port`, and **Host** becomes the address as that SSH server sees it, usually
+`localhost` for a VNC server that listens only there (TigerVNC's `-localhost`). Nothing of it
+then crosses the network outside SSH. A typed `user@host:port` logs in with a password, asked for
+once; for a key or the agent, make an SSH shortcut and pick it. TLS still works on top, and the
+certificate is kept under the host and the SSH route together.
 
 **RDP**: **Host**, **Port** (3389), **Username** (blank asks at connect), **Domain**, the password
 from the vault or KeePassXC, an optional **Remote Desktop Gateway**, **Share the clipboard**,
@@ -936,6 +950,12 @@ tab gets an agent too (if it had none), the same goal, and the other side of the
 - **Finishing:** when one side finishes, the other is told, with the answer, and checks it against
   its own side before finishing. A side waiting on a partner that has already finished stops
   waiting at once. Stop in either pane stops that side; the other learns the run ended.
+- **A late message picks a finished side up again.** If one side has finished and the partner
+  then writes (a correction, a value that changed), the finished pane starts again with the
+  message and its earlier conversation, at most twice per goal. It does not if you stopped that
+  side, or if you are typing a goal in its pane; the partner is told the message was not delivered.
+- **A side that cannot start** (no endpoint picked, say) tells the other at once, with the reason,
+  so it does its own half instead of waiting.
 - The pair lasts for that goal. The next goal typed in either pane runs alone unless you pick a
   partner again. Nothing of the exchange is written anywhere; the memory of each side keeps only
   what that agent chose to remember.

@@ -21,9 +21,21 @@ public partial class SessionEditorWindow : Window
     private readonly ObservableCollection<CommandShortcut> _commands;
     private readonly ObservableCollection<TmuxSessionEntry> _tmuxSessions;
 
+    /// <summary>The SSH shortcuts offered as jump hosts; the main window sets it.</summary>
+    public static Func<IEnumerable<string>>? SshShortcutNames { get; set; }
+
     public SessionEditorWindow(SessionDefinition definition, CredentialVault vault)
     {
         InitializeComponent();
+
+        foreach (var name in SshShortcutNames?.Invoke() ?? [])
+        {
+            if (!string.Equals(name, definition.DisplayPath, StringComparison.OrdinalIgnoreCase))
+            {
+                JumpBox.Items.Add(name);
+                VncJumpBox.Items.Add(name);
+            }
+        }
 
         Definition = definition;
         _vault = vault;
@@ -104,6 +116,8 @@ public partial class SessionEditorWindow : Window
         KeePassEntryBox.Text = d.KeePassEntry;
         AgentFilterBox.Text = d.AgentKeyFilter;
         TmuxBox.IsChecked = d.Tmux;
+        JumpBox.Text = d.Protocol == SessionProtocol.Ssh ? d.JumpHost : "";
+        VncJumpBox.Text = d.Protocol == SessionProtocol.Vnc ? d.JumpHost : "";
         UpdateAuthPanels();
 
         foreach (var port in System.IO.Ports.SerialPort.GetPortNames().OrderBy(p => p.Length))
@@ -584,7 +598,7 @@ public partial class SessionEditorWindow : Window
     private void ShowVncCert()
     {
         int.TryParse(VncPortBox.Text.Trim(), out var port);
-        var known = Core.Terminal.VncTls.Known(VncHostBox.Text.Trim(), port == 0 ? 5900 : port);
+        var known = Core.Terminal.VncTls.Known(VncTrustHost(), port == 0 ? 5900 : port);
         VncCertStatus.Text = known is null ? "No certificate kept for this server yet." : "Kept: SHA-256 " + known[..Math.Min(23, known.Length)] + "...";
         VncForgetCertButton.IsEnabled = known is not null;
     }
@@ -592,9 +606,13 @@ public partial class SessionEditorWindow : Window
     private void OnVncForgetCert(object sender, RoutedEventArgs e)
     {
         int.TryParse(VncPortBox.Text.Trim(), out var port);
-        Core.Terminal.VncTls.Forget(VncHostBox.Text.Trim(), port == 0 ? 5900 : port);
+        Core.Terminal.VncTls.Forget(VncTrustHost(), port == 0 ? 5900 : port);
         ShowVncCert();
     }
+
+    private string VncTrustHost() => Core.Terminal.VncTls.TrustHost(VncHostBox.Text.Trim(), VncJumpBox.Text);
+
+    private void OnVncTargetChanged(object sender, RoutedEventArgs e) => ShowVncCert();
 
     private async void OnKvmPair(object sender, RoutedEventArgs e)
     {
@@ -733,6 +751,13 @@ public partial class SessionEditorWindow : Window
         d.KeePassEntry = KeePassEntryBox.Text.Trim();
         d.AgentKeyFilter = AgentFilterBox.Text.Trim();
         d.Tmux = TmuxBox.IsChecked == true;
+        // Only SSH and VNC tabs go through a jump host; another protocol keeps none.
+        d.JumpHost = d.Protocol switch
+        {
+            SessionProtocol.Ssh => JumpBox.Text.Trim(),
+            SessionProtocol.Vnc => VncJumpBox.Text.Trim(),
+            _ => ""
+        };
         // Names as tmux will take them, blanks and repeats dropped, at least one. The first one is
         // also written to TmuxSession, which builds before 72 read.
         TmuxGrid.CommitEdit(DataGridEditingUnit.Row, true);

@@ -110,13 +110,49 @@ internal sealed class AgentPanel : DockPanel
     /// <summary>A run is going; a partner cannot start another here.</summary>
     public bool IsRunning => _cts is not null;
 
-    /// <summary>Starts <paramref name="goal"/> here as the partner's side of a pair.</summary>
-    internal Task StartWithTeamAsync(string goal, AgentTeamMember member)
+    /// <summary>
+    /// Starts <paramref name="goal"/> here as the partner's side of a pair. A pane that cannot
+    /// start (no endpoint, say) tells the other side at once, or it would wait for nothing.
+    /// </summary>
+    internal async Task StartWithTeamAsync(string goal, AgentTeamMember member)
     {
         _pendingTeam = member;
         _goal.Text = goal;
-        return RunOrStopAsync();
+        try
+        {
+            await RunOrStopAsync();
+        }
+        catch (Exception ex)
+        {
+            Append("✖ " + ex.Message);
+        }
+        finally
+        {
+            if (ReferenceEquals(_pendingTeam, member))
+            {
+                _pendingTeam = null;
+                member.Abandon(_lines.LastOrDefault(l => l.Length > 0)?.TrimStart('✖', ' ') ?? "it was not set up to run");
+            }
+        }
     }
+
+    // The pair of the last goal, while this side can still be woken by a late message.
+    private AgentTeamMember? _lastTeam;
+
+    /// <summary>Called on the partner's thread when it writes after this side finished: run again to read it.</summary>
+    private bool WakeForPartner(AgentTeamMember member) => Dispatcher.Invoke(() =>
+    {
+        if (IsRunning || !ReferenceEquals(_lastTeam, member) || _runner is null || _goal.Text.Trim().Length > 0)   // never over a goal being typed
+        {
+            return false;
+        }
+
+        Append($"↻ The agent on {member.Partner.Device} wrote after this side finished; picking up again.");
+        _ = StartWithTeamAsync(
+            $"The agent on {member.Partner.Device} wrote after you finished (its message follows). Check whether it changes " +
+            "anything on your side; act on it if it does, tell the partner what you did, then give your final answer again.", member);
+        return true;
+    });
 
     private void RefreshPartners()
     {
@@ -490,6 +526,12 @@ internal sealed class AgentPanel : DockPanel
         // here, in which case that pane gets the same goal and the other side.
         var team = _pendingTeam;
         _pendingTeam = null;
+        if (_lastTeam is not null && !ReferenceEquals(_lastTeam, team))
+        {
+            _lastTeam.WakeUp = null;   // a new goal here: the old pair can no longer call this side back
+            _lastTeam = null;
+        }
+
         AgentPanel? partnerPanel = null;
         if (team is null && _partner.SelectedItem is AgentPeer peer)
         {
@@ -519,6 +561,7 @@ internal sealed class AgentPanel : DockPanel
         ShowRunButton();
         _endpoints.IsEnabled = false;
 
+        var stopped = false;
         try
         {
             var runner = _runner;
@@ -526,6 +569,7 @@ internal sealed class AgentPanel : DockPanel
         }
         catch (OperationCanceledException)
         {
+            stopped = true;
             Append("■ Stopped.");
         }
         catch (Exception ex)
@@ -539,6 +583,14 @@ internal sealed class AgentPanel : DockPanel
             if (_runner is not null)
             {
                 _runner.Team = null;   // the pair was for this goal; the next one is asked for again
+            }
+
+            // A partner still at work may write again; unless the user stopped this side, that
+            // starts it again (AgentTeamMember.MaxWakes times at most).
+            _lastTeam = team;
+            if (team is not null)
+            {
+                team.WakeUp = stopped ? null : () => WakeForPartner(team);
             }
 
             ShowRunButton();

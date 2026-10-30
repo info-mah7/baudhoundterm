@@ -203,6 +203,13 @@ public static class VncTls
     /// <summary>Forgets the certificate kept for a server, so the next connection asks again.</summary>
     public static void Forget(string host, int port) => WebCertificates.Forget($"vnc {host}:{port}");
 
+    /// <summary>
+    /// The name a server's certificate is kept under. Through a jump host the VNC host is often
+    /// "localhost", which would be the same name for every server behind a different jump.
+    /// </summary>
+    public static string TrustHost(string host, string jumpHost) =>
+        jumpHost.Trim().Length == 0 ? host : $"{host} via {jumpHost.Trim()}";
+
     public static string? Known(string host, int port) => WebCertificates.Fingerprint($"vnc {host}:{port}");
 
     /// <summary>

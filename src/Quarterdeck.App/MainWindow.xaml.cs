@@ -40,6 +40,9 @@ public partial class MainWindow : Window
         // Unknown or changed SSH host keys are put to the user; nothing is trusted silently.
         KnownHosts.Ask = q => Dispatcher.Invoke(() => AskHostKey(q));
         VncTls.Ask = q => Dispatcher.Invoke(() => AskVncCertificate(q));
+        SshJump.FindShortcut = name => Dispatcher.Invoke(() => FindSshShortcut(name));
+        Views.SessionEditorWindow.SshShortcutNames = () => _sessions
+            .Where(s => s.Protocol == SessionProtocol.Ssh).Select(s => s.DisplayPath).Order(StringComparer.OrdinalIgnoreCase).ToList();
         GroupToggle.IsChecked = _ui.GroupByHost;   // Click, not Checked: setting it here saves nothing
         Privacy.HideAll = _ui.HideAddresses;
         HideMenu.IsChecked = _ui.HideAddresses;
@@ -350,6 +353,21 @@ public partial class MainWindow : Window
         return MessageBox.Show(this, text, tls ? "BaudHoundTerm: TLS certificate" : "BaudHoundTerm: SSH host key", MessageBoxButton.YesNo,
                    q.Changed ? MessageBoxImage.Warning : MessageBoxImage.Question,
                    MessageBoxResult.No) == MessageBoxResult.Yes;   // Enter never trusts a key by accident
+    }
+
+    /// <summary>An SSH shortcut by folder path or name, copied with its id so its saved secrets are found.</summary>
+    private SessionDefinition? FindSshShortcut(string name)
+    {
+        var found = _sessions.FirstOrDefault(s => s.Protocol == SessionProtocol.Ssh && string.Equals(s.DisplayPath, name, StringComparison.OrdinalIgnoreCase))
+                    ?? _sessions.FirstOrDefault(s => s.Protocol == SessionProtocol.Ssh && string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (found is null)
+        {
+            return null;
+        }
+
+        var copy = found.Clone(found.Name);
+        copy.Id = found.Id;
+        return copy;
     }
 
     private bool AskVncCertificate(VncCertificateQuestion q)

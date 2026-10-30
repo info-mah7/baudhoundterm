@@ -36,6 +36,7 @@ public sealed class FileTransferService : IRemoteFiles
     private readonly CredentialVault _vault;
     private SftpClient? _sftp;
     private ScpClient? _scp;
+    private Terminal.SshJump? _jump;
 
     public FileTransferService(SessionDefinition definition, CredentialVault vault)
     {
@@ -54,6 +55,7 @@ public sealed class FileTransferService : IRemoteFiles
     /// <summary>Runs on a pool thread (callers wrap it in Task.Run), so a KeePassXC wait blocks nothing visible.</summary>
     private ConnectionInfo BuildConnectionInfo()
     {
+        var (host, port) = Endpoint();
         AuthenticationMethod method;
         var username = _definition.Username;
 
@@ -88,14 +90,32 @@ public sealed class FileTransferService : IRemoteFiles
                     }
                 };
 
-                return new ConnectionInfo(_definition.Host, _definition.Port, username,
+                return new ConnectionInfo(host, port, username,
                     interactive, new PasswordAuthenticationMethod(username, password));
             }
 
             method = new PasswordAuthenticationMethod(username, password);
         }
 
-        return new ConnectionInfo(_definition.Host, _definition.Port, username, method);
+        return new ConnectionInfo(host, port, username, method);
+    }
+
+    /// <summary>Where to connect: the host, or the jump host's forward to it. One jump serves SFTP and SCP.</summary>
+    private (string Host, int Port) Endpoint()
+    {
+        if (_definition.JumpHost.Trim().Length == 0)
+        {
+            return (_definition.Host, _definition.Port);
+        }
+
+        if (_jump is null || !_jump.IsConnected)
+        {
+            _jump?.Dispose();
+            _jump = Terminal.SshJump.OpenAsync(_definition, _definition.Host, _definition.Port, _vault, null, CancellationToken.None)
+                .GetAwaiter().GetResult();
+        }
+
+        return ("127.0.0.1", _jump.LocalPort);
     }
 
     /// <summary>The password from KeePassXC (fetched once) or the vault; fills in the user name from the entry when the shortcut has none.</summary>
@@ -240,5 +260,6 @@ public sealed class FileTransferService : IRemoteFiles
     {
         _sftp?.Dispose();
         _scp?.Dispose();
+        _jump?.Dispose();
     }
 }
