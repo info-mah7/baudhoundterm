@@ -61,7 +61,6 @@ public sealed partial class AgentRunner
     // Terminal commands already run this goal, and how many times a command was repeated: a model
     // that re-runs commands (one review run grepped a file 30+ times, another walked a directory
     // tree in circles) is nudged, then stopped, instead of burning the step limit.
-    private readonly Dictionary<string, int> _commandsRun = new();
     private int _repeatEvents;
 
     // What the user says while a goal runs (Interrupt), and the token of the step it cuts short.
@@ -420,7 +419,6 @@ public sealed partial class AgentRunner
 
         _line.Clear();
         _lineUnknown = false;
-        _commandsRun.Clear();
         _repeatEvents = 0;
         _captures.Clear();
         _openOutput = null;
@@ -491,7 +489,7 @@ public sealed partial class AgentRunner
         _messages.Add(_goalMessage);
         _stopRun = null;
         _missedGotos = 0;
-        _commandsRun.Clear();   // the loop guard is per goal: a check repeated after a fix is not a loop
+        _lastOutput.Clear();   // the loop guard is per goal: a check repeated after a fix is not a loop
         _repeatEvents = 0;
         await StartScreenGoalAsync(token);
 
@@ -1347,6 +1345,14 @@ public sealed partial class AgentRunner
     /// the command text, so re-running the exact same command counts however the steps are ordered;
     /// read_terminal, wait and send_key are not commands and are never counted.
     /// </summary>
+    private static readonly Regex ConfigLine = new(
+        @"^(?:(?:set|unset|append|edit|config|delete|no|interface|ip|description|exit|end|next|abort|commit|write|wr|copy|save|q|quit|do)\b|\!|y(?:es)?$|n(?:o)?$)",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline, TimeSpan.FromMilliseconds(200));
+
+    // The last output of each command: a re-run that prints the same thing again is a loop; one
+    // that prints something new (a check after a change) is progress.
+    private readonly Dictionary<string, string> _lastOutput = new(StringComparer.Ordinal);
+
     private string GuardRepeat(string name, string argText, string result)
     {
         if (name != "send_input")
@@ -1354,7 +1360,17 @@ public sealed partial class AgentRunner
             return result;
         }
 
-        var cmd = argText.Trim();
+        // The arguments are JSON; the command is its text.
+        string cmd;
+        try
+        {
+            cmd = (JsonNode.Parse(argText)?["text"]?.ToString() ?? argText).Trim();
+        }
+        catch (JsonException)
+        {
+            cmd = argText.Trim();
+        }
+
         // Not sent (denied, not connected, cancelled): it did not run, so it is not a re-run.
         if (cmd.Length == 0 || result.StartsWith("denied", StringComparison.Ordinal) || result.StartsWith("error", StringComparison.Ordinal)
             || result.StartsWith("cancelled", StringComparison.Ordinal) || result.StartsWith("refused", StringComparison.Ordinal))
@@ -1362,23 +1378,32 @@ public sealed partial class AgentRunner
             return result;
         }
 
-        var seen = _commandsRun.GetValueOrDefault(cmd) + 1;
-        _commandsRun[cmd] = seen;
-        if (seen == 1)
+        // Configuration lines repeat by nature ("end" after every section, the same "set proposal"
+        // in phase1 and phase2): they change the device, so they are not a loop.
+        if (ConfigLine.IsMatch(cmd))
         {
-            _repeatEvents = 0;   // real progress; a stray re-run later is not a loop on its own
+            return result;
+        }
+
+        // What it printed, without the output id and the fence, so two runs compare by content.
+        var output = Regex.Replace(result, @"^\[o\d+\]\s*", "").Replace(_fence, "").Trim();
+        var same = _lastOutput.TryGetValue(cmd, out var before) && before == output;
+        _lastOutput[cmd] = output;
+        if (!same)
+        {
+            _repeatEvents = 0;   // new, or new output: progress, and a stray re-run later is not a loop on its own
             return result;
         }
 
         _repeatEvents++;
         if (_repeatEvents >= 4)
         {
-            _stopRun = "Stopped: the agent kept re-running commands it had already run, so it was going in " +
+            _stopRun = "Stopped: the agent kept re-running commands that printed the same output as before, so it was going in " +
                        "circles instead of finishing. Give it a narrower goal, or ask for the summary of what it found.";
             return result;
         }
 
-        return result + "\n\n[You already ran this exact command earlier this task and the system has not changed. " +
+        return result + "\n\n[You already ran this exact command earlier this task and it printed the same output. " +
                "Running it again tells you nothing new. Do something different, or stop gathering and write your summary now.]";
     }
 
