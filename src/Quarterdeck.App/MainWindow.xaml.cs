@@ -29,6 +29,11 @@ public partial class MainWindow : Window
 
         _sessions = _store.Load();
         _folders = _store.LoadFolders();
+        RememberSaved();
+        foreach (var p in UiProperties)
+        {
+            p.SetValue(_uiSaved, p.GetValue(_ui));
+        }
 
         var problems = new[] { _store.LoadProblem, _vault.LoadProblem }.OfType<string>().ToList();
         if (problems.Count > 0)
@@ -574,24 +579,36 @@ public partial class MainWindow : Window
     private void OnGroupToggle(object sender, RoutedEventArgs e)
     {
         _ui.GroupByHost = GroupToggle.IsChecked == true;
-
-        try
-        {
-            _ui.Save();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // The view still changes; it just will not be remembered.
-        }
-
+        SaveUi();
         RebuildTree();
     }
+
+    private static readonly System.Reflection.PropertyInfo[] UiProperties = typeof(UiPreferences)
+        .GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+        .Where(p => p.CanRead && p.CanWrite)
+        .ToArray();
+
+    // The settings as this window last read or wrote them (set in the constructor).
+    private readonly UiPreferences _uiSaved = new();
 
     private void SaveUi()
     {
         try
         {
-            _ui.Save();
+            // ui.json is shared with the elevated window: only the settings changed here are
+            // written, over the file as it is now, so the other window's choices are kept.
+            var onDisk = UiPreferences.Load();
+            var changed = UiProperties.Where(p => !Equals(p.GetValue(_ui), p.GetValue(_uiSaved))).ToList();
+            foreach (var p in changed)
+            {
+                p.SetValue(onDisk, p.GetValue(_ui));
+            }
+
+            onDisk.Save();
+            foreach (var p in changed)
+            {
+                p.SetValue(_uiSaved, p.GetValue(_ui));
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -842,8 +859,7 @@ public partial class MainWindow : Window
 
     private void SaveFolders()
     {
-        _store.SaveFolders(_folders);
-        _folders = _store.LoadFolders();
+        MergeFoldersIntoStore();
         RebuildTree();
         ScheduleSync();
     }
@@ -904,38 +920,108 @@ public partial class MainWindow : Window
         }
     }
 
+    // What this window last read or wrote, per shortcut and folder. Two instances (the normal
+    // window and the elevated one the Admin button starts) share the files, so a save writes only
+    // what changed here since then and keeps what the other one did in the meantime.
+    private Dictionary<Guid, string> _savedSessions = new();
+    private HashSet<string> _savedFolders = new(StringComparer.OrdinalIgnoreCase);
+
+    private void RememberSaved()
+    {
+        _savedSessions = new Dictionary<Guid, string>();
+        foreach (var s in _sessions)
+        {
+            _savedSessions[s.Id] = Fingerprint(s);
+        }
+
+        _savedFolders = _folders.ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
     private void Save()
     {
-        if (Elevation.IsCurrentProcessElevated)
+        MergeIntoStore();
+        RebuildTree();
+        ScheduleSync();
+    }
+
+    /// <summary>
+    /// Writes this window's added, edited and deleted shortcuts into sessions.json as it is now.
+    /// A shortcut this window has not touched takes the file's version, so the other instance's
+    /// edits, additions and deletions all survive. One deleted there stays deleted, even when it
+    /// was edited here: the window it was deleted in had the last word.
+    /// </summary>
+    private void MergeIntoStore()
+    {
+        var problemBefore = _store.LoadProblem;
+        var onDisk = _store.Load();
+        if (!ReferenceEquals(_store.LoadProblem, problemBefore))
         {
-            // The elevated window loaded its list when it started; writing that back would drop
-            // what the main window has added since. Fold this window's shortcuts into the file
-            // as it is now: its edits and additions land, and nothing it never saw is lost.
-            var onDisk = _store.Load();
-            if (_store.LoadProblem is null)
+            // The file was damaged and has been set aside: this window's list is all there is.
+            _store.Save(_sessions);
+            RememberSaved();
+            return;
+        }
+
+        var mine = new Dictionary<Guid, SessionDefinition>();
+        foreach (var s in _sessions)
+        {
+            mine[s.Id] = s;
+        }
+
+        var result = new List<SessionDefinition>();
+        var taken = new HashSet<Guid>();
+        foreach (var disk in onDisk)
+        {
+            if (!taken.Add(disk.Id))
             {
-                foreach (var mine in _sessions)
+                continue;
+            }
+
+            if (mine.TryGetValue(disk.Id, out var here))
+            {
+                var changedHere = !_savedSessions.TryGetValue(here.Id, out var was) || was != Fingerprint(here);
+                if (!changedHere && Fingerprint(disk) != Fingerprint(here))
                 {
-                    var at = onDisk.FindIndex(d => d.Id == mine.Id);
-                    if (at < 0)
-                    {
-                        onDisk.Add(mine);
-                    }
-                    else
-                    {
-                        onDisk[at] = mine;
-                    }
+                    // Edited by the other instance only: the object stays, so open tabs keep it.
+                    CopyInto(disk, here);
+                    RefreshOpenTabsOf(here);
                 }
 
-                _store.Save(onDisk);
-                RebuildTree();
-                return;
+                result.Add(here);
+            }
+            else if (!_savedSessions.ContainsKey(disk.Id))
+            {
+                result.Add(disk);   // made by the other instance since this one last looked
+            }
+
+            // Otherwise this window deleted it, and it stays out.
+        }
+
+        foreach (var s in _sessions)
+        {
+            // New here. One this window knew that is gone from the file was deleted there.
+            if (!taken.Contains(s.Id) && !_savedSessions.ContainsKey(s.Id))
+            {
+                taken.Add(s.Id);
+                result.Add(s);
             }
         }
 
+        _sessions.Clear();
+        _sessions.AddRange(result);
         _store.Save(_sessions);
-        RebuildTree();
-        ScheduleSync();
+        RememberSaved();
+    }
+
+    /// <summary>As with the shortcuts: folders added or removed here change, the rest of the file is kept.</summary>
+    private void MergeFoldersIntoStore()
+    {
+        var added = _folders.Where(f => !_savedFolders.Contains(f)).ToList();
+        var removed = _savedFolders.Where(f => !_folders.Contains(f, StringComparer.OrdinalIgnoreCase))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _store.SaveFolders(_store.LoadFolders().Concat(added).Where(f => !removed.Contains(f)));
+        _folders = _store.LoadFolders();
+        _savedFolders = _folders.ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     // ---------- session commands ----------
@@ -3342,7 +3428,7 @@ public partial class MainWindow : Window
     {
         if (_tftp is null)
         {
-            _tftp = new TftpWindow(_ui) { Owner = this };
+            _tftp = new TftpWindow(_ui, SaveUi) { Owner = this };
             _tftp.Closed += (_, _) => _tftp = null;
             _tftp.Show();
         }

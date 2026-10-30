@@ -40,9 +40,13 @@ internal sealed class TftpWindow : Window
 
     public bool IsRunning => _server is not null;
 
-    public TftpWindow(UiPreferences ui)
+    // The main window's save, which merges with the elevated window's ui.json.
+    private readonly Action _saveUi;
+
+    public TftpWindow(UiPreferences ui, Action saveUi)
     {
         _ui = ui;
+        _saveUi = saveUi;
         Title = "TFTP server";
         Width = 720;
         Height = 640;
@@ -260,13 +264,7 @@ internal sealed class TftpWindow : Window
         _ui.TftpAddress = choice.Address.ToString();
         _ui.TftpPort = port;
         _ui.TftpUploads = _uploads.IsChecked == true;
-        try
-        {
-            _ui.Save();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-        }
+        _saveUi();
 
         SetEditable(false);
         _start.Content = "Stop";
