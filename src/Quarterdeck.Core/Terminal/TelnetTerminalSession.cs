@@ -132,7 +132,12 @@ public sealed class TelnetTerminalSession : ITerminalSession
 
                 _counters?.AddReceived(read);
 
-                var kept = await StripCommandsAsync(buffer, read, clean, token).ConfigureAwait(false);
+                // A shortcut marked raw TCP skips the telnet parser: guessing raw from the traffic
+                // (no IAC in the first bytes, or a port other than 23) would misread telnet servers
+                // that print a banner before negotiating, and BaudHound serves raw on 23 itself.
+                var kept = _definition.RawTcp
+                    ? CopyRaw(buffer, read, clean)
+                    : await StripCommandsAsync(buffer, read, clean, token).ConfigureAwait(false);
                 if (kept == 0)
                 {
                     continue;
@@ -160,6 +165,12 @@ public sealed class TelnetTerminalSession : ITerminalSession
         }
     }
 
+    private static int CopyRaw(byte[] source, int length, byte[] target)
+    {
+        Buffer.BlockCopy(source, 0, target, 0, length);
+        return length;
+    }
+
     // Parser state survives between reads: a command split across two TCP segments (IAC at
     // the end of one read, the verb or option at the start of the next) must not leak into
     // the screen or go unanswered.
@@ -170,8 +181,8 @@ public sealed class TelnetTerminalSession : ITerminalSession
 
     /// <summary>
     /// Takes telnet negotiation out of the data stream and refuses every option, which is what
-    /// a plain character terminal wants. A raw socket has no IAC bytes and passes through
-    /// untouched, so the same code serves both.
+    /// a plain character terminal wants. A raw socket of plain text has no IAC bytes and passes
+    /// through untouched; one that may send 0xFF needs <see cref="SessionDefinition.RawTcp"/>.
     /// </summary>
     private async Task<int> StripCommandsAsync(byte[] source, int length, byte[] target, CancellationToken token)
     {

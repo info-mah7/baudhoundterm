@@ -1,5 +1,8 @@
 using System.IO.Pipes;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
+using Microsoft.Win32.SafeHandles;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -28,7 +31,7 @@ public sealed class KeePassXcException(string message, int code = 0) : Exception
 /// but the key exchange is sealed with NaCl box under per-session keys. KeePassXC asks the
 /// user to approve the pairing and, unless told to remember, each entry it hands out.
 /// </summary>
-public sealed class KeePassXcClient : IDisposable
+public sealed partial class KeePassXcClient : IDisposable
 {
     private const string ServerName = "org.keepassxc.KeePassXC.BrowserServer";
 
@@ -62,6 +65,16 @@ public sealed class KeePassXcClient : IDisposable
         {
             var pipe = new NamedPipeClientStream(".", endpoint, PipeDirection.InOut, PipeOptions.Asynchronous);
             await pipe.ConnectAsync(3000, token);
+            try
+            {
+                VerifyPipeServer(pipe, endpoint);
+            }
+            catch
+            {
+                await pipe.DisposeAsync();
+                throw;
+            }
+
             stream = pipe;
         }
         else
@@ -336,4 +349,55 @@ public sealed class KeePassXcClient : IDisposable
     }
 
     public void Dispose() => _stream.Dispose();
+
+    /// <summary>
+    /// The pipe is found by its name, and any account on the machine can create a pipe with
+    /// that name before KeePassXC does. A program answering there could pose as KeePassXC and
+    /// be handed the pairing key and every login lookup, so the program serving the pipe must
+    /// run as this user. Checked before a byte is sent.
+    /// </summary>
+    private static void VerifyPipeServer(NamedPipeClientStream pipe, string name)
+    {
+        if (!GetNamedPipeServerProcessId(pipe.SafePipeHandle, out var pid))
+        {
+            throw new KeePassXcException(
+                $"Could not tell which program serves the KeePassXC pipe {name} ({Marshal.GetLastPInvokeErrorMessage()}), so it was not used.");
+        }
+
+        SecurityIdentifier? owner = null;
+        using (var process = OpenProcess(ProcessQueryLimitedInformation, false, pid))
+        {
+            if (!process.IsInvalid && OpenProcessToken(process, TokenQuery, out var token))
+            {
+                using (token)
+                using (var identity = new WindowsIdentity(token.DangerousGetHandle()))
+                {
+                    owner = identity.User;
+                }
+            }
+        }
+
+        using var me = WindowsIdentity.GetCurrent();
+        if (owner is null || me.User is null || owner != me.User)
+        {
+            throw new KeePassXcException(
+                $"The KeePassXC pipe {name} is served by process {pid}, which "
+                + (owner is null ? "could not be checked" : $"runs as another account ({owner})")
+                + ". It was not used: only a KeePassXC running as you is trusted with logins.");
+        }
+    }
+
+    private const uint ProcessQueryLimitedInformation = 0x1000;
+    private const uint TokenQuery = 0x0008;
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetNamedPipeServerProcessId(SafePipeHandle pipe, out uint processId);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    private static partial SafeProcessHandle OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint processId);
+
+    [LibraryImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool OpenProcessToken(SafeProcessHandle process, uint access, out SafeAccessTokenHandle token);
 }

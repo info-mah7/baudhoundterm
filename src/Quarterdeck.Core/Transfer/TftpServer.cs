@@ -29,6 +29,10 @@ public sealed class TftpServer : IAsyncDisposable
     private const int MaxTransfers = 16;
     private const long MaxFileBytes = 2L * 1024 * 1024 * 1024;
     private const long MaxUploadBytes = 512L * 1024 * 1024;
+
+    // A client may ask for up to 255 s per packet, and with the retries that held one of the
+    // transfer slots for half an hour after it went quiet. Longer requests get the default.
+    private const int MaxTimeoutSeconds = 30;
     private int _transfers;
 
     public TftpServer(string root, IPEndPoint bind, bool allowUploads)
@@ -66,6 +70,7 @@ public sealed class TftpServer : IAsyncDisposable
                 SocketOptionName.PacketInformation, true);
         }
 
+        RemoveStaleUploads();
         _cts = new CancellationTokenSource();
         _ = Task.Run(() => ListenAsync(_cts.Token));
         Write($"Serving {_root} on {_bind}{(_allowUploads ? " (uploads allowed)" : "")}");
@@ -270,22 +275,35 @@ public sealed class TftpServer : IAsyncDisposable
         }
 
         var onDisk = new FileInfo(path).Length;
-        if (onDisk >= MaxFileBytes)   // ReadAllBytes takes less than 2 GiB; netascii grows it further
+        if (onDisk >= MaxFileBytes)
         {
             Write($"{peer.Address}  GET {name}: {Size(onDisk)} is larger than this server sends");
             await SendErrorAsync(socket, peer, 3, "File too large");
             return;
         }
 
-        byte[] data = await File.ReadAllBytesAsync(path, token);
+        // Read from disk a block at a time. Loading the whole file per request (twice over for
+        // netascii) let sixteen requests for a large image take gigabytes. netascii's size, which
+        // tsize must state up front, comes from a first pass that only counts.
+        await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024);
+        long total = onDisk;
         if (netascii)
         {
-            data = ToNetascii(data);
+            var counter = new NetasciiReader(file);
+            var scratch = new byte[64 * 1024];
+            total = 0;
+            for (int n; (n = counter.Read(scratch)) > 0;)
+            {
+                total += n;
+            }
+
+            file.Position = 0;
         }
 
-        var (blockSize, timeout, accepted) = Negotiate(options, data.Length);
+        var reader = netascii ? new NetasciiReader(file) : null;
+        var (blockSize, timeout, accepted) = Negotiate(options, total);
         var clock = Stopwatch.StartNew();
-        Write($"{peer.Address}  GET {name}  {Size(data.Length)}" + (accepted.Count > 0 ? $"  ({string.Join(", ", accepted.Select(kv => $"{kv.Key}={kv.Value}"))})" : ""));
+        Write($"{peer.Address}  GET {name}  {Size(total)}" + (accepted.Count > 0 ? $"  ({string.Join(", ", accepted.Select(kv => $"{kv.Key}={kv.Value}"))})" : ""));
 
         if (accepted.Count > 0)
         {
@@ -297,17 +315,25 @@ public sealed class TftpServer : IAsyncDisposable
             }
         }
 
-        var blocks = data.Length / blockSize + 1;   // a final short (possibly empty) block ends it
-        for (var i = 0; i < blocks; i++)
+        var blocks = total / blockSize + 1;   // a final short (possibly empty) block ends it
+        for (long i = 0; i < blocks; i++)
         {
             var offset = i * blockSize;
-            var length = Math.Min(blockSize, data.Length - offset);
+            var length = (int)Math.Min(blockSize, total - offset);
             var blockNumber = (ushort)((i + 1) & 0xFFFF);   // wraps after 65535 for very large images
 
             var packet = new byte[4 + length];
             BinaryPrimitives.WriteUInt16BigEndian(packet, OpData);
             BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(2), blockNumber);
-            Buffer.BlockCopy(data, offset, packet, 4, length);
+            var got = reader is null
+                ? file.ReadAtLeast(packet.AsSpan(4), length, throwOnEndOfStream: false)
+                : reader.Read(packet.AsSpan(4));
+            if (got != length)
+            {
+                Write($"{peer.Address}  GET {name}: the file changed while it was being sent");
+                await SendErrorAsync(socket, peer, 0, "File changed during transfer");
+                return;
+            }
 
             if (!await ExchangeAsync(socket, peer, packet, blockNumber, timeout, token))
             {
@@ -317,7 +343,7 @@ public sealed class TftpServer : IAsyncDisposable
         }
 
         var seconds = Math.Max(0.001, clock.Elapsed.TotalSeconds);
-        Write($"{peer.Address}  GET {name}: done, {Size(data.Length)} in {seconds:0.0} s ({Size((long)(data.Length / seconds))}/s)");
+        Write($"{peer.Address}  GET {name}: done, {Size(total)} in {seconds:0.0} s ({Size((long)(total / seconds))}/s)");
     }
 
     /// <summary>Sends a packet and waits for the matching ACK, resending on timeout.</summary>
@@ -398,75 +424,132 @@ public sealed class TftpServer : IAsyncDisposable
         long written = 0;
         byte[] answer = accepted.Count > 0 ? Oack(accepted) : Ack(0);
 
-        await using (var file = new FileStream(temp, FileMode.CreateNew, FileAccess.Write))
+        // A .part with no upload behind it any more is deleted: one per abandoned upload, never
+        // read by anything, built up in the served folder. Only a complete upload whose rename
+        // failed is kept, since its data is whole.
+        var keep = false;
+        try
         {
-            ushort expect = 1;
-
-            while (!done)
+            await using (var file = new FileStream(temp, FileMode.CreateNew, FileAccess.Write))
             {
-                (byte[] Buffer, IPEndPoint From)? got = null;
-                for (var attempt = 0; attempt <= Retries && got is null; attempt++)
+                ushort expect = 1;
+
+                while (!done)
                 {
-                    await socket.SendAsync(answer, peer, token);
-                    got = await ReceiveDataAsync(socket, peer, expect, timeout, token);
+                    (byte[] Buffer, IPEndPoint From)? got = null;
+                    for (var attempt = 0; attempt <= Retries && got is null; attempt++)
+                    {
+                        await socket.SendAsync(answer, peer, token);
+                        got = await ReceiveDataAsync(socket, peer, expect, timeout, token);
+                    }
+
+                    if (got is null)
+                    {
+                        break;
+                    }
+
+                    var payload = got.Value.Buffer.AsMemory(4);
+                    if (payload.Length > blockSize)
+                    {
+                        // More than the agreed block size: not a transfer this server accepts.
+                        Write($"{peer.Address}  PUT {name}: a block of {payload.Length} bytes is larger than the agreed {blockSize}");
+                        await SendErrorAsync(socket, peer, 4, "Illegal TFTP operation");
+                        break;
+                    }
+
+                    if (written + payload.Length > MaxUploadBytes)
+                    {
+                        Write($"{peer.Address}  PUT {name}: larger than the {Size(MaxUploadBytes)} upload limit");
+                        await SendErrorAsync(socket, peer, 3, "Disk full or allocation exceeded");
+                        break;
+                    }
+
+                    await file.WriteAsync(netascii ? FromNetascii(payload.ToArray(), ref pendingCr) : payload, token);
+                    written += payload.Length;
+                    answer = Ack(expect);
+                    done = payload.Length < blockSize;   // a short block is the last one
+                    expect = (ushort)((expect + 1) & 0xFFFF);
                 }
 
-                if (got is null)
-                {
-                    break;
-                }
-
-                var payload = got.Value.Buffer.AsMemory(4);
-                if (payload.Length > blockSize)
-                {
-                    // More than the agreed block size: not a transfer this server accepts.
-                    Write($"{peer.Address}  PUT {name}: a block of {payload.Length} bytes is larger than the agreed {blockSize}");
-                    await SendErrorAsync(socket, peer, 4, "Illegal TFTP operation");
-                    break;
-                }
-
-                if (written + payload.Length > MaxUploadBytes)
-                {
-                    Write($"{peer.Address}  PUT {name}: larger than the {Size(MaxUploadBytes)} upload limit");
-                    await SendErrorAsync(socket, peer, 3, "Disk full or allocation exceeded");
-                    break;
-                }
-
-                await file.WriteAsync(netascii ? FromNetascii(payload.ToArray(), ref pendingCr) : payload, token);
-                written += payload.Length;
-                answer = Ack(expect);
-                done = payload.Length < blockSize;   // a short block is the last one
-                expect = (ushort)((expect + 1) & 0xFFFF);
             }
 
+            if (done)
+            {
+                // Only a complete upload takes the real name; a broken one is deleted below.
+                // The rename comes before the last ACK, so a device that checks straight after its
+                // upload finishes always finds the file.
+                try
+                {
+                    File.Move(temp, path);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Usually another upload of the same name finished first; otherwise a disk or
+                    // permission problem, which gets its own message.
+                    var exists = File.Exists(path);
+                    keep = true;
+                    Write($"{peer.Address}  PUT {name}: " + (exists ? "a file with that name appeared meanwhile" : "could not rename: " + ex.Message) +
+                          $"; kept as {Path.GetFileName(temp)}");
+                    await SendErrorAsync(socket, peer, exists ? (ushort)6 : (ushort)2, exists ? "File already exists" : "Access violation");
+                    return;
+                }
+
+                await socket.SendAsync(answer, peer, token);
+                Write($"{peer.Address}  PUT {name}: done, {Size(written)} in {clock.Elapsed.TotalSeconds:0.0} s");
+            }
+            else
+            {
+                Write($"{peer.Address}  PUT {name}: incomplete after {Size(written)}; discarded");
+            }
         }
-
-        if (done)
+        finally
         {
-            // Only a complete upload takes the real name; a broken one stays visible as .part.
-            // The rename comes before the last ACK, so a device that checks straight after its
-            // upload finishes always finds the file.
-            try
+            if (!keep)
             {
-                File.Move(temp, path);
+                TryDelete(temp);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // Usually another upload of the same name finished first; otherwise a disk or
-                // permission problem, which gets its own message.
-                var exists = File.Exists(path);
-                Write($"{peer.Address}  PUT {name}: " + (exists ? "a file with that name appeared meanwhile" : "could not rename: " + ex.Message) +
-                      $"; kept as {Path.GetFileName(temp)}");
-                await SendErrorAsync(socket, peer, exists ? (ushort)6 : (ushort)2, exists ? "File already exists" : "Access violation");
-                return;
-            }
-
-            await socket.SendAsync(answer, peer, token);
-            Write($"{peer.Address}  PUT {name}: done, {Size(written)} in {clock.Elapsed.TotalSeconds:0.0} s");
         }
-        else
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
         {
-            Write($"{peer.Address}  PUT {name}: incomplete after {Size(written)}; kept as {Path.GetFileName(temp)}");
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Deletes upload .part files that an earlier run left behind (the app closed or crashed
+    /// mid-upload). Only names this server makes ("name.1a2b3c4d.part") and only ones an hour
+    /// old: another window serving the same folder may still be writing a newer one, and a
+    /// browser's own ".part" downloads are not ours to remove.
+    /// </summary>
+    private void RemoveStaleUploads()
+    {
+        var ours = new System.Text.RegularExpressions.Regex(@"\.[0-9a-f]{8}\.part$");
+        var options = new EnumerationOptions
+        {
+            RecurseSubdirectories = true,
+            IgnoreInaccessible = true,
+            AttributesToSkip = FileAttributes.ReparsePoint
+        };
+
+        try
+        {
+            foreach (var part in Directory.EnumerateFiles(_root, "*.part", options))
+            {
+                if (ours.IsMatch(part) && File.GetLastWriteTimeUtc(part) < DateTime.UtcNow.AddHours(-1))
+                {
+                    TryDelete(part);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
         }
     }
 
@@ -546,7 +629,8 @@ public sealed class TftpServer : IAsyncDisposable
             accepted["blksize"] = blockSize.ToString();
         }
 
-        if (options.TryGetValue("timeout", out var t) && int.TryParse(t, out var secs) && secs is >= 1 and <= 255)
+        // RFC 2349 lets the server only accept the value or leave the option out, not change it.
+        if (options.TryGetValue("timeout", out var t) && int.TryParse(t, out var secs) && secs is >= 1 and <= MaxTimeoutSeconds)
         {
             timeout = TimeSpan.FromSeconds(secs);
             accepted["timeout"] = secs.ToString();
@@ -656,30 +740,83 @@ public sealed class TftpServer : IAsyncDisposable
         return o.ToArray();
     }
 
-    /// <summary>netascii: every line ends CR LF, and a bare CR is sent as CR NUL.</summary>
-    private static byte[] ToNetascii(byte[] data)
+    /// <summary>
+    /// netascii from a file as it is read: every line ends CR LF, and a bare CR is sent as CR NUL.
+    /// A LF already after a CR stays as it is. Fills each block whole until the file ends.
+    /// </summary>
+    private sealed class NetasciiReader(Stream source)
     {
-        var o = new List<byte>(data.Length + data.Length / 40);
-        for (var i = 0; i < data.Length; i++)
+        private readonly byte[] _in = new byte[64 * 1024];
+        private int _pos, _len;
+        private int _prev = -1;
+        private int _carry = -1;   // the second byte of a pair that did not fit the last block
+
+        public int Read(Span<byte> target)
         {
-            var c = data[i];
-            if (c == (byte)'\n' && (i == 0 || data[i - 1] != (byte)'\r'))
+            var n = 0;
+            while (n < target.Length)
             {
-                o.Add((byte)'\r');
-                o.Add((byte)'\n');
+                if (_carry >= 0)
+                {
+                    target[n++] = (byte)_carry;
+                    _carry = -1;
+                    continue;
+                }
+
+                var c = Next();
+                if (c < 0)
+                {
+                    break;
+                }
+
+                var raw = c;
+                var second = -1;
+                if (c == '\n' && _prev != '\r')
+                {
+                    (c, second) = ('\r', '\n');
+                }
+                else if (c == '\r' && Peek() != '\n')
+                {
+                    second = 0;
+                }
+
+                _prev = raw;
+                target[n++] = (byte)c;
+                if (second >= 0)
+                {
+                    _carry = second;
+                }
             }
-            else if (c == (byte)'\r' && (i + 1 >= data.Length || data[i + 1] != (byte)'\n'))
-            {
-                o.Add((byte)'\r');
-                o.Add(0);
-            }
-            else
-            {
-                o.Add(c);
-            }
+
+            return n;
         }
 
-        return o.ToArray();
+        private int Next()
+        {
+            var c = Peek();
+            if (c >= 0)
+            {
+                _pos++;
+            }
+
+            return c;
+        }
+
+        private int Peek()
+        {
+            if (_pos == _len)
+            {
+                _len = source.Read(_in, 0, _in.Length);
+                _pos = 0;
+                if (_len <= 0)
+                {
+                    _len = 0;
+                    return -1;
+                }
+            }
+
+            return _in[_pos];
+        }
     }
 
     private static string Size(long bytes) => bytes switch

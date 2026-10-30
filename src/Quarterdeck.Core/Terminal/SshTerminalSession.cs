@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using Quarterdeck.Core.Model;
 using Quarterdeck.Core.Security;
@@ -126,15 +127,30 @@ public sealed class SshTerminalSession : ITerminalSession
 
         // Off the UI thread: a KeePassXC lookup can wait minutes for the user to unlock or allow
         // access, and agent calls are IPC. Prompts marshal to the UI themselves.
-        _jump?.Dispose();
-        _jump = null;
+        Interlocked.Exchange(ref _jump, null)?.Dispose();
         var host = _definition.Host;
         var port = _definition.Port;
         if (_definition.JumpHost.Trim().Length > 0)
         {
             // The host key is still checked against the real name below, not 127.0.0.1.
-            _jump = await SshJump.OpenAsync(_definition, host, port, _vault, _promptForSecret, cancellationToken).ConfigureAwait(false);
-            (host, port) = ("127.0.0.1", _jump.LocalPort);
+            var opened = await SshJump.OpenAsync(_definition, host, port, _vault, _promptForSecret, cancellationToken).ConfigureAwait(false);
+            _jump = opened;
+
+            // Disconnected (or the tab closed) while the jump was still logging in: the token cannot
+            // stop a connect in progress, and DisconnectAsync found no jump to close, so this one
+            // would keep an authenticated forward on 127.0.0.1 open. Whoever takes it out of
+            // _jump first disposes it, so it is closed exactly once.
+            if (_closing || cancellationToken.IsCancellationRequested)
+            {
+                if (Interlocked.CompareExchange(ref _jump, null, opened) == opened)
+                {
+                    opened.Dispose();
+                }
+
+                throw new OperationCanceledException("Disconnected while connecting.");
+            }
+
+            (host, port) = ("127.0.0.1", opened.LocalPort);
         }
 
         var info = await Task.Run(() => BuildConnectionInfoAsync(host, port, cancellationToken), cancellationToken)
@@ -151,8 +167,11 @@ public sealed class SshTerminalSession : ITerminalSession
             await Task.Run(() => KnownHosts.Connect(client, _definition.Host, _definition.Port), cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (Exception ex) when (jump is not null && ex is SshException or SocketException or IOException)
+        catch (Exception ex) when (jump is not null && ex is SshException or SocketException or IOException
+                                   && ex is not SshAuthenticationException)
         {
+            // A refused login is the target's answer, not the jump's: it passes through as it is,
+            // so the controller sees an auth failure and does not retry it into a lockout.
             // Through a jump the connection to 127.0.0.1 only sees the channel close; the jump
             // host's refusal ("connect failed", say) is the real reason, and arrives a moment later.
             for (var i = 0; i < 20 && jump.Failure is null; i++)
@@ -165,11 +184,16 @@ public sealed class SshTerminalSession : ITerminalSession
 
         // Disconnected (or the tab closed) while the connect was still running: the token cannot
         // stop a connect in progress, so the session it made is dropped here, not left open.
-        if (!ReferenceEquals(_client, client))
+        if (!ReferenceEquals(_client, client) || _closing)
         {
             try { client.Disconnect(); } catch (Exception ex) when (ex is not OutOfMemoryException) { }
             client.Dispose();
-            jump?.Dispose();
+            Interlocked.CompareExchange(ref _client, null, client);
+            if (jump is not null && Interlocked.CompareExchange(ref _jump, null, jump) == jump)
+            {
+                jump.Dispose();
+            }
+
             throw new OperationCanceledException("Disconnected while connecting.");
         }
 
@@ -336,9 +360,20 @@ public sealed class SshTerminalSession : ITerminalSession
         }
 
         var passphrase = _vault.Get(_definition.Id, "passphrase") ?? (_sharesKey && _jumpFor is { } owner ? _vault.Get(owner, "passphrase") : null);
-        return string.IsNullOrEmpty(passphrase)
-            ? new PrivateKeyFile(_definition.KeyPath)
-            : new PrivateKeyFile(_definition.KeyPath, passphrase);
+        try
+        {
+            return string.IsNullOrEmpty(passphrase)
+                ? new PrivateKeyFile(_definition.KeyPath)
+                : new PrivateKeyFile(_definition.KeyPath, passphrase);
+        }
+        catch (Exception ex) when (ex is SshException or CryptographicException or IOException
+                                       or UnauthorizedAccessException or ArgumentException or FormatException)
+        {
+            // An encrypted key with no saved passphrase, a wrong one, or a file that is not a key
+            // reads the same way on every attempt. SSH.NET reports these as plain SshException,
+            // which the controller retries; as InvalidOperationException they stop at once.
+            throw new InvalidOperationException($"Cannot load the private key {_definition.KeyPath}: {ex.Message}", ex);
+        }
     }
 
     private string? ResolveSecret(string name)
@@ -433,8 +468,7 @@ public sealed class SshTerminalSession : ITerminalSession
             _client = null;
         }
 
-        _jump?.Dispose();
-        _jump = null;
+        Interlocked.Exchange(ref _jump, null)?.Dispose();
     }
 
     public async ValueTask DisposeAsync() => await DisconnectAsync().ConfigureAwait(false);

@@ -23,10 +23,20 @@ public sealed class CredentialVault
     // replace an intact store with this session's few entries, so changes stay in memory.
     private bool _readFailed;
 
+    // The file as last read or written: its time and size. The elevated window the Admin button
+    // starts is a second instance on the same file, so a different stamp means it saved there.
+    private (DateTime Time, long Length) _stamp;
+
     public CredentialVault(string? path = null)
     {
         _path = path ?? Path.Combine(Model.AppPaths.DataDirectory, "credentials.dat");
+        _stamp = Stamp();
         _entries = LoadEntries();
+        if (_readFailed)
+        {
+            // Not read yet, so the next Get tries the file again.
+            _stamp = default;
+        }
     }
 
     /// <summary>Set when the store was unreadable and had to be set aside.</summary>
@@ -38,6 +48,12 @@ public sealed class CredentialVault
     {
         lock (_gate)
         {
+            // A secret the other instance saved since this one last looked.
+            if (Stamp() != _stamp)
+            {
+                Reload();
+            }
+
             if (!_entries.TryGetValue(Key(sessionId, name), out var encoded))
             {
                 return null;
@@ -65,8 +81,8 @@ public sealed class CredentialVault
         {
             var cipher = ProtectedData.Protect(
                 Encoding.UTF8.GetBytes(secret), Entropy, DataProtectionScope.CurrentUser);
-            _entries[Key(sessionId, name)] = Convert.ToBase64String(cipher);
-            Flush();
+            var value = Convert.ToBase64String(cipher);
+            Change(entries => entries[Key(sessionId, name)] = value);
         }
     }
 
@@ -74,21 +90,116 @@ public sealed class CredentialVault
     {
         lock (_gate)
         {
-            if (name is not null)
+            Change(entries =>
             {
-                _entries.Remove(Key(sessionId, name));
-            }
-            else
-            {
-                var prefix = $"{sessionId:N}:";
-                foreach (var k in _entries.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList())
+                if (name is not null)
                 {
-                    _entries.Remove(k);
+                    entries.Remove(Key(sessionId, name));
                 }
+                else
+                {
+                    var prefix = $"{sessionId:N}:";
+                    foreach (var k in entries.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList())
+                    {
+                        entries.Remove(k);
+                    }
+                }
+            });
+        }
+    }
+
+    /// <summary>
+    /// Applies one change to the store as it is on disk now, not to this instance's copy of it.
+    /// Writing the whole in-memory copy let a normal and an elevated window each wipe out the
+    /// secrets the other had saved since it started. The lock file keeps the two from reading
+    /// and writing at the same moment. Called under _gate.
+    /// </summary>
+    private void Change(Action<Dictionary<string, string>> change)
+    {
+        using var crossProcess = LockFile();
+        Reload();
+        change(_entries);
+        if (_readFailed)
+        {
+            return;
+        }
+
+        Quarterdeck.Core.Model.AtomicFile.Write(_path, JsonSerializer.Serialize(_entries));
+        _stamp = Stamp();
+    }
+
+    /// <summary>
+    /// Picks up the file as it is now. A read that fails (the other instance replacing the file
+    /// at that moment, say) keeps the copy already in memory, and the stamp stays old so the next
+    /// call tries again. A store unreadable at startup that now reads is writable again.
+    /// </summary>
+    private void Reload()
+    {
+        var stamp = Stamp();
+        if (!File.Exists(_path))
+        {
+            if (!_readFailed)
+            {
+                _entries.Clear();
             }
 
-            Flush();
+            _stamp = stamp;
+            return;
         }
+
+        try
+        {
+            var read = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(_path));
+            _entries = read is null
+                ? new Dictionary<string, string>(StringComparer.Ordinal)
+                : new Dictionary<string, string>(read, StringComparer.Ordinal);
+            _readFailed = false;
+            _stamp = stamp;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+        }
+    }
+
+    private (DateTime Time, long Length) Stamp()
+    {
+        try
+        {
+            var info = new FileInfo(_path);
+            return info.Exists ? (info.LastWriteTimeUtc, info.Length) : default;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return default;
+        }
+    }
+
+    /// <summary>
+    /// The store's lock file, held open with no sharing for the length of one change. A file rather
+    /// than a named mutex: a mutex the elevated instance creates carries an administrators-only ACL
+    /// that the normal window cannot open. If the lock cannot be had in a few seconds the change goes
+    /// ahead without it, as it always did, rather than losing the secret being saved.
+    /// </summary>
+    private IDisposable? LockFile()
+    {
+        var path = _path + ".lock";
+        for (var i = 0; i < 100; i++)
+        {
+            try
+            {
+                return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException)
+            {
+                Thread.Sleep(50);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     private Dictionary<string, string> LoadEntries()
@@ -139,15 +250,5 @@ public sealed class CredentialVault
                           "Saved passwords and keys must be entered again.";
             return new Dictionary<string, string>(StringComparer.Ordinal);
         }
-    }
-
-    private void Flush()
-    {
-        if (_readFailed)
-        {
-            return;
-        }
-
-        Quarterdeck.Core.Model.AtomicFile.Write(_path, JsonSerializer.Serialize(_entries));
     }
 }
