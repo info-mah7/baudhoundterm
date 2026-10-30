@@ -50,13 +50,43 @@ internal static partial class Privacy
                 jump = jump[..colon];   // the port is not secret, and "22" must not dot out every 22
             }
 
-            foreach (var value in new[] { s.Host, s.RdpGateway, s.Username }.Concat(jump.Split('@')))
+            text = ReplaceHost(text, s.Host);
+            foreach (var value in new[] { s.RdpGateway, s.Username }.Concat(jump.Split('@')))
             {
                 text = Replace(text, value);
             }
         }
 
         return DotIps(text);
+    }
+
+    // The machine in a shell title's "user@machine:" (bash's default title and prompt).
+    [GeneratedRegex(@"(?<=[\w.-]@)[A-Za-z0-9][\w.-]*(?=:)")]
+    private static partial Regex TitleMachine();
+
+    /// <summary>
+    /// The host as typed, and its other spellings: a shell title says "web01" for web01.corp.example,
+    /// and "web01.corp.example" for a shortcut that says web01. So the first label goes, whole
+    /// word, with any domain after it. For a host given as an IP address the machine's name is
+    /// unknown, so the one place a title reliably shows it, "user@name:", goes instead.
+    /// </summary>
+    private static string ReplaceHost(string text, string host)
+    {
+        var h = host.Trim();
+        if (System.Net.IPAddress.TryParse(h, out _))
+        {
+            return Replace(TitleMachine().Replace(text, Dots), h);
+        }
+
+        var label = h.Split('.')[0];
+        if (label.Length < 2)
+        {
+            return Replace(text, h);
+        }
+
+        // The label with its domain first: replacing the bare host first would leave ".corp.example".
+        text = Regex.Replace(text, $@"(?<![\w.-]){Regex.Escape(label)}(?:\.[A-Za-z0-9-]+)*(?![\w-])", Dots, RegexOptions.IgnoreCase);
+        return Replace(text, h);
     }
 
     /// <summary>

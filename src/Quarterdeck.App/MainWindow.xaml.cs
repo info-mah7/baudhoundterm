@@ -339,6 +339,25 @@ public partial class MainWindow : Window
         return panel;
     }
 
+    /// <summary>
+    /// A host named in a question that comes without its shortcut (a host key, a certificate):
+    /// dots when Hide addresses is on, or when a shortcut to that host always hides it.
+    /// </summary>
+    private string MaskHost(string host) =>
+        Privacy.HideAll || _sessions.Any(s => s.HideAddress && string.Equals(s.Host.Trim(), host.Trim(), StringComparison.OrdinalIgnoreCase))
+            ? Privacy.Dots
+            : host;
+
+    /// <summary>
+    /// A tooltip naming the shortcut's address, masked with <see cref="Privacy.Mask"/>. Menus
+    /// outlive a Hide addresses toggle, so the text is made again each time it is shown.
+    /// </summary>
+    private static void SetMaskedToolTip(MenuItem item, Func<string> text)
+    {
+        item.ToolTip = text();
+        item.ToolTipOpening += (_, _) => item.ToolTip = text();
+    }
+
     private bool AskHostKey(HostKeyQuestion q)
     {
         var tls = q.Algorithm.StartsWith("TLS", StringComparison.Ordinal);
@@ -347,12 +366,13 @@ public partial class MainWindow : Window
             ? "If you can, compare it with the TLS line on the device's Settings page (BaudHound) or its own fingerprint."
             : "If you can, compare this with the server's own fingerprint (ssh-keygen -lf on the host key).";
 
+        var host = MaskHost(q.Host);
         var text = q.Changed
-            ? $"WARNING: the {what} for {q.Host}:{q.Port} has CHANGED.\n\n" +
+            ? $"WARNING: the {what} for {host}:{q.Port} has CHANGED.\n\n" +
               $"Trusted before:  SHA256:{q.PreviousFingerprint}\nPresented now:   SHA256:{q.Fingerprint} ({q.Algorithm})\n\n" +
               "Either the device or server was reset or re-keyed, or something is intercepting the connection " +
               "and would see everything typed. Only accept if you know it changed.\n\nTrust the new one?"
-            : $"First connection to {q.Host}:{q.Port}.\n\n{(tls ? "TLS certificate" : $"Host key ({q.Algorithm})")}:\nSHA256:{q.Fingerprint}\n\n" +
+            : $"First connection to {host}:{q.Port}.\n\n{(tls ? "TLS certificate" : $"Host key ({q.Algorithm})")}:\nSHA256:{q.Fingerprint}\n\n" +
               check + " Trust it and remember it for next time?";
 
         return MessageBox.Show(this, text, tls ? "BaudHoundTerm: TLS certificate" : "BaudHoundTerm: SSH host key", MessageBoxButton.YesNo,
@@ -1215,9 +1235,10 @@ public partial class MainWindow : Window
             var name = session.Name;
             var item = new MenuItem
             {
-                Header = SessionController.TmuxName(name) + (session.OpenOnConnect ? "" : "   (on demand)"),
-                ToolTip = $"A tab in the tmux session {SessionController.TmuxName(name)} on {definition.Host}: attaches if it is running, starts it if not"
+                Header = SessionController.TmuxName(name) + (session.OpenOnConnect ? "" : "   (on demand)")
             };
+            SetMaskedToolTip(item, () =>
+                $"A tab in the tmux session {SessionController.TmuxName(name)} on {Privacy.Mask(definition.Host, definition)}: attaches if it is running, starts it if not");
             item.Click += async (_, _) => await OpenTabAsync(definition, tmuxSession: name);
             menu.Items.Add(item);
         }
@@ -1235,11 +1256,9 @@ public partial class MainWindow : Window
     /// </summary>
     private MenuItem RunningTmuxMenu(SessionDefinition definition, string header = "_Running tmux sessions")
     {
-        var menu = new MenuItem
-        {
-            Header = header,
-            ToolTip = $"The tmux sessions running for {definition.Username}@{definition.Host}, from tmux ls on the host"
-        };
+        var menu = new MenuItem { Header = header };
+        SetMaskedToolTip(menu, () =>
+            $"The tmux sessions running for {Privacy.Mask($"{definition.Username}@{definition.Host}", definition)}, from tmux ls on the host");
         var waiting = new MenuItem { Header = "Asking the host...", IsEnabled = false };
         menu.Items.Add(waiting);
         var asked = false;
@@ -1589,7 +1608,7 @@ public partial class MainWindow : Window
     private async Task NewTmuxSessionAsync(SessionDefinition definition)
     {
         var dialog = new InputPromptWindow("New tmux session", "",
-            $"A name for another session on {definition.Host}, for example logs. Letters, digits, - and _.") { Owner = this };
+            $"A name for another session on {Privacy.Mask(definition.Host, definition)}, for example logs. Letters, digits, - and _.") { Owner = this };
         if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.Value))
         {
             return;
@@ -2170,7 +2189,7 @@ public partial class MainWindow : Window
     {
         var name = SessionController.TmuxName(string.IsNullOrWhiteSpace(view.TmuxSessionName) ? definition.TmuxSession : view.TmuxSessionName);
         var answer = MessageBox.Show(this,
-            $"End the tmux session \"{name}\" on {definition.Host}?\n\n" +
+            $"End the tmux session \"{name}\" on {Privacy.Mask(definition.Host, definition)}?\n\n" +
             "Everything running in it stops, and this connection ends with it. " +
             "Closing the tab instead leaves the session running on the host.",
             "End tmux session", MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel);
