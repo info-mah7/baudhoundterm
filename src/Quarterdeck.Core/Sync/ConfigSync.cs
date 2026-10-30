@@ -455,9 +455,15 @@ public sealed class ConfigSync
             return null;
         }
 
-        return uri.Scheme is "http" or "https" or "ssh" or "git"
-            ? $"https://{uri.Host}{uri.AbsolutePath}"
-            : null;
+        // An http(s) address keeps its scheme and port (Authority has no user name in it): a
+        // public repository on :8443 probed at :443 would fail and pass as private. The port of
+        // an ssh:// or git:// address belongs to that protocol, so those are probed at https's own.
+        return uri.Scheme switch
+        {
+            "http" or "https" => $"{uri.Scheme}://{uri.Authority}{uri.AbsolutePath}",
+            "ssh" or "git" => $"https://{uri.Host}{uri.AbsolutePath}",
+            _ => null
+        };
     }
 
     private async Task ConfigureAsync(CancellationToken token)
@@ -488,7 +494,8 @@ public sealed class ConfigSync
 
     private async Task<string?> FindSecretAsync(CancellationToken token)
     {
-        var staged = (await GitAsync(token, "diff", "--cached", "--name-only", "--diff-filter=AM")).Output
+        // A renamed or copied file (R, C) can carry a secret too: --name-only lists its new name.
+        var staged = (await GitAsync(token, "diff", "--cached", "--name-only", "--diff-filter=AMRC")).Output
             .Split('\n', StringSplitOptions.RemoveEmptyEntries);
         foreach (var name in staged)
         {

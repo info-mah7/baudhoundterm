@@ -33,6 +33,20 @@ public sealed class KvmVendorClient : IDisposable
 
     public string BaseUrl { get; }
 
+    /// <summary>
+    /// The password and the session token go to this address, which a session can set to
+    /// anything (a reverse proxy, another port): the same rule as the daemon's, plain http only
+    /// to this machine or a private network. Checked before each request rather than in the
+    /// constructor, so the caller's sign-in error handling reports it.
+    /// </summary>
+    private void Refuse()
+    {
+        if (KvmClient.Refuse(BaseUrl) is { } why)
+        {
+            throw new KvmException("The KVM's web interface: " + why);
+        }
+    }
+
     /// <summary>The session token from the last sign-in, empty before one. Used to pair the daemon.</summary>
     public string Token => _token;
 
@@ -42,6 +56,7 @@ public sealed class KvmVendorClient : IDisposable
     /// </summary>
     public async Task SignInAsync(CancellationToken token = default)
     {
+        Refuse();
         var body = new JsonObject
         {
             ["username"] = _user,
@@ -78,6 +93,7 @@ public sealed class KvmVendorClient : IDisposable
     /// </summary>
     public async Task ReadFramesAsync(Action<byte[]> frame, CancellationToken token)
     {
+        Refuse();
         if (_token.Length == 0)
         {
             await SignInAsync(token).ConfigureAwait(false);
