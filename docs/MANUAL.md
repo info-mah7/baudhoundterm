@@ -431,6 +431,36 @@ a log tail or a command-line AI tool keeps running and keeps using whatever it u
 CLI with its helpers measured about 1.2 GB). `tmux ls` on the host lists the sessions still
 running; end the ones you no longer need.
 
+### tmux and security
+
+A session left running keeps its shell, its scrollback and anything copied in it on the host.
+Who can reach it:
+
+- **Other users on the host cannot.** tmux runs one server per login, with its socket in a folder
+  only that login can open (`/tmp/tmux-<uid>/`). From tmux 3.3 the server also refuses other users
+  unless the owner lets them in with `server-access`. `tmux ls` shows only your own sessions.
+- **Anything running as the same login can.** It can attach to any of that login's sessions, type
+  into them and read their scrollback and paste buffers, which all its sessions share. That is
+  ordinary Unix: such a process can already do whatever the login can. tmux keeps the shells in one
+  place.
+- **root can**, for every user's sessions.
+
+So on a correctly set up host, tmux gives no way from one user's sessions to another's. The
+exposure is what a session holds. A pane where you ran `sudo -i`, `su` or `ssh` to another host
+stays logged in after the tab closes, and attaching to it asks for no password. Whoever gets into
+this login, or root, gets those too.
+
+- End a session holding a root shell, another user's shell or an onward SSH connection instead of
+  leaving it detached (**End the tmux session on the host**, above).
+- Keep secrets out of a session you leave running, or clear them after: `tmux clear-history` and
+  `tmux delete-buffer`.
+- Do not share a session socket with other users (`tmux -S` with group rights). If you must, use
+  tmux 3.3 or later and give read-only access: `server-access -r <user>`.
+- Sessions outlive the tab and a dropped link, not a host restart. Plugins that restore them
+  (tmux-resurrect) save pane contents to disk, secrets included.
+
+BaudHoundTerm forwards no SSH agent, so a session left running holds none of your keys.
+
 ### Recording a tab
 
 For demos, a tab can be recorded to an MP4. Start one from the **Record** menu (it acts on the

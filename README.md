@@ -243,6 +243,13 @@ returns text and never runs anything, and BaudHoundTerm forwards neither your SS
 to the far end. Keep approvals on, keep the agent off local shells on sensitive PCs, and use a
 login with only the rights the job needs.
 
+**A tmux session keeps running on the host after its tab closes.** Other users on the host cannot
+reach it: tmux keeps one server per login, behind a socket only that login (and root) can open.
+Anything running as that login can attach, type into it and read its scrollback. So the risk is
+what a session holds: a `sudo -i`, `su` or onward `ssh` shell left in it stays logged in, and
+whoever gets into the login, or root, gets it without a password. End such sessions rather than
+leaving them detached. The manual's "tmux and security" has the details.
+
 ### Verifying a build
 
 Binaries are unsigned, so Windows SmartScreen reports an unknown publisher on every launch.
