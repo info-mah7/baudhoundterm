@@ -161,6 +161,14 @@ public sealed class SessionDefinition
     /// <summary>Telnet inside TLS (telnets). The certificate is pinned on first use, like an SSH host key.</summary>
     public bool UseTls { get; set; }
 
+    /// <summary>
+    /// A raw TCP socket, not telnet: every byte is data. Off by default, as before, so telnet
+    /// servers still get their negotiation answered. A raw console that sends a 0xFF byte (binary
+    /// data, a Latin-1 'ÿ') otherwise had it read as a telnet command, which ate the bytes after it,
+    /// and after 0xFF 0xFA all output until a 0xFF 0xF0 that might never come.
+    /// </summary>
+    public bool RawTcp { get; set; }
+
     // Local shell
     public string ShellCommand { get; set; } = "powershell.exe";
 
