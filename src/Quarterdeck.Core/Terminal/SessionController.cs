@@ -277,6 +277,9 @@ public sealed class SessionController : IAsyncDisposable
     private string? _retry;
     private int _reconnecting;
 
+    // The transport whose link dropped unexpectedly, for the reconnect loop's last look below.
+    private ITerminalSession? _dropped;
+
     /// <summary>
     /// Typed into the login shell after connect. exec replaces the shell, so leaving tmux ends
     /// the channel; -A attaches when the session already exists. POSIX shells and fish accept
@@ -408,6 +411,8 @@ public sealed class SessionController : IAsyncDisposable
             return;
         }
 
+        Volatile.Write(ref _dropped, closed);
+
         Emit($"\r\n[baudhoundterm] {e.Reason}\r\n");
 
         // Not on this thread: SSH.NET raises the drop on its own receive thread, and the
@@ -424,6 +429,7 @@ public sealed class SessionController : IAsyncDisposable
             return;   // one chain of attempts at a time
         }
 
+        var reconnected = false;
         try
         {
             while (true)
@@ -467,6 +473,7 @@ public sealed class SessionController : IAsyncDisposable
                 await ConnectOnceAsync(token).ConfigureAwait(false);
                 if (_retry is not { } again)
                 {
+                    reconnected = State == SessionState.Connected;
                     return;   // connected, or a failure that will not fix itself
                 }
 
@@ -476,6 +483,15 @@ public sealed class SessionController : IAsyncDisposable
         finally
         {
             Interlocked.Exchange(ref _reconnecting, 0);
+
+            // The new link dropped while this loop was still running it (during the login script,
+            // say): the close handler's reconnect found this one running and stood down, which left
+            // the tab "Connected" on a dead link. Start the reconnect it skipped.
+            if (reconnected && !_userInitiatedClose && _transport is { } current
+                && ReferenceEquals(Volatile.Read(ref _dropped), current))
+            {
+                _ = Task.Run(() => ScheduleReconnectAsync("The link dropped during login.", token), token);
+            }
         }
     }
 
