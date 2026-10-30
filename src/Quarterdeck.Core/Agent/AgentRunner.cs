@@ -938,7 +938,10 @@ public sealed partial class AgentRunner
                 var seq = KeySequence(key) ?? throw new ArgumentException($"unknown key '{key}'");
                 RequireConnected();
 
-                if (key == "enter" && await DeniedAsync(name, seq, token) is { } denied)
+                // Only Enter submits a line in Risky mode, but Always (and a tripped run) was
+                // promised that every action waits for a yes, keys included.
+                var askAll = _endpoint.Approval == AgentApproval.Always || Tripped;
+                if ((key == "enter" || askAll) && await DeniedAsync(name, seq, token, "key " + key) is { } denied)
                 {
                     return denied;
                 }
@@ -999,10 +1002,12 @@ public sealed partial class AgentRunner
     /// Asks for approval when what is about to be typed would submit a line that needs it.
     /// The check sees the whole line: what was typed before (send_input with enter false) plus
     /// this text, each line of multi-line text, and, in Risky mode, any control character
-    /// (backspace, Ctrl-U and the like can turn harmless text into a different command) or a
-    /// line recalled from history, whose content we cannot see. Returns the refusal, or null.
+    /// (backspace, Ctrl-U and the like can turn harmless text into a different command), a
+    /// line recalled from history, whose content we cannot see, or one the shell rewrites with
+    /// history expansion (!!, !$, ^a^b). In Always mode, or once the run has tripped, every
+    /// call asks, whatever it types. Returns the refusal, or null.
     /// </summary>
-    private async Task<string?> DeniedAsync(string tool, string typed, CancellationToken token)
+    private async Task<string?> DeniedAsync(string tool, string typed, CancellationToken token, string? label = null)
     {
         if (_endpoint.Approval == AgentApproval.Free && !Tripped)
         {
@@ -1016,15 +1021,22 @@ public sealed partial class AgentRunner
 
         foreach (var c in typed)
         {
-            if (c is '\r' or '\n')
+            // Ctrl-O (bash's operate-and-get-next) runs the line like Enter does, and Ctrl-X
+            // starts sequences such as Ctrl-X Ctrl-E that run whatever the editor leaves, so
+            // both count as submitting. Ctrl-J and Ctrl-M are \n and \r themselves.
+            var runs = c is '\u000f' or '\u0018';
+            if (c is '\r' or '\n' || runs)
             {
-                if (current.Length > 0 || unknown)
+                if (current.Length > 0 || unknown || runs)
                 {
-                    submitted.Add(unknown ? current + " [line recalled from history]" : current);
+                    submitted.Add(unknown || c == '\u0018' ? current + Recalled : current);
                 }
 
+                editing |= runs;
+
+                // After Ctrl-O the shell loads the next history line; after Ctrl-X it is anyone's guess.
                 current = "";
-                unknown = false;
+                unknown = runs;
             }
             else
             {
@@ -1040,17 +1052,29 @@ public sealed partial class AgentRunner
         string shown;
         if (_endpoint.Approval == AgentApproval.Always || Tripped)
         {
-            ask = submitted.Count > 0;
-            shown = string.Join("\n", submitted);
+            // Every action waits for a yes here, not only the ones that submit a line.
+            ask = true;
+            shown = label ?? (submitted.Count > 0 ? string.Join("\n", submitted) : typed);
+            if (label is null && typed.Any(c => char.IsControl(c) && c is not '\r' and not '\n' and not '\t'))
+            {
+                shown += "   [contains control characters]";
+            }
         }
         else
         {
-            var recalled = submitted.Any(l => l.EndsWith("[line recalled from history]", StringComparison.Ordinal));
+            // The shell expands !!, !$, !-2 and ^old^new from history before it runs the line,
+            // so what runs is not what we checked: ask, as for a recalled line.
+            var expanded = submitted.Any(l => HistoryExpansion.IsMatch(l));
+            var recalled = expanded || submitted.Any(l => l.EndsWith(Recalled, StringComparison.Ordinal));
             ask = editing || recalled || Joined(submitted).Any(l => NeedsApproval(_endpoint, l)) || NeedsApproval(_endpoint, typed);
-            shown = submitted.Count > 0 ? string.Join("\n", submitted) : typed;
+            shown = label ?? (submitted.Count > 0 ? string.Join("\n", submitted) : typed);
             if (editing)
             {
                 shown += "   [contains control characters]";
+            }
+            else if (expanded)
+            {
+                shown += "   [history expansion]";
             }
         }
 
@@ -1096,6 +1120,10 @@ public sealed partial class AgentRunner
                     break;
                 case '\u0015':   // Ctrl-U
                     _line.Clear();
+                    break;
+                case '\u000f' or '\u0018':   // Ctrl-O runs the line and loads the next; Ctrl-X sequences vary
+                    _line.Clear();
+                    _lineUnknown = true;
                     break;
                 case '\t':   // completion: the line is no longer what was typed
                     _line.Append(c);
@@ -1293,6 +1321,15 @@ public sealed partial class AgentRunner
             return false;
         }
     }
+
+    private const string Recalled = " [line recalled from history]";
+
+    /// <summary>
+    /// Bash history expansion: ! followed by anything but a blank, = or ( (which bash leaves
+    /// alone), and quick substitution, a ^ that starts the line. Quotes can suppress it, but
+    /// treating a quoted ! as expansion only asks once more.
+    /// </summary>
+    private static readonly Regex HistoryExpansion = new(@"![^\s=(]|^\s*\^", RegexOptions.Compiled);
 
     private static string? KeySequence(string key) => key switch
     {
