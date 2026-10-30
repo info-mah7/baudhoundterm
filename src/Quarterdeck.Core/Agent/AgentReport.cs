@@ -121,12 +121,17 @@ public static class SecretMask
     // the value. Spaces and tabs only: "community" ending one line must not mask the next.
     private static readonly Regex Keyword = new(
         @"(?<pre>\b(?:password|passwd|pwd|passphrase|secret|psksecret|psk|pre-shared-key|key-string|auth-key|authentication-key|" +
-        @"auth-pwd|priv-pwd|auth-password|priv-password|community|api[_-]?key|apikey|token|private-key|md5-key|ppk-secret)" +
+        @"auth-pwd|priv-pwd|auth-password|priv-password|community|api[_-]?key|apikey|token|private[_-]?key|preshared[_-]?key|" +
+        @"client[_-]?secret|secret[_-]?key|(?:access|refresh|auth|bearer)[_-]?token|md5-key|ppk-secret)" +
         @"[""']?(?:[ \t]*[:=][ \t]*|[ \t]+)(?:(?:ENC|\d{1,2})[ \t]+)?)(?<val>""[^""\n]*""|'[^'\n]*'|[^\s""']+)",
         RegexOptions.IgnoreCase, Limit);
 
-    // Cisco key chains: "key 7 0822455D0A16".
-    private static readonly Regex CiscoKey = new(@"(?<pre>\bkey[ \t]+\d[ \t]+)(?<val>\S+)", RegexOptions.IgnoreCase, Limit);
+    // Cisco key chains: "key 7 0822455D0A16". A bare "key <word>" is too common to mask
+    // ("key chain OSPF", "crypto key generate"), so the type digit is optional only on the
+    // TACACS+ and RADIUS server lines, where "key MySecret" holds the secret in clear.
+    private static readonly Regex CiscoKey = new(
+        @"(?<pre>\bkey[ \t]+\d[ \t]+|\b(?:tacacs-server|radius-server)\b[^\n]*?\bkey[ \t]+(?:\d[ \t]+)?)(?<val>\S+)",
+        RegexOptions.IgnoreCase, Limit);
 
     private static readonly Regex FortiEnc = new(@"\bENC[ \t]+(?!\*{8})[^\s""']+", RegexOptions.None, Limit);
 
@@ -134,7 +139,7 @@ public static class SecretMask
     // there only a value with a digit or symbol in it counts, and an ENC value must look like one.
     private static readonly Regex ProseValue = new(@"[\d!@#$%^&*+=~<>|]", RegexOptions.None, Limit);
     private static readonly Regex ProseKeyword = new(
-        @"(?<pre>\b(?:password|passwd|pwd|passphrase|secret|psk|psksecret|pre-?shared[- ]key|api[ _-]?key|token|community|key-string)s?\b" +
+        @"(?<pre>\b(?:password|passwd|pwd|passphrase|secret|psk|psksecret|pre-?shared[- _]?key|private[ _-]?key|api[ _-]?key|token|community|key-string)s?\b" +
         @"[""']?[ \t]*(?:(?:is|was|to|as|=|:|of)[ \t]*)?[""']?)(?<val>(?=[^\s""',;)]*[\d!@#$%^&*+=~<>|])[^\s""',;)]{6,})",
         RegexOptions.IgnoreCase, Limit);
     private static readonly Regex ProseEnc = new(@"\bENC[ \t]+(?!\*{8})[A-Za-z0-9+/=]{8,}", RegexOptions.None, Limit);

@@ -271,12 +271,28 @@ public sealed partial class AgentRunner
                     return denied;
                 }
 
-                Emit("action", $"click {desc}");
-                if (control.GetProperty("point") is { ValueKind: JsonValueKind.Object } point)
+                // The question can wait minutes for the user while the page moves on (a dialog
+                // opens, a layout shifts): find the control again, so the click lands on what
+                // was approved or not at all.
+                var before = control.GetProperty("point");
+                control = await ControlAsync(Int(args, "ref", 0), token);
+                var after = control.GetProperty("point");
+                if (before.ValueKind != after.ValueKind
+                    || (after.ValueKind == JsonValueKind.Object
+                        && (Math.Abs(before.GetProperty("x").GetDouble() - after.GetProperty("x").GetDouble()) > 2
+                            || Math.Abs(before.GetProperty("y").GetDouble() - after.GetProperty("y").GetDouble()) > 2)))
                 {
+                    return $"not clicked: {desc} moved on the page while waiting for approval. Read the page again.";
+                }
+
+                Emit("action", $"click {desc}");
+                if (after is { ValueKind: JsonValueKind.Object } point)
+                {
+                    // The covering element's text is the page's, so it is fenced and checked like page text.
                     if (point.TryGetProperty("covered", out var covered) && covered.GetString() is { Length: > 0 } over)
                     {
-                        return $"not clicked: {desc} is covered by {over}. Close that first (Escape, or its close button), then read the page again.";
+                        return $"not clicked: {desc} is covered by another element (its text is below). Close that first " +
+                               "(Escape, or its close button), then read the page again.\n" + Untrusted(over, "covering element");
                     }
 
                     await web.ClickAsync(point.GetProperty("x").GetDouble(), point.GetProperty("y").GetDouble(), _runToken);
@@ -346,7 +362,8 @@ public sealed partial class AgentRunner
                 var r = await PageAsync($"window.__bht.act({reference},'select',{JsonSerializer.Serialize(option)})", token);
                 if (!r.GetProperty("ok").GetBoolean())
                 {
-                    return "error: " + r.GetProperty("error").GetString();
+                    // The error quotes the control's label and the option asked for: page text, fenced.
+                    return "error: the list refused the option:\n" + Untrusted(r.GetProperty("error").GetString() ?? "", "list control");
                 }
 
                 await WebSettleAsync(token);

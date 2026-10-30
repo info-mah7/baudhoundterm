@@ -561,6 +561,15 @@ public sealed partial class AgentRunner
             }
         }
 
+        // As in CallModelAsync: the thinking switch comes after Extra request JSON and wins.
+        if (ThinkingJson(_endpoint) is { } thinking)
+        {
+            foreach (var (k, value) in thinking)
+            {
+                body[k] = value?.DeepClone();
+            }
+        }
+
         var reply = await PostAsync(body, token);
         if (OnlyThought(reply))
         {
@@ -834,8 +843,23 @@ public sealed partial class AgentRunner
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
         }
 
-        using var response = await Http.SendAsync(request, token);
-        var text = await response.Content.ReadAsStringAsync(token);
+        HttpResponseMessage response;
+        string text;
+        try
+        {
+            response = await Http.SendAsync(request, token);
+            text = await response.Content.ReadAsStringAsync(token);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            // HttpClient's own timeout, not the user's stop: a slow check model must not end
+            // the run as "the user stopped the run".
+            Log("http_error", text: $"no answer from {url} within {Http.Timeout.TotalMinutes:0} minutes");
+            throw new HttpRequestException($"{url} did not answer within {Http.Timeout.TotalMinutes:0} minutes. " +
+                                           "The server may be overloaded.");
+        }
+
+        using var _ = response;
         if (!response.IsSuccessStatusCode)
         {
             throw new HttpRequestException($"{url} answered {(int)response.StatusCode}: {Truncate(text, 400)}");
