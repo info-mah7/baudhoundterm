@@ -16,6 +16,10 @@ namespace Quarterdeck.App.Views;
 public partial class SessionEditorWindow : Window
 {
     private readonly CredentialVault _vault;
+
+    // What KVM pairing fetched (the daemon key) and used (the web password), written on Save.
+    private string? _pairedKey;
+    private string? _pairedPassword;
     private readonly ObservableCollection<AutoLoginStep> _steps;
     private readonly ObservableCollection<HighlightRule> _highlights;
     private readonly ObservableCollection<CommandShortcut> _commands;
@@ -671,7 +675,7 @@ public partial class SessionEditorWindow : Window
         var fromBox = password.Length > 0;
         if (password.Length == 0)
         {
-            password = _vault.Get(Definition.Id) ?? "";
+            password = _pairedPassword ?? _vault.Get(Definition.Id) ?? "";
         }
 
         if (password.Length == 0)
@@ -694,15 +698,13 @@ public partial class SessionEditorWindow : Window
             await vendor.SignInAsync();
             var key = await KvmClient.PairAsync(daemon, vendor.Token);
 
-            _vault.Set(Definition.Id, key, "kvmkey");
-            // Save the web password used, so the picture works later without asking again.
-            if (fromBox || _vault.Get(Definition.Id) is null or "")
-            {
-                _vault.Set(Definition.Id, password);
-            }
+            // Held until Save, like the boxes: Cancel must leave the vault as it was.
+            _pairedKey = key;
+            // The web password used is saved too, so the picture works later without asking again.
+            _pairedPassword = fromBox || _pairedPassword is not null || _vault.Get(Definition.Id) is null or "" ? password : null;
 
-            KvmKeyBox.Clear();   // the key is in the vault now; nothing to type
-            PairStatus("Paired. The daemon key is set and saved on this PC.", true);
+            KvmKeyBox.Clear();   // the key is held for Save; nothing to type
+            PairStatus("Paired. The daemon key is saved on this PC when you click Save.", true);
         }
         catch (Exception ex) when (ex is KvmException or HttpRequestException or IOException)
         {
@@ -875,6 +877,17 @@ public partial class SessionEditorWindow : Window
 
             // Two secrets on one board: the daemon's bearer key, and the web interface's own
             // password for the picture. The second is the session's "password", as elsewhere.
+            // What Pair fetched goes first; anything typed in the boxes after it wins.
+            if (_pairedKey is not null)
+            {
+                _vault.Set(d.Id, _pairedKey, "kvmkey");
+            }
+
+            if (_pairedPassword is not null)
+            {
+                _vault.Set(d.Id, _pairedPassword);
+            }
+
             if (!string.IsNullOrEmpty(KvmKeyBox.Password))
             {
                 _vault.Set(d.Id, KvmKeyBox.Password, "kvmkey");
