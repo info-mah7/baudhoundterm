@@ -249,6 +249,14 @@ password, with the same sources.</li>
 <p>The most secure choice is <strong>SSH agent</strong> with your keys
 kept in KeePassXC: no password or key file is stored in BaudHoundTerm at
 all (see <a href="#ssh-agent">section 7</a>).</p></li>
+<li><p><strong>Run after login</strong> (optional): a command typed into
+the shell once you are logged in, on every connect and reconnect:
+<code>claude</code>, <code>htop</code>,
+<code>cd ~/proj &amp;&amp; git status</code>. <strong>Presets</strong>
+offers the same list as tmux sessions. With tmux ticked it is greyed
+out: each tmux session's own <strong>Start command</strong> is used
+instead, and only when tmux creates the session. A command that lets an
+agent act without asking marks the tab with an amber chip.</p></li>
 <li><p><strong>Jump host</strong> (optional): the connection goes
 through another SSH server first, as <code>ssh -J</code> does. Pick one
 of your SSH shortcuts from the list, or type

@@ -148,6 +148,11 @@ it does not have. **Save** keeps the changes.
 
   The most secure choice is **SSH agent** with your keys kept in KeePassXC: no password or key
   file is stored in BaudHoundTerm at all (see [section 7](#ssh-agent)).
+- **Run after login** (optional): a command typed into the shell once you are logged in, on
+  every connect and reconnect: `claude`, `htop`, `cd ~/proj && git status`. **Presets** offers
+  the same list as tmux sessions. With tmux ticked it is greyed out: each tmux session's own
+  **Start command** is used instead, and only when tmux creates the session. A command that lets
+  an agent act without asking marks the tab with an amber chip.
 - **Jump host** (optional): the connection goes through another SSH server first, as `ssh -J`
   does. Pick one of your SSH shortcuts from the list, or type `user@host:port`. A shortcut
   brings its own login, saved password and host key, and its own jump host if it has one, so

@@ -116,6 +116,8 @@ public partial class SessionEditorWindow : Window
         KeePassEntryBox.Text = d.KeePassEntry;
         AgentFilterBox.Text = d.AgentKeyFilter;
         TmuxBox.IsChecked = d.Tmux;
+        LoginCommandBox.Text = d.Protocol == SessionProtocol.Ssh ? d.LoginCommand : "";
+        OnTmuxToggled(this, new RoutedEventArgs());
         JumpBox.Text = d.Protocol == SessionProtocol.Ssh ? d.JumpHost : "";
         VncJumpBox.Text = d.Protocol == SessionProtocol.Vnc ? d.JumpHost : "";
         UpdateAuthPanels();
@@ -410,6 +412,34 @@ public partial class SessionEditorWindow : Window
                     TmuxGrid.SelectedItem = c;
                 }
             };
+            menu.Items.Add(item);
+        }
+
+        menu.IsOpen = true;
+    }
+
+    // With tmux on, the sessions' start commands apply and this one is not used.
+    private void OnTmuxToggled(object sender, RoutedEventArgs e)
+    {
+        if (LoginCommandPanel is not null)
+        {
+            LoginCommandPanel.IsEnabled = TmuxBox.IsChecked != true;
+        }
+    }
+
+    /// <summary>The same presets for the plain shell's command after login.</summary>
+    private void OnLoginPresets(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement anchor)
+        {
+            return;
+        }
+
+        var menu = new ContextMenu { PlacementTarget = anchor, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        foreach (var (label, make) in Quarterdeck.Core.Terminal.TmuxStart.Presets)
+        {
+            var item = new MenuItem { Header = label == "A plain shell" ? "Nothing (a plain shell)" : label };
+            item.Click += (_, _) => LoginCommandBox.Text = make();
             menu.Items.Add(item);
         }
 
@@ -751,6 +781,7 @@ public partial class SessionEditorWindow : Window
         d.KeePassEntry = KeePassEntryBox.Text.Trim();
         d.AgentKeyFilter = AgentFilterBox.Text.Trim();
         d.Tmux = TmuxBox.IsChecked == true;
+        d.LoginCommand = d.Protocol == SessionProtocol.Ssh ? LoginCommandBox.Text.Trim() : "";
         // Only SSH and VNC tabs go through a jump host; another protocol keeps none.
         d.JumpHost = d.Protocol switch
         {

@@ -118,9 +118,17 @@
               <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="Jump host (optional): an SSH shortcut, or user@host:port. The connection goes through it, as ssh -J does; the host above is then as the jump host sees it."/>
               <ComboBox x:Name="JumpBox" IsEditable="True" IsTextSearchEnabled="False"/>
 
+              <TextBlock Margin="0,10,0,0" TextWrapping="Wrap" Text="Run after login (optional): typed into the shell on every connect, reconnects included. With tmux on, each tmux session's Start command below is used instead."/>
+              <DockPanel x:Name="LoginCommandPanel">
+                <Button DockPanel.Dock="Right" Content="Presets..." Width="80" Margin="6,0,0,0" Click="OnLoginPresets"
+                        ToolTip="Claude Code, Codex, Aider, htop and others. Edit it afterwards as you like."/>
+                <TextBox x:Name="LoginCommandBox"/>
+              </DockPanel>
+
               <CheckBox x:Name="TmuxBox" Margin="0,10,0,0"
                         Content="Keep the shell running in tmux when the connection drops"
-                        ToolTip="Starts or attaches a tmux session after login; a reconnect attaches to it again. Needs tmux on the host."/>
+                        ToolTip="Starts or attaches a tmux session after login; a reconnect attaches to it again. Needs tmux on the host."
+                        Checked="OnTmuxToggled" Unchecked="OnTmuxToggled"/>
               <StackPanel IsEnabled="{Binding IsChecked, ElementName=TmuxBox}">
                 <TextBlock TextWrapping="Wrap"
                            Text="tmux sessions: each opens in its own tab. Untick Open on connect for one you open only from the shortcut's menu (Open tmux session). Folder and Start command apply when tmux starts the session; while it runs, the tab attaches to it as it is."/>

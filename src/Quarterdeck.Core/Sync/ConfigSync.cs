@@ -798,7 +798,8 @@ public sealed class ConfigSync
 
         // "sshpass -p hunter2": a password flag whose value has letters and a digit or symbol
         // ("-p 2222" is a port). Then the forms a note is checked for.
-        return d.Commands.Any(c => CommandPassword.IsMatch(c.Text) || Agent.AgentMemory.FindSecret(c.Text) is not null);
+        return d.Commands.Select(c => c.Text).Append(d.LoginCommand)
+            .Any(t => CommandPassword.IsMatch(t) || Agent.AgentMemory.FindSecret(t) is not null);
     }
 
     private static readonly Regex CommandPassword = new(

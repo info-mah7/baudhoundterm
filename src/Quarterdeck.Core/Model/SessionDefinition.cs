@@ -106,6 +106,13 @@ public sealed class SessionDefinition
     public bool Tmux { get; set; }
 
     /// <summary>
+    /// Typed into the shell after login (and after the login script) on every connect, reconnects
+    /// included: claude, htop, cd ~/proj &amp;&amp; git status. Plain SSH only; with tmux on, each tmux
+    /// session's own start command applies instead.
+    /// </summary>
+    public string LoginCommand { get; set; } = "";
+
+    /// <summary>
     /// The tmux session to create or attach to. Since build 72 it mirrors the first entry of
     /// <see cref="TmuxSessions"/>, so builds before 72 (and other PCs on them, via Sync) still
     /// open the main session.

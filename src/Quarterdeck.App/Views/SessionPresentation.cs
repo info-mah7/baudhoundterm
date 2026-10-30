@@ -263,13 +263,15 @@ internal static class SessionPresentation
     /// </summary>
     public static Border? ProgramChip(SessionDefinition s, string tmuxSession)
     {
-        if (s is not { Protocol: SessionProtocol.Ssh, Tmux: true })
+        if (s.Protocol != SessionProtocol.Ssh)
         {
             return null;
         }
 
         var name = Quarterdeck.Core.Terminal.SessionController.TmuxName(string.IsNullOrWhiteSpace(tmuxSession) ? s.TmuxSession : tmuxSession);
-        var command = s.TmuxSessionList().FirstOrDefault(t => Quarterdeck.Core.Terminal.SessionController.TmuxName(t.Name) == name)?.StartCommand ?? "";
+        var command = s.Tmux
+            ? s.TmuxSessionList().FirstOrDefault(t => Quarterdeck.Core.Terminal.SessionController.TmuxName(t.Name) == name)?.StartCommand ?? ""
+            : Quarterdeck.Core.Terminal.SessionController.LoginCommand(s) ?? "";
         if (command.Length == 0)
         {
             return null;

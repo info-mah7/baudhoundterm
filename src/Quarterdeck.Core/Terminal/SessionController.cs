@@ -230,6 +230,10 @@ public sealed class SessionController : IAsyncDisposable
                     }
                 }, token);
             }
+            else if (Definition.Protocol == SessionProtocol.Ssh && LoginCommand(Definition) is { } command)
+            {
+                await _transport.WriteAsync(command + "\r", token).ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -250,6 +254,13 @@ public sealed class SessionController : IAsyncDisposable
 
             _retry = ex.Message;   // the loop in ScheduleReconnectAsync tries again
         }
+    }
+
+    /// <summary>The shortcut's command for after login, its lines joined with "; " as if typed in turn, or null for none.</summary>
+    public static string? LoginCommand(SessionDefinition d)
+    {
+        var command = string.Join("; ", d.LoginCommand.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        return command.Length == 0 || d.Tmux ? null : command;
     }
 
     // Set by a failed connect so the reconnect loop goes round again, instead of the connect
