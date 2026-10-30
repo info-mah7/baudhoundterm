@@ -74,6 +74,15 @@ public partial class MainWindow : Window
         // drops while the app runs still reconnects, per the shortcut's reconnect settings.
         Closing += async (_, e) =>
         {
+            // A second close (the X clicked again) while the first is still finishing recordings
+            // must not stop them a second time: it waits for the same work, whose end closes the window.
+            if (_finishingRecordings is { IsCompleted: false } finishing)
+            {
+                e.Cancel = true;
+                await finishing;
+                return;
+            }
+
             // Tabs are not restored, so closing ends every live session for good. Say so first.
             var live = AllTabItems.Select(ViewOf).OfType<TerminalView>().Count(v => v.IsConnected);
             if (live > 0 && !_closeConfirmed)
@@ -94,21 +103,12 @@ public partial class MainWindow : Window
 
             // An MP4 is unreadable until its encoder finishes, and nothing waits once closing goes
             // on: hold the close, finish every recording, then close again.
-            var recording = _live.Select(l => l.View).Where(v => v.IsRecording).ToList();
+            var recording = _live.Select(l => l.View).Where(v => v.IsRecording || v.RecordingStarting).ToList();
             if (recording.Count > 0)
             {
                 e.Cancel = true;
-                foreach (var view in recording)
-                {
-                    // An audit's log closes with the connection; its SHA-256 list needs the whole file.
-                    if (view.RecordingIsAudit)
-                    {
-                        await view.DisconnectAsync();
-                    }
-
-                    await view.FinishRecordingAsync();
-                }
-
+                _finishingRecordings = FinishRecordingsAsync(recording);
+                await _finishingRecordings;
                 Close();
                 return;
             }
@@ -629,7 +629,7 @@ public partial class MainWindow : Window
     private void OnRecordingChanged()
     {
         // An audit keeps the addresses: what was touched is the point of it.
-        var any = _live.Any(l => l.View.IsRecording && !l.View.RecordingIsAudit);
+        var any = _live.Any(l => l.View.RecordingHidesAddresses);
         if (any && !Privacy.HideAll)
         {
             _hiddenForRecording = true;
@@ -867,6 +867,23 @@ public partial class MainWindow : Window
     private SessionDefinition? Selected => (SessionTree.SelectedItem as TreeViewItem)?.Tag as SessionDefinition;
 
     private bool _closeConfirmed;
+
+    // The recordings a close is finishing, so a second close waits for them instead of stopping them again.
+    private Task? _finishingRecordings;
+
+    private static async Task FinishRecordingsAsync(List<TerminalView> recording)
+    {
+        foreach (var view in recording)
+        {
+            // An audit's log closes with the connection; its SHA-256 list needs the whole file.
+            if (view.RecordingIsAudit)
+            {
+                await view.DisconnectAsync();
+            }
+
+            await view.FinishRecordingAsync();
+        }
+    }
 
     /// <summary>Shortcut commands work on the selected shortcut; without one they are dimmed.</summary>
     private void UpdateSelectionCommands()
