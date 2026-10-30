@@ -29,6 +29,11 @@ public partial class MainWindow : Window
 
         _sessions = _store.Load();
         _folders = _store.LoadFolders();
+        RememberSaved();
+        foreach (var p in UiProperties)
+        {
+            p.SetValue(_uiSaved, p.GetValue(_ui));
+        }
 
         var problems = new[] { _store.LoadProblem, _vault.LoadProblem }.OfType<string>().ToList();
         if (problems.Count > 0)
@@ -69,6 +74,15 @@ public partial class MainWindow : Window
         // drops while the app runs still reconnects, per the shortcut's reconnect settings.
         Closing += async (_, e) =>
         {
+            // A second close (the X clicked again) while the first is still finishing recordings
+            // must not stop them a second time: it waits for the same work, whose end closes the window.
+            if (_finishingRecordings is { IsCompleted: false } finishing)
+            {
+                e.Cancel = true;
+                await finishing;
+                return;
+            }
+
             // Tabs are not restored, so closing ends every live session for good. Say so first.
             var live = AllTabItems.Select(ViewOf).OfType<TerminalView>().Count(v => v.IsConnected);
             if (live > 0 && !_closeConfirmed)
@@ -89,21 +103,12 @@ public partial class MainWindow : Window
 
             // An MP4 is unreadable until its encoder finishes, and nothing waits once closing goes
             // on: hold the close, finish every recording, then close again.
-            var recording = _live.Select(l => l.View).Where(v => v.IsRecording).ToList();
+            var recording = _live.Select(l => l.View).Where(v => v.IsRecording || v.RecordingStarting).ToList();
             if (recording.Count > 0)
             {
                 e.Cancel = true;
-                foreach (var view in recording)
-                {
-                    // An audit's log closes with the connection; its SHA-256 list needs the whole file.
-                    if (view.RecordingIsAudit)
-                    {
-                        await view.DisconnectAsync();
-                    }
-
-                    await view.FinishRecordingAsync();
-                }
-
+                _finishingRecordings = FinishRecordingsAsync(recording);
+                await _finishingRecordings;
                 Close();
                 return;
             }
@@ -334,6 +339,25 @@ public partial class MainWindow : Window
         return panel;
     }
 
+    /// <summary>
+    /// A host named in a question that comes without its shortcut (a host key, a certificate):
+    /// dots when Hide addresses is on, or when a shortcut to that host always hides it.
+    /// </summary>
+    private string MaskHost(string host) =>
+        Privacy.HideAll || _sessions.Any(s => s.HideAddress && string.Equals(s.Host.Trim(), host.Trim(), StringComparison.OrdinalIgnoreCase))
+            ? Privacy.Dots
+            : host;
+
+    /// <summary>
+    /// A tooltip naming the shortcut's address, masked with <see cref="Privacy.Mask"/>. Menus
+    /// outlive a Hide addresses toggle, so the text is made again each time it is shown.
+    /// </summary>
+    private static void SetMaskedToolTip(MenuItem item, Func<string> text)
+    {
+        item.ToolTip = text();
+        item.ToolTipOpening += (_, _) => item.ToolTip = text();
+    }
+
     private bool AskHostKey(HostKeyQuestion q)
     {
         var tls = q.Algorithm.StartsWith("TLS", StringComparison.Ordinal);
@@ -342,12 +366,13 @@ public partial class MainWindow : Window
             ? "If you can, compare it with the TLS line on the device's Settings page (BaudHound) or its own fingerprint."
             : "If you can, compare this with the server's own fingerprint (ssh-keygen -lf on the host key).";
 
+        var host = MaskHost(q.Host);
         var text = q.Changed
-            ? $"WARNING: the {what} for {q.Host}:{q.Port} has CHANGED.\n\n" +
+            ? $"WARNING: the {what} for {host}:{q.Port} has CHANGED.\n\n" +
               $"Trusted before:  SHA256:{q.PreviousFingerprint}\nPresented now:   SHA256:{q.Fingerprint} ({q.Algorithm})\n\n" +
               "Either the device or server was reset or re-keyed, or something is intercepting the connection " +
               "and would see everything typed. Only accept if you know it changed.\n\nTrust the new one?"
-            : $"First connection to {q.Host}:{q.Port}.\n\n{(tls ? "TLS certificate" : $"Host key ({q.Algorithm})")}:\nSHA256:{q.Fingerprint}\n\n" +
+            : $"First connection to {host}:{q.Port}.\n\n{(tls ? "TLS certificate" : $"Host key ({q.Algorithm})")}:\nSHA256:{q.Fingerprint}\n\n" +
               check + " Trust it and remember it for next time?";
 
         return MessageBox.Show(this, text, tls ? "BaudHoundTerm: TLS certificate" : "BaudHoundTerm: SSH host key", MessageBoxButton.YesNo,
@@ -574,24 +599,36 @@ public partial class MainWindow : Window
     private void OnGroupToggle(object sender, RoutedEventArgs e)
     {
         _ui.GroupByHost = GroupToggle.IsChecked == true;
-
-        try
-        {
-            _ui.Save();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // The view still changes; it just will not be remembered.
-        }
-
+        SaveUi();
         RebuildTree();
     }
+
+    private static readonly System.Reflection.PropertyInfo[] UiProperties = typeof(UiPreferences)
+        .GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+        .Where(p => p.CanRead && p.CanWrite)
+        .ToArray();
+
+    // The settings as this window last read or wrote them (set in the constructor).
+    private readonly UiPreferences _uiSaved = new();
 
     private void SaveUi()
     {
         try
         {
-            _ui.Save();
+            // ui.json is shared with the elevated window: only the settings changed here are
+            // written, over the file as it is now, so the other window's choices are kept.
+            var onDisk = UiPreferences.Load();
+            var changed = UiProperties.Where(p => !Equals(p.GetValue(_ui), p.GetValue(_uiSaved))).ToList();
+            foreach (var p in changed)
+            {
+                p.SetValue(onDisk, p.GetValue(_ui));
+            }
+
+            onDisk.Save();
+            foreach (var p in changed)
+            {
+                p.SetValue(_uiSaved, p.GetValue(_ui));
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -612,7 +649,7 @@ public partial class MainWindow : Window
     private void OnRecordingChanged()
     {
         // An audit keeps the addresses: what was touched is the point of it.
-        var any = _live.Any(l => l.View.IsRecording && !l.View.RecordingIsAudit);
+        var any = _live.Any(l => l.View.RecordingHidesAddresses);
         if (any && !Privacy.HideAll)
         {
             _hiddenForRecording = true;
@@ -842,8 +879,7 @@ public partial class MainWindow : Window
 
     private void SaveFolders()
     {
-        _store.SaveFolders(_folders);
-        _folders = _store.LoadFolders();
+        MergeFoldersIntoStore();
         RebuildTree();
         ScheduleSync();
     }
@@ -851,6 +887,23 @@ public partial class MainWindow : Window
     private SessionDefinition? Selected => (SessionTree.SelectedItem as TreeViewItem)?.Tag as SessionDefinition;
 
     private bool _closeConfirmed;
+
+    // The recordings a close is finishing, so a second close waits for them instead of stopping them again.
+    private Task? _finishingRecordings;
+
+    private static async Task FinishRecordingsAsync(List<TerminalView> recording)
+    {
+        foreach (var view in recording)
+        {
+            // An audit's log closes with the connection; its SHA-256 list needs the whole file.
+            if (view.RecordingIsAudit)
+            {
+                await view.DisconnectAsync();
+            }
+
+            await view.FinishRecordingAsync();
+        }
+    }
 
     /// <summary>Shortcut commands work on the selected shortcut; without one they are dimmed.</summary>
     private void UpdateSelectionCommands()
@@ -904,38 +957,108 @@ public partial class MainWindow : Window
         }
     }
 
+    // What this window last read or wrote, per shortcut and folder. Two instances (the normal
+    // window and the elevated one the Admin button starts) share the files, so a save writes only
+    // what changed here since then and keeps what the other one did in the meantime.
+    private Dictionary<Guid, string> _savedSessions = new();
+    private HashSet<string> _savedFolders = new(StringComparer.OrdinalIgnoreCase);
+
+    private void RememberSaved()
+    {
+        _savedSessions = new Dictionary<Guid, string>();
+        foreach (var s in _sessions)
+        {
+            _savedSessions[s.Id] = Fingerprint(s);
+        }
+
+        _savedFolders = _folders.ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
     private void Save()
     {
-        if (Elevation.IsCurrentProcessElevated)
+        MergeIntoStore();
+        RebuildTree();
+        ScheduleSync();
+    }
+
+    /// <summary>
+    /// Writes this window's added, edited and deleted shortcuts into sessions.json as it is now.
+    /// A shortcut this window has not touched takes the file's version, so the other instance's
+    /// edits, additions and deletions all survive. One deleted there stays deleted, even when it
+    /// was edited here: the window it was deleted in had the last word.
+    /// </summary>
+    private void MergeIntoStore()
+    {
+        var problemBefore = _store.LoadProblem;
+        var onDisk = _store.Load();
+        if (!ReferenceEquals(_store.LoadProblem, problemBefore))
         {
-            // The elevated window loaded its list when it started; writing that back would drop
-            // what the main window has added since. Fold this window's shortcuts into the file
-            // as it is now: its edits and additions land, and nothing it never saw is lost.
-            var onDisk = _store.Load();
-            if (_store.LoadProblem is null)
+            // The file was damaged and has been set aside: this window's list is all there is.
+            _store.Save(_sessions);
+            RememberSaved();
+            return;
+        }
+
+        var mine = new Dictionary<Guid, SessionDefinition>();
+        foreach (var s in _sessions)
+        {
+            mine[s.Id] = s;
+        }
+
+        var result = new List<SessionDefinition>();
+        var taken = new HashSet<Guid>();
+        foreach (var disk in onDisk)
+        {
+            if (!taken.Add(disk.Id))
             {
-                foreach (var mine in _sessions)
+                continue;
+            }
+
+            if (mine.TryGetValue(disk.Id, out var here))
+            {
+                var changedHere = !_savedSessions.TryGetValue(here.Id, out var was) || was != Fingerprint(here);
+                if (!changedHere && Fingerprint(disk) != Fingerprint(here))
                 {
-                    var at = onDisk.FindIndex(d => d.Id == mine.Id);
-                    if (at < 0)
-                    {
-                        onDisk.Add(mine);
-                    }
-                    else
-                    {
-                        onDisk[at] = mine;
-                    }
+                    // Edited by the other instance only: the object stays, so open tabs keep it.
+                    CopyInto(disk, here);
+                    RefreshOpenTabsOf(here);
                 }
 
-                _store.Save(onDisk);
-                RebuildTree();
-                return;
+                result.Add(here);
+            }
+            else if (!_savedSessions.ContainsKey(disk.Id))
+            {
+                result.Add(disk);   // made by the other instance since this one last looked
+            }
+
+            // Otherwise this window deleted it, and it stays out.
+        }
+
+        foreach (var s in _sessions)
+        {
+            // New here. One this window knew that is gone from the file was deleted there.
+            if (!taken.Contains(s.Id) && !_savedSessions.ContainsKey(s.Id))
+            {
+                taken.Add(s.Id);
+                result.Add(s);
             }
         }
 
+        _sessions.Clear();
+        _sessions.AddRange(result);
         _store.Save(_sessions);
-        RebuildTree();
-        ScheduleSync();
+        RememberSaved();
+    }
+
+    /// <summary>As with the shortcuts: folders added or removed here change, the rest of the file is kept.</summary>
+    private void MergeFoldersIntoStore()
+    {
+        var added = _folders.Where(f => !_savedFolders.Contains(f)).ToList();
+        var removed = _savedFolders.Where(f => !_folders.Contains(f, StringComparer.OrdinalIgnoreCase))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _store.SaveFolders(_store.LoadFolders().Concat(added).Where(f => !removed.Contains(f)));
+        _folders = _store.LoadFolders();
+        _savedFolders = _folders.ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     // ---------- session commands ----------
@@ -1112,9 +1235,10 @@ public partial class MainWindow : Window
             var name = session.Name;
             var item = new MenuItem
             {
-                Header = SessionController.TmuxName(name) + (session.OpenOnConnect ? "" : "   (on demand)"),
-                ToolTip = $"A tab in the tmux session {SessionController.TmuxName(name)} on {definition.Host}: attaches if it is running, starts it if not"
+                Header = SessionController.TmuxName(name) + (session.OpenOnConnect ? "" : "   (on demand)")
             };
+            SetMaskedToolTip(item, () =>
+                $"A tab in the tmux session {SessionController.TmuxName(name)} on {Privacy.Mask(definition.Host, definition)}: attaches if it is running, starts it if not");
             item.Click += async (_, _) => await OpenTabAsync(definition, tmuxSession: name);
             menu.Items.Add(item);
         }
@@ -1132,11 +1256,9 @@ public partial class MainWindow : Window
     /// </summary>
     private MenuItem RunningTmuxMenu(SessionDefinition definition, string header = "_Running tmux sessions")
     {
-        var menu = new MenuItem
-        {
-            Header = header,
-            ToolTip = $"The tmux sessions running for {definition.Username}@{definition.Host}, from tmux ls on the host"
-        };
+        var menu = new MenuItem { Header = header };
+        SetMaskedToolTip(menu, () =>
+            $"The tmux sessions running for {Privacy.Mask($"{definition.Username}@{definition.Host}", definition)}, from tmux ls on the host");
         var waiting = new MenuItem { Header = "Asking the host...", IsEnabled = false };
         menu.Items.Add(waiting);
         var asked = false;
@@ -1382,12 +1504,22 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Opens the properties of a shortcut copied from another, with the original's stored password or
-    /// key passphrase, so it logs in the same way; saved on Save, its secrets dropped on Cancel.
+    /// Opens the properties of a shortcut copied from another, with the original's stored secrets,
+    /// so it logs in the same way; saved on Save, its secrets dropped on Cancel.
     /// </summary>
     private bool SaveCopy(SessionDefinition from, SessionDefinition copy, bool warnShared, bool keepTmuxNames = false)
     {
-        foreach (var key in new[] { "password", "passphrase" })
+        // The vault cannot list a shortcut's names, so these are the ones the app writes: the
+        // login, the KVM daemon key (and the name its prompt saves under), the auto-login steps'
+        // secrets, and each of them again as a jump host's ("jump:"). Answers to a server's own
+        // keyboard-interactive prompts ("kbd:<prompt>") are named by the server and cannot be
+        // found this way; the copy asks for those once.
+        var names = new[] { "password", "passphrase", "kvmkey", "kvm key" }
+            .Concat(from.AutoLogin.Select(step => step.SecretKey))
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        foreach (var key in names.Concat(names.Select(n => "jump:" + n)))
         {
             if (_vault.Get(from.Id, key) is { } secret)
             {
@@ -1486,7 +1618,7 @@ public partial class MainWindow : Window
     private async Task NewTmuxSessionAsync(SessionDefinition definition)
     {
         var dialog = new InputPromptWindow("New tmux session", "",
-            $"A name for another session on {definition.Host}, for example logs. Letters, digits, - and _.") { Owner = this };
+            $"A name for another session on {Privacy.Mask(definition.Host, definition)}, for example logs. Letters, digits, - and _.") { Owner = this };
         if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.Value))
         {
             return;
@@ -2067,7 +2199,7 @@ public partial class MainWindow : Window
     {
         var name = SessionController.TmuxName(string.IsNullOrWhiteSpace(view.TmuxSessionName) ? definition.TmuxSession : view.TmuxSessionName);
         var answer = MessageBox.Show(this,
-            $"End the tmux session \"{name}\" on {definition.Host}?\n\n" +
+            $"End the tmux session \"{name}\" on {Privacy.Mask(definition.Host, definition)}?\n\n" +
             "Everything running in it stops, and this connection ends with it. " +
             "Closing the tab instead leaves the session running on the host.",
             "End tmux session", MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel);
@@ -3342,7 +3474,7 @@ public partial class MainWindow : Window
     {
         if (_tftp is null)
         {
-            _tftp = new TftpWindow(_ui) { Owner = this };
+            _tftp = new TftpWindow(_ui, SaveUi) { Owner = this };
             _tftp.Closed += (_, _) => _tftp = null;
             _tftp.Show();
         }

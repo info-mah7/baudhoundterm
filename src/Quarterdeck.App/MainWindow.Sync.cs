@@ -233,8 +233,10 @@ public partial class MainWindow
         _sessions.Clear();
         _sessions.AddRange(result);
         _folders = folders;
-        _store.Save(_sessions);          // straight to the store: Save() would schedule another sync
-        _store.SaveFolders(_folders);
+        // Straight to the store: Save() would schedule another sync. Merged all the same, so
+        // what the elevated window saved meanwhile is kept.
+        MergeIntoStore();
+        MergeFoldersIntoStore();
         RebuildTree();
 
         foreach (var definition in updated)

@@ -27,7 +27,22 @@ public partial class TerminalView : IRecordable
     /// <summary>Raised with a warning when an audit's files could not be hashed or copied.</summary>
     public event EventHandler<string>? AuditProblem;
 
+    // Set from the moment a start is decided until the recorder runs or fails. The capture API
+    // is awaited, and without this a second start (an audit and Ctrl+Shift+R together) got past
+    // the "already recording" check and ran two recorders.
+    private Task? _starting;
+    private bool _startingAudit;
+
     public bool IsRecording => _recorder is not null;
+
+    /// <summary>A recording is being started and has not captured yet.</summary>
+    public bool RecordingStarting => _starting is not null;
+
+    /// <summary>
+    /// Hide addresses should be on for this tab's recording: a demo one running or about to start
+    /// (true before the first frame, so frame one is already masked). An audit keeps the addresses.
+    /// </summary>
+    public bool RecordingHidesAddresses => _starting is not null ? !_startingAudit : _recorder is not null && !_audit;
     public bool RecordingPaused => _recorder?.Paused == true;
     public TimeSpan RecordingElapsed => _recorder?.Elapsed ?? TimeSpan.Zero;
 
@@ -105,10 +120,61 @@ public partial class TerminalView : IRecordable
 
     private async Task<string> StartRecordingAsync(string scope, bool audit)
     {
-        if (_recorder is not null)
+        // An audit must win: it waits for a demo start under way and then replaces the demo
+        // recording. A demo start is refused while anything else is starting or running.
+        while (true)
         {
-            return $"already recording to {_recorder.FilePath}";
+            if (_starting is { } pending)
+            {
+                if (!audit)
+                {
+                    return "already starting a recording";
+                }
+
+                await pending;
+                continue;
+            }
+
+            if (_recorder is not null)
+            {
+                if (!audit || _audit)
+                {
+                    return $"already recording to {_recorder.FilePath}";
+                }
+
+                await StopRecordingAsync();
+                continue;
+            }
+
+            break;
         }
+
+        // Nothing is awaited between the checks above and this, so no second start slips in.
+        var started = new TaskCompletionSource();
+        _starting = started.Task;
+        _startingAudit = audit;
+        string result;
+        try
+        {
+            result = await StartRecordingCoreAsync(scope, audit);
+        }
+        finally
+        {
+            _starting = null;
+            started.SetResult();
+        }
+
+        if (_recorder is null)
+        {
+            // It did not start: Hide addresses, turned on for it, goes back off.
+            RecordingChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        return result;
+    }
+
+    private async Task<string> StartRecordingCoreAsync(string scope, bool audit)
+    {
 
         // Tabs of one shortcut (its tmux sessions) can start in the same second: the session
         // name and, if still taken, a counter keep the files apart.
@@ -125,6 +191,16 @@ public partial class TerminalView : IRecordable
         if (window is null)
         {
             return "error: the tab is not in a window";
+        }
+
+        if (!audit)
+        {
+            // The window turns Hide addresses on when it hears of the start. That has to be on
+            // screen before the capture's first frame, or frame one shows the real addresses:
+            // let the change render, then give the compositor a couple of frames to show it.
+            RecordingChanged?.Invoke(this, EventArgs.Empty);
+            await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+            await Task.Delay(50);
         }
 
         var recorder = new TabRecorder(window, RecordRegion(scope), path, Definition.Name);
@@ -198,7 +274,12 @@ public partial class TerminalView : IRecordable
     /// </param>
     private async Task<string> StopRecordingAsync(bool sessionOver = true)
     {
-        var done = _recorder!;
+        // Two stops can race (a close, then the tab's release): the second finds nothing to do.
+        if (_recorder is not { } done)
+        {
+            return "not recording";
+        }
+
         var audit = _audit;
         _recorder = null;
         RecordFrame.BorderBrush = Brushes.Transparent;
@@ -232,7 +313,7 @@ public partial class TerminalView : IRecordable
     /// <summary>An audited shortcut's tab connected: its recording starts now, once per tab.</summary>
     private void StartAuditIfDue(SessionState state)
     {
-        if (state == SessionState.Connected && Definition.Audit.Enabled && _recorder is null && !_released)
+        if (state == SessionState.Connected && Definition.Audit.Enabled && !RecordingIsAudit && !_released)
         {
             _ = StartAuditAsync();
         }
@@ -245,12 +326,8 @@ public partial class TerminalView : IRecordable
     /// </summary>
     public async Task StartAuditNowAsync()
     {
-        if (_recorder is not null && !_audit)
-        {
-            await StopRecordingAsync();
-        }
-
-        if (_recorder is not null || _released)
+        // The demo recording, running or starting, is saved by the audit's own start.
+        if (RecordingIsAudit || _released)
         {
             return;
         }
@@ -276,7 +353,7 @@ public partial class TerminalView : IRecordable
 
         // After layout, so the area to record has its size.
         await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Loaded);
-        if (_recorder is not null || _released)
+        if (RecordingIsAudit || _released)
         {
             return;
         }
@@ -421,11 +498,21 @@ public partial class TerminalView : IRecordable
         {
             _ = StopRecordingAsync();
         }
+        else if (_starting is not null)
+        {
+            _ = FinishRecordingAsync();   // stops it as soon as it has started
+        }
     }
 
     /// <summary>Finishes a running recording, an audit's included, and waits for its files.</summary>
     public async Task FinishRecordingAsync()
     {
+        // A start still under way would otherwise leave a recorder running after the close.
+        if (_starting is { } pending)
+        {
+            await pending;
+        }
+
         if (_recorder is not null)
         {
             await Dispatcher.InvokeAsync(() => StopRecordingAsync()).Task.Unwrap();
