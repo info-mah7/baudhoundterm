@@ -55,6 +55,11 @@ safer habit. See **Passwords** below.
   and is copied with a SHA-256 list to the folder you choose (see the manual).
 - **Several tmux sessions:** in a shortcut's properties, list more than one tmux session and each
   opens in its own tab. Right-click the shortcut or a tab for **Open tmux session** to open another.
+- **Running tmux sessions:** right-click an SSH shortcut, or a host's **Connect**, to list the tmux
+  sessions running on the host for that login (`tmux ls`); pick one to open a tab attached to it.
+- **Send a secret to the program:** right-click an SSH tab to hand a password or key to the
+  program in it (a coding agent) as a file only that login can read. The tab gets the file's path,
+  never the value.
 - **Right-click** a shortcut for Connect, Properties, Move, Delete. Right-click a tab's **header**
   for its colour, properties, pop-out, and (on a desktop or KVM tab) agent options.
 

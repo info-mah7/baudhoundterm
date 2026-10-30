@@ -626,6 +626,20 @@ on connect marked <em>(on demand)</em>, and <strong>New tmux
 session...</strong>, which asks for a name, adds it to the shortcut and
 opens it. Opening a session that is already running attaches to it, so
 two tabs on the same session show the same screen.</p>
+<p><strong>Running tmux sessions</strong> lists what is actually
+running, whoever started it: right-click an SSH shortcut, or a host in
+<strong>Group by host</strong> and its <strong>Connect</strong> menu
+(one list per login when the host has several). It runs
+<code>tmux ls</code> on the host when the submenu opens and shows each
+session with its window count, and "attached" when a client is on it.
+Pick one for a tab attached to it. A plain SSH shortcut stays plain:
+only that tab runs in tmux. The list uses an open tab's connection to
+the same login when there is one. Otherwise it logs in on its own, but
+only when that needs nothing typed (a key, the SSH agent or a saved
+password) and the host key was checked at an earlier connect; if not, it
+says so, and connecting first fixes it. Sessions named with characters
+other than letters, digits, <code>-</code> and <code>_</code> are listed
+but cannot be opened from here.</p>
 <h3 id="ending-a-tmux-session">Ending a tmux session</h3>
 <p>Closing a tab whose shell is in tmux leaves the session running on
 the host, which is the point of it. To end it instead, right-click the
@@ -644,6 +658,76 @@ a log tail or a command-line AI tool keeps running and keeps using
 whatever it used before (one AI CLI with its helpers measured about 1.2
 GB). <code>tmux ls</code> on the host lists the sessions still running;
 end the ones you no longer need.</p>
+<h3 id="tmux-and-security">tmux and security</h3>
+<p>A session left running keeps its shell, its scrollback and anything
+copied in it on the host. Who can reach it:</p>
+<ul>
+<li><strong>Other users on the host cannot.</strong> tmux runs one
+server per login, with its socket in a folder only that login can open
+(<code>/tmp/tmux-&lt;uid&gt;/</code>). From tmux 3.3 the server also
+refuses other users unless the owner lets them in with
+<code>server-access</code>. <code>tmux ls</code> shows only your own
+sessions.</li>
+<li><strong>Anything running as the same login can.</strong> It can
+attach to any of that login's sessions, type into them and read their
+scrollback and paste buffers, which all its sessions share. That is
+ordinary Unix: such a process can already do whatever the login can.
+tmux keeps the shells in one place.</li>
+<li><strong>root can</strong>, for every user's sessions.</li>
+</ul>
+<p>So on a correctly set up host, tmux gives no way from one user's
+sessions to another's. The exposure is what a session holds. A pane
+where you ran <code>sudo -i</code>, <code>su</code> or <code>ssh</code>
+to another host stays logged in after the tab closes, and attaching to
+it asks for no password. Whoever gets into this login, or root, gets
+those too.</p>
+<ul>
+<li>End a session holding a root shell, another user's shell or an
+onward SSH connection instead of leaving it detached (<strong>End the
+tmux session on the host</strong>, above).</li>
+<li>Keep secrets out of a session you leave running, or clear them
+after: <code>tmux clear-history</code> and
+<code>tmux delete-buffer</code>.</li>
+<li>Do not share a session socket with other users (<code>tmux -S</code>
+with group rights). If you must, use tmux 3.3 or later and give
+read-only access: <code>server-access -r &lt;user&gt;</code>.</li>
+<li>Sessions outlive the tab and a dropped link, not a host restart.
+Plugins that restore them (tmux-resurrect) save pane contents to disk,
+secrets included.</li>
+</ul>
+<p>BaudHoundTerm forwards no SSH agent, so a session left running holds
+none of your keys.</p>
+<h3 id="sending-a-secret-to-the-program-in-a-tab">Sending a secret to
+the program in a tab</h3>
+<p>A coding agent in an SSH tab (Claude Code, Codex) sometimes needs a
+password, a token or a key. Typed or pasted into its prompt, the value
+lands in its conversation, the scrollback and the session log. Instead,
+right-click the tab (or its row in the list) and choose <strong>Send a
+secret to the program...</strong>:</p>
+<ul>
+<li>Give it a <strong>name</strong>, then type the value or choose
+<strong>Use a file instead</strong> for a key file (up to 1 MB).</li>
+<li>BaudHoundTerm writes it to
+<code>~/.cache/baudhoundterm/secrets/&lt;name&gt;</code> on the host
+over a channel of its own, through the command's input: it is not typed
+into the tab, not on any command line, and not in the log. The folder is
+700 and the file 600.</li>
+<li><strong>Delete it from the host after</strong> 15 minutes, 1 hour
+(the default) or 8 hours: a background job on the host removes it,
+whether the tab is still open or not. <strong>Keep it</strong> leaves it
+for you to delete.</li>
+<li>With <strong>Type a line at the prompt</strong> ticked, the tab gets
+one line saying where the file is and to use it from there
+(<code>"$(cat &lt;path&gt;)"</code> inside a command) without printing
+it. Nothing is sent until you press Enter, so you can read or change it
+first. The value is never in that line.</li>
+</ul>
+<p>What this does not do: anything running as that login, and root, can
+read the file while it is there, as with any file of yours. And a
+program that reads the file into its conversation (prints it, or
+<code>cat</code>s it to look) sends the value to its model provider all
+the same. Telling it to use the file inside commands is what keeps it
+out; check the program's tool calls if it matters.</p>
 <h3 id="recording-a-tab">Recording a tab</h3>
 <p>For demos, a tab can be recorded to an MP4. Start one from the
 <strong>Record</strong> menu (it acts on the active tab), from the tab's

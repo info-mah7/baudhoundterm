@@ -84,7 +84,12 @@ The [manual](docs/MANUAL.md) explains how to use it.
   marks which shortcuts use it, and a live tab's chip says whether the session is really there on
   the host; the tab's menu can end that session when you want it gone. A shortcut can list several
   named tmux sessions, each in its own tab (a work shell, a log tail, a build), opened on connect or
-  from the shortcut's **Open tmux session** menu.
+  from the shortcut's **Open tmux session** menu. **Running tmux sessions** (right-click a
+  shortcut, or a host's **Connect**) lists what `tmux ls` shows on the host for that login, and
+  opens a tab attached to any of them.
+- **Send a secret to the program** in an SSH tab (a coding agent, say): a password, token or key
+  goes to a file on the host that only the login can read, and the tab is told the file's path,
+  never the value, so it stays out of the terminal, the log and the program's conversation.
 - **Context-aware properties**: the shortcut editor shows only the tabs and fields the chosen
   protocol uses, and every open tab carries an × to close it.
 - **File transfer**: SFTP browser with upload and download, or SCP for hosts with no SFTP
@@ -249,6 +254,12 @@ Anything running as that login can attach, type into it and read its scrollback.
 what a session holds: a `sudo -i`, `su` or onward `ssh` shell left in it stays logged in, and
 whoever gets into the login, or root, gets it without a password. End such sessions rather than
 leaving them detached. The manual's "tmux and security" has the details.
+
+**Send a secret to the program keeps the value off the screen, not out of reach.** It is written
+to `~/.cache/baudhoundterm/secrets` on the host (folder 700, file 600) over a channel of its own,
+and deleted after the time you pick. Anything running as that login, and root, can read it while it
+is there. A program told to use it from the file never shows it; one that reads the file into its
+conversation sends the value to its model provider.
 
 ### Verifying a build
 

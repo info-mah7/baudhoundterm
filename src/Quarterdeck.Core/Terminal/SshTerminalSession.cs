@@ -67,6 +67,32 @@ public sealed class SshTerminalSession : ITerminalSession
             _sharesKey = hop.KeyPath.Length > 0 && string.Equals(hop.KeyPath, owner.KeyPath, StringComparison.OrdinalIgnoreCase)
         };
 
+    // Set by RunCommandAsync: a login with no shell, for one command.
+    private bool _commandOnly;
+
+    /// <summary>
+    /// Logs in with no shell, runs <paramref name="command"/> and logs out: for asking a host something
+    /// while no tab is open on it. It never asks for anything: a login that needs a typed password fails
+    /// instead, so the caller decides beforehand whether one is saved.
+    /// </summary>
+    public static async Task<(int Exit, string Output, string Error)> RunCommandAsync(
+        SessionDefinition definition, CredentialVault vault, string command, CancellationToken token = default)
+    {
+        var session = new SshTerminalSession(definition, vault) { _commandOnly = true };
+        try
+        {
+            await session.ConnectAsync(token).ConfigureAwait(false);
+            using var c = session._client!.CreateCommand(command);
+            c.CommandTimeout = TimeSpan.FromSeconds(15);
+            var output = await Task.Run(() => c.Execute(), token).ConfigureAwait(false);
+            return (c.ExitStatus ?? -1, output, c.Error);
+        }
+        finally
+        {
+            await session.DisconnectAsync().ConfigureAwait(false);
+        }
+    }
+
     /// <summary>The user name the login used: the shortcut's, or the KeePassXC entry's when the shortcut has none.</summary>
     public string Username { get; private set; } = "";
 
@@ -131,6 +157,11 @@ public sealed class SshTerminalSession : ITerminalSession
             client.Dispose();
             jump?.Dispose();
             throw new OperationCanceledException("Disconnected while connecting.");
+        }
+
+        if (_commandOnly)
+        {
+            return;
         }
 
         _stream = _client.CreateShellStream(

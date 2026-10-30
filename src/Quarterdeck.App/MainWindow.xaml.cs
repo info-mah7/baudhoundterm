@@ -1121,6 +1121,181 @@ public partial class MainWindow : Window
         return menu;
     }
 
+    /// <summary>
+    /// "Running tmux sessions": what <c>tmux ls</c> shows for this shortcut's login on its host, asked
+    /// when the submenu opens. Picking one opens a tab attached to it, whatever started it.
+    /// </summary>
+    private MenuItem RunningTmuxMenu(SessionDefinition definition, string header = "Running t_mux sessions")
+    {
+        var menu = new MenuItem
+        {
+            Header = header,
+            ToolTip = $"The tmux sessions running for {definition.Username}@{definition.Host}, from tmux ls on the host"
+        };
+        menu.Items.Add(new MenuItem { Header = "Asking the host...", IsEnabled = false });
+        var asked = false;
+        menu.SubmenuOpened += async (_, e) =>
+        {
+            if (!ReferenceEquals(e.OriginalSource, menu) || asked)
+            {
+                return;
+            }
+
+            asked = true;
+            var (sessions, problem) = await ListRunningTmuxAsync(definition);
+            menu.Items.Clear();
+            if (problem is not null || sessions.Count == 0)
+            {
+                menu.Items.Add(new MenuItem { Header = problem ?? "None running for this login", IsEnabled = false });
+                asked = problem is null;   // a failure is asked again next time; an empty list is an answer
+                return;
+            }
+
+            foreach (var s in sessions)
+            {
+                // Tabs attach by a name the shell needs no quoting for; tmux allows more.
+                var usable = SessionController.TmuxName(s.Name) == s.Name;
+                var item = new MenuItem
+                {
+                    // A header takes "_" as an access key: doubled, it shows as itself.
+                    Header = s.Name.Replace("_", "__") + $"   ({s.Windows} window{(s.Windows == 1 ? "" : "s")}{(s.Attached ? ", attached" : "")})",
+                    IsEnabled = usable,
+                    ToolTip = usable ? $"A tab attached to the tmux session {s.Name}" : "Only names of letters, digits, - and _ can be opened here"
+                };
+                var name = s.Name;
+                item.Click += async (_, _) => await OpenRunningTmuxAsync(definition, name);
+                menu.Items.Add(item);
+            }
+        };
+        return menu;
+    }
+
+    /// <summary>
+    /// The host's tmux sessions for this login: on an open tab's connection to the same login when there
+    /// is one, otherwise on a login of its own, made only when it needs nothing typed (a hover never pops
+    /// a password prompt). The problem, in a few words, when it cannot say.
+    /// </summary>
+    private async Task<(IReadOnlyList<SessionController.TmuxListing> Sessions, string? Problem)> ListRunningTmuxAsync(SessionDefinition definition)
+    {
+        try
+        {
+            var open = _live.FirstOrDefault(l => l.View.Controller is { Ssh.Client.IsConnected: true }
+                                                 && SameEndpoint(l.Definition, definition)
+                                                 && string.Equals(l.Definition.Username, definition.Username, StringComparison.Ordinal));
+            if (open?.View.Controller is { } controller)
+            {
+                return (await controller.ListTmuxAsync(), null);
+            }
+
+            if (QuietLoginProblem(definition) is { } problem)
+            {
+                return ([], problem);
+            }
+
+            var (exit, output, error) = await SshTerminalSession.RunCommandAsync(definition, _vault, SessionController.TmuxListCommand);
+            return exit switch
+            {
+                0 => (SessionController.ParseTmuxList(output), null),
+                127 => ([], "tmux is not installed on the host"),
+                _ => ([], $"The host said: {error.Trim()}")
+            };
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return ([], "Could not ask the host: " + ex.Message.TrimEnd('.'));
+        }
+    }
+
+    /// <summary>Why listing would need a prompt (or a host key check), so it is not tried from a menu; null when it would not.</summary>
+    private string? QuietLoginProblem(SessionDefinition d)
+    {
+        if (d.LastConnected is null)
+        {
+            return "Connect once first, to check the host key";
+        }
+
+        return d.AuthMethod switch
+        {
+            SshAuthMethod.PublicKey or SshAuthMethod.Agent => null,
+            SshAuthMethod.Password when d.PasswordSource == PasswordSource.Saved && _vault.Get(d.Id) is not null => null,
+            _ => "Needs a password: connect first, then look again"
+        };
+    }
+
+    /// <summary>
+    /// A tab attached to a running tmux session. A plain SSH shortcut stays as it is: only this tab
+    /// runs in tmux, under the shortcut (same id, so its saved login and its place in the list).
+    /// </summary>
+    private async Task OpenRunningTmuxAsync(SessionDefinition definition, string name)
+    {
+        if (definition.Tmux)
+        {
+            await OpenTabAsync(definition, tmuxSession: name);
+            return;
+        }
+
+        var copy = definition.Clone(definition.Name);
+        copy.Id = definition.Id;
+        copy.LastConnected = definition.LastConnected;
+        copy.Tmux = true;
+        // No list of its own: the tab title then adds the session's name ("web01 · build").
+        copy.TmuxSessions = [];
+        await OpenTabAsync(copy, tmuxSession: name);
+    }
+
+    /// <summary>"Send a secret to the program": the window, then <see cref="SessionController.SendSecretAsync"/>.</summary>
+    private MenuItem SendSecretItem(TerminalView view, SessionDefinition definition)
+    {
+        var item = new MenuItem
+        {
+            Header = "Send a s_ecret to the program...",
+            IsEnabled = view.Controller is { Ssh.Client.IsConnected: true },
+            ToolTip = "A password or key for the program in this tab (a coding agent), in a file only this login can read. " +
+                      "The tab is told where it is; the value never goes through the terminal."
+        };
+        item.Click += async (_, _) => await SendSecretAsync(view, definition);
+        return item;
+    }
+
+    private async Task SendSecretAsync(TerminalView view, SessionDefinition definition)
+    {
+        if (view.Controller is not { } controller)
+        {
+            return;
+        }
+
+        var dialog = new SendSecretWindow(definition.Name) { Owner = this };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var value = dialog.Value;
+        try
+        {
+            var (path, error) = await controller.SendSecretAsync(dialog.SecretName, value, dialog.RemoveAfter);
+            if (path is null)
+            {
+                MessageBox.Show(this, $"The secret was not sent: {error}", "Send a secret", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (dialog.TypeNote)
+            {
+                await controller.WriteAsync(SessionController.SecretNote(dialog.SecretName, path, dialog.RemoveAfter));
+                view.FocusTerminal();
+            }
+            else
+            {
+                MessageBox.Show(this, $"Saved on the host as {path}.", "Send a secret", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        finally
+        {
+            Array.Clear(value);
+        }
+    }
+
     private MenuItem CreateShortcutItem(TerminalView view, SessionDefinition definition)
     {
         var item = new MenuItem
@@ -1808,6 +1983,15 @@ public partial class MainWindow : Window
             menu.Items.Add(new Separator());
             menu.Items.Add(CreateShortcutItem(tmuxView, definition));
             menu.Items.Add(end);
+        }
+
+        if (definition.Protocol == SessionProtocol.Ssh && ViewOf(tab) is { } secretView)
+        {
+            // Built when the menu opens, so it follows the connection.
+            var secret = SendSecretItem(secretView, definition);
+            menu.Opened += (_, _) => secret.IsEnabled = secretView.Controller is { Ssh.Client.IsConnected: true };
+            menu.Items.Add(new Separator());
+            menu.Items.Add(secret);
         }
 
         if (ViewOf(tab) is { CanAttachAgent: true })
@@ -2518,6 +2702,7 @@ public partial class MainWindow : Window
 
                 if (session.Protocol == SessionProtocol.Ssh)
                 {
+                    menu.Items.Add(RunningTmuxMenu(session));
                     var tmux = Item("Create t_mux shortcut...", () => CreateTmuxShortcut(session));
                     tmux.ToolTip = "A new shortcut to the same host and login, kept in a tmux session of its own named after it";
                     menu.Items.Add(tmux);
@@ -2545,6 +2730,19 @@ public partial class MainWindow : Window
                     var target = session;
                     connect.Items.Add(Item($"{badge}  {SessionPresentation.Target(session, hostShown: true)}",
                         () => Connect(target)));
+                }
+
+                // One list per SSH login on the host: tmux keeps its sessions per login.
+                var logins = host.Sessions.Where(s => s.Protocol == SessionProtocol.Ssh)
+                                 .GroupBy(s => (s.Username, SessionPresentation.EffectivePort(s))).Select(g => g.First()).ToList();
+                if (logins.Count > 0)
+                {
+                    connect.Items.Add(new Separator());
+                    foreach (var login in logins)
+                    {
+                        var who = login.Username.Length > 0 ? login.Username.Replace("_", "__") : login.Name.Replace("_", "__");
+                        connect.Items.Add(RunningTmuxMenu(login, logins.Count == 1 ? "Running t_mux sessions" : $"Running tmux sessions as {who}"));
+                    }
                 }
 
                 menu.Items.Add(connect);
@@ -2591,6 +2789,11 @@ public partial class MainWindow : Window
 
                     UpdateConnectionToggle();
                 }));
+                if (live.Definition.Protocol == SessionProtocol.Ssh)
+                {
+                    menu.Items.Add(SendSecretItem(live.View, live.Definition));
+                }
+
                 if (live.View.Tmux == TmuxState.Live)
                 {
                     menu.Items.Add(Item("End the tmux _session on the host", async () =>

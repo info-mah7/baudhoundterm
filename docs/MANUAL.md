@@ -415,6 +415,16 @@ opened on connect marked *(on demand)*, and **New tmux session...**, which asks 
 to the shortcut and opens it. Opening a session that is already running attaches to it, so two
 tabs on the same session show the same screen.
 
+**Running tmux sessions** lists what is actually running, whoever started it: right-click an SSH
+shortcut, or a host in **Group by host** and its **Connect** menu (one list per login when the host
+has several). It runs `tmux ls` on the host when the submenu opens and shows each session with its
+window count, and "attached" when a client is on it. Pick one for a tab attached to it. A plain SSH
+shortcut stays plain: only that tab runs in tmux. The list uses an open tab's connection to the same
+login when there is one. Otherwise it logs in on its own, but only when that needs nothing typed (a
+key, the SSH agent or a saved password) and the host key was checked at an earlier connect; if not,
+it says so, and connecting first fixes it. Sessions named with characters other than letters,
+digits, `-` and `_` are listed but cannot be opened from here.
+
 ### Ending a tmux session
 
 Closing a tab whose shell is in tmux leaves the session running on the host, which is the point of
@@ -460,6 +470,28 @@ this login, or root, gets those too.
   (tmux-resurrect) save pane contents to disk, secrets included.
 
 BaudHoundTerm forwards no SSH agent, so a session left running holds none of your keys.
+
+### Sending a secret to the program in a tab
+
+A coding agent in an SSH tab (Claude Code, Codex) sometimes needs a password, a token or a key.
+Typed or pasted into its prompt, the value lands in its conversation, the scrollback and the
+session log. Instead, right-click the tab (or its row in the list) and choose **Send a secret to the
+program...**:
+
+- Give it a **name**, then type the value or choose **Use a file instead** for a key file (up to 1 MB).
+- BaudHoundTerm writes it to `~/.cache/baudhoundterm/secrets/<name>` on the host over a channel of
+  its own, through the command's input: it is not typed into the tab, not on any command line, and
+  not in the log. The folder is 700 and the file 600.
+- **Delete it from the host after** 15 minutes, 1 hour (the default) or 8 hours: a background job
+  on the host removes it, whether the tab is still open or not. **Keep it** leaves it for you to delete.
+- With **Type a line at the prompt** ticked, the tab gets one line saying where the file is and to use
+  it from there (`"$(cat <path>)"` inside a command) without printing it. Nothing is sent until you
+  press Enter, so you can read or change it first. The value is never in that line.
+
+What this does not do: anything running as that login, and root, can read the file while it is
+there, as with any file of yours. And a program that reads the file into its conversation (prints
+it, or `cat`s it to look) sends the value to its model provider all the same. Telling it to use the
+file inside commands is what keeps it out; check the program's tool calls if it matters.
 
 ### Recording a tab
 
